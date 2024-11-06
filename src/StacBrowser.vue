@@ -18,8 +18,13 @@
             </b-button-group>
           </nav>
           <div class="title">
-            <img v-if="logo" :src="logo.getAbsoluteUrl()" :alt="logo.title" :title="logo.title" class="logo">
-            <span role="banner">
+            <template v-if="logo">
+              <StacLink v-if="root" :data="root">
+                <img :src="logo.getAbsoluteUrl()" :alt="logo.title" :title="logo.title" class="logo">
+              </StacLink>
+              <img v-else :src="logo.getAbsoluteUrl()" :alt="logo.title" :title="logo.title" class="logo">
+            </template>
+            <span class="text" role="banner">
               <StacLink v-if="root" :data="root" hideIcon />
               <template v-else>{{ catalogTitle }}</template>
             </span>

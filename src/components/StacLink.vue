@@ -1,7 +1,9 @@
 <template>
   <component :is="component" class="stac-link" v-bind="attributes" :id="id" :title="tooltip">
-    <img v-if="icon && !hideIcon" :src="icon.getAbsoluteUrl()" :alt="icon.title" :title="icon.title" class="icon mr-2">
-    <span class="title">{{ displayTitle }}</span>
+    <slot :displayTitle="displayTitle" :icon="icon">
+      <img v-if="icon && !hideIcon" :src="icon.getAbsoluteUrl()" :alt="icon.title" :title="icon.title" class="icon mr-2">
+      <span class="title">{{ displayTitle }}</span>
+    </slot>
   </component>
 </template>
 

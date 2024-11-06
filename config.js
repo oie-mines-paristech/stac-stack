@@ -1,31 +1,24 @@
+const TITLE = "Copernicus Data Space Ecosystem (CDSE) - STAC API";
 module.exports = {
-    catalogUrl: null,
-    catalogTitle: "STAC Browser",
-    catalogImage: null,
-    allowExternalAccess: true, // Must be true if catalogUrl is not given
-    allowedDomains: [],
+    catalogUrl: "https://stac.dataspace.copernicus.eu/v1/",
+    catalogTitle: TITLE,
+    catalogImage: "https://dataspace.copernicus.eu/themes/custom/copernicus/logo.svg",
+    allowExternalAccess: false,
+    allowedDomains: [
+      "copernicus.eu"
+    ],
     detectLocaleFromBrowser: true,
     storeLocale: true,
     locale: "en",
     fallbackLocale: "en",
     supportedLocales: [
         "de",
-        "ar",
-//      "de-CH",
         "es",
         "en",
-//      "en-GB",
-//      "en-US",
         "fr",
-//      "fr-CA",
-//      "fr-CH",
         "it",
-//      "it-CH",
         "ro",
-        "ja",
         "pt",
-//      "pt-BR",
-        "id",
         "pl"
     ],
     apiCatalogPriority: null,
@@ -51,8 +44,16 @@ module.exports = {
     requestHeaders: {},
     requestQueryParameters: {},
     socialSharing: ['email', 'bsky', 'mastodon', 'x'],
-    preprocessSTAC: null,
-    authConfig: null,
+    preprocessSTAC: stac => {
+        if (stac.getBrowserPath() === '/') {
+            stac.title = TITLE;
+        }
+        return stac;
+    },
+    authConfig: {
+        type: "openIdConnect",
+        openIdConnectUrl:"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
+    },
     crs: {},
     footerLinks: null
 };

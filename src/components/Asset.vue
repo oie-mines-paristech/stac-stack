@@ -22,10 +22,10 @@
     <b-collapse :id="uid" v-model="expanded" :accordion="type" role="tabpanel" @input="collapseToggled">
       <template v-if="hasAlternatives">
         <b-tabs card>
-          <b-tab :title="asset['alternate:name'] || $t('assets.alternate.main')" active>
+          <b-tab :title="asset['alternate:name'] || $t('assets.alternate.main')">
             <AssetAlternative :asset="asset" :shown="shown" hasAlternatives @show="show" />
           </b-tab>
-          <b-tab v-for="(altAsset, key) in alternatives" :title="altAsset['alternate:name'] || key" :key="key">
+          <b-tab v-for="(altAsset, key) in alternatives" :title="altAsset['alternate:name'] || key" :key="key" :active="key === 'https'">
             <AssetAlternative :asset="altAsset" :shown="shown" hasAlternatives :key="key" @show="show" />
           </b-tab>
         </b-tabs>

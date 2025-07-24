@@ -1,11 +1,10 @@
-const TITLE = "Copernicus Data Space Ecosystem (CDSE) - STAC API";
+const TITLE = "Mines Paris PSL - OIE - STAC catalog";
 module.exports = {
-    catalogUrl: "https://stac.dataspace.copernicus.eu/v1/",
+    catalogUrl: "http://127.0.0.1:2222/IEA_PVPS.zarr/collection.json",
+    // catalogUrl: "https://stac.dataspace.copernicus.eu/v1/",
     catalogTitle: TITLE,
-    allowExternalAccess: false,
-    allowedDomains: [
-      "copernicus.eu"
-    ],
+    allowExternalAccess: true,
+    allowedDomains: [],
     detectLocaleFromBrowser: true,
     storeLocale: true,
     locale: "en",
@@ -36,19 +35,14 @@ module.exports = {
     itemsPerPage: 12,
     maxItemsPerPage: 1000,
     defaultThumbnailSize: null,
-    maxPreviewsOnMap: 50,
+    maxPreviewsOnMap: 2000,
     crossOriginMedia: null,
     requestHeaders: {},
     requestQueryParameters: {},
     socialSharing: ['email', 'bsky', 'mastodon', 'x'],
-    preprocessSTAC: stac => {
-        if (stac.getBrowserPath() === '/') {
-            stac.title = TITLE;
-        }
-        return stac;
-    },
+    preprocessSTAC: null,
     authConfig: {
-        type: "openIdConnect",
-        openIdConnectUrl:"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
-    }
+    //    type: "openIdConnect",
+  // openIdConnectUrl:"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
+   }
 };

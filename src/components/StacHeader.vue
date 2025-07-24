@@ -32,8 +32,8 @@
             <component :is="authIcon" /> <span class="button-label">{{ authLabel }}</span>
           </b-button>
         </b-button-group>
-        <a href="https://dataspace.copernicus.eu/">
-          <img src="https://dataspace.copernicus.eu/themes/custom/copernicus/logo.svg" class="logos" alt="Logos: EU, COPERNICUS, ESA">
+        <a href="https://www.webservice-energy.org/">
+          <img src="/img/logo-long.png" class="logos" alt="Logo OIE">
         </a>
       </p>
     </b-col>

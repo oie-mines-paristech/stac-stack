@@ -1,7 +1,9 @@
 const TITLE = "Mines Paris PSL - OIE - STAC catalog";
 module.exports = {
-    catalogUrl: "http://127.0.0.1:2222/IEA_PVPS.zarr/collection.json",
+    // catalogUrl : "https://stac.webservice-energy.org/data/in-situ/IEA_PVPS.zarr/collection.json",
+    catalogUrl: "http://127.0.0.1:2222/IEA_PVPS.zarr/catalog.json",
     // catalogUrl: "https://stac.dataspace.copernicus.eu/v1/",
+    // catalogUrl : "http://127.0.0.1:7822/",
     catalogTitle: TITLE,
     allowExternalAccess: true,
     allowedDomains: [],
@@ -32,8 +34,8 @@ module.exports = {
     showThumbnailsAsAssets: false,
     geoTiffResolution: 128,
     redirectLegacyUrls: false,
-    itemsPerPage: 12,
-    maxItemsPerPage: 1000,
+    itemsPerPage: 200,
+    maxItemsPerPage: 200,
     defaultThumbnailSize: null,
     maxPreviewsOnMap: 2000,
     crossOriginMedia: null,

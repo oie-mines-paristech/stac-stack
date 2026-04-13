@@ -1,0 +1,56 @@
+services:
+
+  stac-browser:
+    build: ./
+    ports:
+      - 80:8080
+    environment:
+      SB_catalogUrl: "/api/"
+    depends_on:
+      - stac-api
+
+  stac-indexer:
+    build:
+      dockerfile: ./docker/indexer/Dockerfile
+      context: ./services/stac-api/
+    #image: sparkgeo/stac_indexer
+    environment:
+      INDEX_ROOT_CATALOG_URI: /data/catalog.json
+      INDEX_CONFIG_PATH: /index-config.json
+      INDEX_PUBLISH_PATH: /output
+    volumes:
+      - ./data/stac-index:/output:rw
+      - ./data/stac-catalog/data/:/data:ro
+      - ./data/stac-catalog/index-config.json:/index-config.json:ro
+
+  stac-api:
+    build:
+      dockerfile: ./docker/api/Dockerfile
+      context: ./services/stac-api/
+    #image: sparkgeo/stac_fastapi_indexed
+    environment:
+      # jwt_secret random, generated with `openssl rand -base64 32`
+      # create a new secret for each environment
+      stac_api_indexed_token_jwt_secret: TtAeeoQ8Vr3w9yiCuE5rrbO6uIQ3Saxqu5vJmjAENVI=
+      stac_api_indexed_log_level: debug
+      stac_api_indexed_create_empty_index_if_missing: true
+      stac_api_indexed_index_manifest_uri: /index/manifest.json
+      #stac_api_indexed_root_path : /api
+      stac_api_indexed_deployment_root_path : /api
+      #ROOT_PATH: /api/
+      #stac_api_root_path: /api/
+      #BASE_URl: /api/
+
+    healthcheck:
+      test: curl --fail http://localhost/_mgmt/ping
+      interval: 5s
+      timeout: 1s
+      retries: 50
+
+    volumes:
+      - ./data/stac-catalog/data:/data:ro
+      - ./data/stac-index/:/index:ro
+
+    depends_on:
+      stac-indexer:
+        condition: service_completed_successfully

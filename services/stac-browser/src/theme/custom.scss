@@ -1,0 +1,65 @@
+#stac-browser {
+  > header {
+  
+    > .site {
+      background-color: map-get($theme-colors, "primary");
+
+      .logo {
+        height: 2rem;
+      }
+
+      > .col-md-12 {
+        > .title {
+          color: #fff;
+
+          a {
+            color: #fff;
+          }
+
+          @media screen and (max-width: 1280px) {
+            .text {
+              display: none;
+            }
+          }
+        }
+
+        > .actions > .btn-group {
+          > .btn-primary,
+          > .b-dropdown > button {
+            &:hover,
+            &:focus,
+            &:active {
+              background-color: #fff;
+              border-color: #fff;
+              color: map-get($theme-colors, "primary");
+            }
+          }
+          > .b-dropdown.show > button {
+            background-color: #fff;
+            border-color: #fff;
+            color: map-get($theme-colors, "primary");
+          }
+        }
+      }
+    }
+
+    > .page {
+      padding-top: 0;
+
+      > .col-md-12 {
+        padding-top: 1.25rem;
+      }
+
+      &::before {
+        content: "";
+        background: linear-gradient(90deg, map-get($theme-colors, "success"), map-get($theme-colors, "warning"));
+        background-size: auto;
+        background-size: 100%;
+        position: absolute;
+        height: 6px;
+        left: 0;
+        right: 0;
+      }
+    }
+  }
+}

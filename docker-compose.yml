@@ -5,7 +5,11 @@ services:
     ports:
       - 80:8080
     environment:
-      SB_catalogUrl: "/api/"
+
+      SB_catalogUrl: "http://localhost/api/"
+      SB_allowExternalAccess : false
+      SB_allowedDomains: "['localhost']"
+
     depends_on:
       - static-api
     volumes:

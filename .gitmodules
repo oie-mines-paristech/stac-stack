@@ -1,3 +1,0 @@
-[submodule "services/stac-api"]
-	path = services/stac-api
-	url = git@github.com:sparkgeo/stac-fastapi-indexed.git

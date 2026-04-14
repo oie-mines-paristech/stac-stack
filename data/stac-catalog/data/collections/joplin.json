@@ -12,7 +12,7 @@
     {
       "rel": "items",
       "type": "application/geo+json",
-      "href": "/data/collections/joplin/items"
+      "href": "file:///data/collections/joplin/items"
     }
   ],
   "type": "Collection",

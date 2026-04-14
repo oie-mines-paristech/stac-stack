@@ -1,0 +1,27 @@
+{
+    "indexables": {
+        "gsd": {
+            "storage_type": "DOUBLE",
+            "description": "Ground Sample Distance",
+            "json_path": "properties.gsd"
+        }
+    },
+    "queryables": {
+        "gsd": {
+            "json_schema":  {
+                "type": "number",
+                "exclusiveMinimum": 0
+            },
+            "collections": [
+                "joplin"
+            ]
+        }
+    },
+    "sortables": {
+        "gsd": {
+            "collections": [
+                "joplin"
+            ]
+        }
+    }
+}

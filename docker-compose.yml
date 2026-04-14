@@ -1,13 +1,15 @@
 services:
 
   stac-browser:
-    build: ./
+    build: ./services/stac-browser
     ports:
       - 80:8080
     environment:
       SB_catalogUrl: "/api/"
     depends_on:
       - stac-api
+    volumes:
+      - ./services/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
   stac-indexer:
     build:

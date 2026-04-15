@@ -17,7 +17,97 @@ class GeoExtent:
     end_datetime: datetime | None = None
 
 
-def _as_datetime_minmax(values: Any) -> tuple[datetime | None, datetime | None]:
+def _to_python_datetime(value: Any) -> datetime | None:
+    """
+    Convertit proprement un datetime64 numpy en datetime Python.
+    Attention: numpy.datetime64.item() retourne souvent un int (ns depuis epoch).
+    """
+    try:
+        import numpy as np
+
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, np.datetime64):
+            # astype('O') donne un datetime.datetime (ou datetime.date si précision jour)
+            obj = value.astype("datetime64[ms]").astype("O")
+            return obj if isinstance(obj, datetime) else None
+    except Exception:
+        pass
+    return None
+
+
+def _format_iso8601_duration_from_seconds(total_seconds: float) -> str | None:
+    """
+    Formate une durée ISO 8601 (PnDTnHnMnS) à partir de secondes.
+    On reste simple: jours/heures/min/sec (pas de mois/année).
+    """
+    try:
+        import math
+
+        if not math.isfinite(total_seconds) or total_seconds <= 0:
+            return None
+        # arrondi au microseconde près, mais on n'encode que jusqu'aux secondes
+        s = int(round(total_seconds))
+        days, rem = divmod(s, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, seconds = divmod(rem, 60)
+
+        out = "P"
+        if days:
+            out += f"{days}D"
+        if hours or minutes or seconds:
+            out += "T"
+            if hours:
+                out += f"{hours}H"
+            if minutes:
+                out += f"{minutes}M"
+            if seconds:
+                out += f"{seconds}S"
+        # cas exact 0 (devrait être filtré) ou uniquement P
+        return out if out != "P" else None
+    except Exception:
+        return None
+
+
+def _guess_step_for_coord(c: xr.DataArray, *, dim_type: str) -> Any | None:
+    """
+    Step homogène estimé avec les 2 premières valeurs de la coordonnée.
+    - spatial: nombre (float)
+    - temporal: durée ISO 8601 (string)
+    """
+    try:
+        if c.size < 2:
+            return None
+        a = c.isel({c.dims[0]: 0}).values
+        b = c.isel({c.dims[0]: 1}).values
+
+        # Temporal: datetime64 ou décodable
+        if dim_type == "temporal":
+            try:
+                import numpy as np
+
+                if isinstance(a, np.datetime64) and isinstance(b, np.datetime64):
+                    dt = b - a
+                    # conversion en secondes
+                    seconds = float(dt / np.timedelta64(1, "s"))
+                    return _format_iso8601_duration_from_seconds(abs(seconds))
+            except Exception:
+                pass
+            return None
+
+        # Spatial / other: numérique
+        try:
+            da = float(a)
+            db = float(b)
+            step = abs(db - da)
+            return step if step > 0 else None
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
+def _as_datetime_minmax(values: Any, *, units: str | None = None, calendar: str | None = None) -> tuple[datetime | None, datetime | None]:
     if values is None:
         return (None, None)
     try:
@@ -34,21 +124,17 @@ def _as_datetime_minmax(values: Any) -> tuple[datetime | None, datetime | None]:
         return (None, None)
 
     try:
-        dmin = xr.coding.times.decode_cf_datetime(vmin, units="seconds since 1970-01-01").astype("datetime64[ns]")
-        dmax = xr.coding.times.decode_cf_datetime(vmax, units="seconds since 1970-01-01").astype("datetime64[ns]")
-        # Fallback ci-dessus peut échouer; on tente aussi un cast direct.
-        dmin = dmin.item() if hasattr(dmin, "item") else dmin
-        dmax = dmax.item() if hasattr(dmax, "item") else dmax
+        if units:
+            dmin64 = xr.coding.times.decode_cf_datetime(vmin, units=units, calendar=calendar)
+            dmax64 = xr.coding.times.decode_cf_datetime(vmax, units=units, calendar=calendar)
+        else:
+            dmin64 = xr.DataArray(vmin).astype("datetime64[ns]").values
+            dmax64 = xr.DataArray(vmax).astype("datetime64[ns]").values
+        dmin = _to_python_datetime(dmin64)
+        dmax = _to_python_datetime(dmax64)
         return (dmin, dmax)
     except Exception:
-        try:
-            dmin = xr.DataArray(vmin).astype("datetime64[ns]").values.item()
-            dmax = xr.DataArray(vmax).astype("datetime64[ns]").values.item()
-            if isinstance(dmin, datetime) and isinstance(dmax, datetime):
-                return (dmin, dmax)
-        except Exception:
-            return (None, None)
-    return (None, None)
+        return (None, None)
 
 
 def _guess_time_coord(ds: xr.Dataset) -> xr.DataArray | None:
@@ -135,14 +221,9 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
     time = _guess_time_coord(ds)
     start_dt = end_dt = None
     if time is not None:
-        try:
-            start_dt = time.min().values
-            end_dt = time.max().values
-            # Convert numpy datetime64 -> python datetime
-            start_dt = xr.DataArray(start_dt).astype("datetime64[ns]").values.item()
-            end_dt = xr.DataArray(end_dt).astype("datetime64[ns]").values.item()
-        except Exception:
-            start_dt = end_dt = None
+        units = time.attrs.get("units")
+        calendar = time.attrs.get("calendar")
+        start_dt, end_dt = _as_datetime_minmax(time.values, units=str(units) if units else None, calendar=str(calendar) if calendar else None)
 
     if start_dt is not None and not isinstance(start_dt, datetime):
         start_dt = None
@@ -153,7 +234,8 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
 
 
 def extent_from_netcdf(path: Path) -> GeoExtent | None:
-    ds = xr.open_dataset(path, decode_cf=True, mask_and_scale=False, chunks={}, engine="netcdf4")
+    # IMPORTANT: ne pas utiliser chunks={} (ça force dask).
+    ds = xr.open_dataset(path, decode_cf=True, mask_and_scale=False, engine="netcdf4")
     try:
         return extent_from_xarray_dataset(ds)
     finally:
@@ -163,9 +245,110 @@ def extent_from_netcdf(path: Path) -> GeoExtent | None:
 def extent_from_zarr(path: Path) -> GeoExtent | None:
     ds = xr.open_zarr(path, consolidated=None)
     try:
+        # open_zarr ne décode pas forcément les variables CF (ex: time numeric + units)
+        try:
+            ds = xr.decode_cf(ds)
+        except Exception:
+            pass
         return extent_from_xarray_dataset(ds)
     finally:
         ds.close()
+
+
+def datacube_metadata_from_xarray(ds: xr.Dataset) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Renvoie (cube:dimensions, cube:variables) au format STAC Datacube.
+    On reste volontairement minimal: dimensions + variables avec unités/description quand dispo.
+    """
+    dims: dict[str, Any] = {}
+    for dim_name, dim_len in ds.sizes.items():
+        dim_type = "other"
+        axis = None
+        lname = dim_name.lower()
+        if lname in {"time", "t"}:
+            dim_type = "temporal"
+        elif lname in {"x", "lon", "longitude"}:
+            dim_type = "spatial"
+            axis = "x"
+        elif lname in {"y", "lat", "latitude"}:
+            dim_type = "spatial"
+            axis = "y"
+
+        entry: dict[str, Any] = {"type": dim_type}
+        if axis is not None:
+            entry["axis"] = axis
+
+        # Extent (si coord existe)
+        if dim_name in ds.coords:
+            c = ds.coords[dim_name]
+            if dim_type == "temporal":
+                units = c.attrs.get("units")
+                calendar = c.attrs.get("calendar")
+                start_dt, end_dt = _as_datetime_minmax(c.values, units=str(units) if units else None, calendar=str(calendar) if calendar else None)
+                if start_dt and end_dt:
+                    entry["extent"] = [start_dt.isoformat().replace("+00:00", "Z"), end_dt.isoformat().replace("+00:00", "Z")]
+                # step temporel (ISO 8601 duration)
+                step = _guess_step_for_coord(c, dim_type=dim_type)
+                if step is not None:
+                    entry["step"] = step
+            else:
+                try:
+                    vmin = float(c.min().values)
+                    vmax = float(c.max().values)
+                    if vmin <= vmax:
+                        entry["extent"] = [vmin, vmax]
+                    else:
+                        entry["extent"] = [vmax, vmin]
+                except Exception:
+                    pass
+                # step spatial (number)
+                if dim_type == "spatial":
+                    step = _guess_step_for_coord(c, dim_type=dim_type)
+                    if step is not None:
+                        entry["step"] = step
+        else:
+            entry["extent"] = [0, int(dim_len) - 1] if int(dim_len) > 0 else [0, 0]
+
+        dims[dim_name] = entry
+
+    variables: dict[str, Any] = {}
+    for var_name, da in ds.data_vars.items():
+        v: dict[str, Any] = {"dimensions": list(da.dims)}
+        unit = da.attrs.get("units") or da.attrs.get("unit")
+        if unit is not None:
+            v["unit"] = str(unit)
+        desc = da.attrs.get("long_name") or da.attrs.get("standard_name") or da.attrs.get("description")
+        if desc is not None:
+            v["description"] = str(desc)
+        variables[var_name] = v
+
+    return dims, variables
+
+
+def datacube_metadata_from_asset(path: Path) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    lower = path.name.lower()
+    try:
+        if path.is_dir() and lower.endswith(".zarr"):
+            ds = xr.open_zarr(path, consolidated=None)
+            try:
+                try:
+                    ds = xr.decode_cf(ds)
+                except Exception:
+                    pass
+                return datacube_metadata_from_xarray(ds)
+            finally:
+                ds.close()
+        ext = path.suffix.lower()
+        if ext in {".nc", ".netcdf"}:
+            # IMPORTANT: ne pas utiliser chunks={} (ça force dask).
+            ds = xr.open_dataset(path, decode_cf=True, mask_and_scale=False, engine="netcdf4")
+            try:
+                return datacube_metadata_from_xarray(ds)
+            finally:
+                ds.close()
+    except Exception:
+        return None
+    return None
 
 
 def extent_from_asset(path: Path) -> GeoExtent | None:

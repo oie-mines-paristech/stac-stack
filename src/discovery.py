@@ -52,7 +52,16 @@ def expand_patterns(base_dir: Path, root_dir: Path, patterns: list[str]) -> list
 
 
 def find_thumbnail(folder: Path) -> Path | None:
-    for name in ("thumbnail.png", "thumbnail.jpg", "thumbnail.jpeg"):
+    # On accepte aussi "preview.*" comme vignette par défaut, car c'est très courant
+    # dans les dossiers de données (et utile pour STAC Browser).
+    for name in (
+        "thumbnail.png",
+        "thumbnail.jpg",
+        "thumbnail.jpeg",
+        "preview.png",
+        "preview.jpg",
+        "preview.jpeg",
+    ):
         p = folder / name
         if p.exists() and p.is_file():
             return p

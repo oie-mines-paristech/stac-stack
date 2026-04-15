@@ -6,16 +6,19 @@ from pathlib import Path
 from typing import Any
 
 import pystac
+from pystac.extensions import datacube as stac_datacube
+from pystac.extensions import eo as stac_eo
 
 from discovery import expand_patterns, find_thumbnail
-from geo_metadata import extent_from_asset, union_extents
+from geo_metadata import datacube_metadata_from_asset, extent_from_asset, union_extents
 from mime import guess_mime_type
 from models import FolderMetadata, normalize_asset_entry
 from yaml_io import read_yaml
 
 
-STAC_EO_EXTENSION = "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
-STAC_DATACUBE_EXTENSION = "https://stac-extensions.github.io/datacube/v2.2.0/schema.json"
+# Pour les datasets in-situ (point unique), on élargit artificiellement la bbox
+# afin d'améliorer l'affichage dans les viewers.
+POINT_BBOX_BUFFER_METERS = 100.0
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,25 @@ def _bbox_to_geom(bbox: list[float]) -> dict[str, Any]:
             ]
         ],
     }
+
+
+def _is_point_bbox(bbox: list[float]) -> bool:
+    return bbox[0] == bbox[2] and bbox[1] == bbox[3]
+
+
+def _expand_point_bbox(bbox: list[float], *, buffer_m: float) -> list[float]:
+    """
+    Convertit un point (lon,lat) en bbox élargie +/- buffer_m (approximation degrés).
+    """
+    lon = float(bbox[0])
+    lat = float(bbox[1])
+    # Approximations: 1 deg lat ~ 111_320 m ; 1 deg lon ~ 111_320 * cos(lat)
+    meters_per_deg_lat = 111_320.0
+    cos_lat = max(0.1, abs(__import__("math").cos(__import__("math").radians(lat))))
+    meters_per_deg_lon = meters_per_deg_lat * cos_lat
+    dlat = buffer_m / meters_per_deg_lat
+    dlon = buffer_m / meters_per_deg_lon
+    return [lon - dlon, lat - dlat, lon + dlon, lat + dlat]
 
 
 def _stac_datetime_props(start: datetime | None, end: datetime | None) -> dict[str, Any]:
@@ -143,15 +165,29 @@ def _add_folder_assets(ctx: BuildContext, folder: Path, rel_dir: Path, obj: pyst
     thumb = find_thumbnail(folder)
     if thumb is not None:
         rel = thumb.resolve().relative_to(ctx.root_dir.resolve())
-        obj.add_asset(
-            "thumbnail",
-            pystac.Asset(
-                href=ctx.asset_href(rel),
-                media_type=guess_mime_type(thumb),
-                roles=["thumbnail"],
-                title="thumbnail",
-            ),
-        )
+        href = ctx.asset_href(rel)
+        media_type = guess_mime_type(thumb)
+        # STAC: les assets sont définis pour Collection/Item, pas pour Catalog.
+        # Pour un Catalog, on ajoute un link "icon" (souvent compris par les viewers).
+        if isinstance(obj, pystac.Collection):
+            obj.add_asset(
+                "thumbnail",
+                pystac.Asset(
+                    href=href,
+                    media_type=media_type,
+                    roles=["thumbnail"],
+                    title="thumbnail",
+                ),
+            )
+        else:
+            obj.add_link(
+                pystac.Link(
+                    rel="icon",
+                    target=href,
+                    media_type=media_type,
+                    title="thumbnail",
+                )
+            )
 
     meta = load_folder_metadata(folder)
     for entry in meta.assets:
@@ -187,13 +223,25 @@ def _item_id_from_rel(rel_to_root: Path) -> str:
 def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, rel_collection_dir: Path) -> pystac.Item:
     ex = extent_from_asset(asset_path)
     bbox = ex.bbox_wgs84 if ex is not None else [-180.0, -90.0, 180.0, 90.0]
-    geom = _bbox_to_geom(bbox)
+    geom: dict[str, Any]
+    if _is_point_bbox(bbox):
+        # In-situ: géométrie point + bbox élargie
+        geom = {"type": "Point", "coordinates": [bbox[0], bbox[1]]}
+        bbox = _expand_point_bbox(bbox, buffer_m=POINT_BBOX_BUFFER_METERS)
+    else:
+        geom = _bbox_to_geom(bbox)
     props: dict[str, Any] = {}
-    if ex is not None:
-        props.update(_stac_datetime_props(ex.start_datetime, ex.end_datetime))
+    start_dt: datetime | None = None
+    end_dt: datetime | None = None
+    dt: datetime | None = None
 
-    dt = props.get("datetime")
-    if dt is None and ("start_datetime" not in props and "end_datetime" not in props):
+    if ex is not None:
+        tprops = _stac_datetime_props(ex.start_datetime, ex.end_datetime)
+        dt = tprops.get("datetime")
+        start_dt = tprops.get("start_datetime")
+        end_dt = tprops.get("end_datetime")
+
+    if dt is None and start_dt is None and end_dt is None:
         # STAC Items require `datetime` OR (`start_datetime`/`end_datetime`).
         # When we cannot infer any temporal info, we set a sentinel value and
         # explicitly mark it as unknown.
@@ -205,19 +253,40 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
         geometry=geom,
         bbox=bbox,
         datetime=dt,
-        properties={k: v for k, v in props.items() if k != "datetime"},
+        properties=props,
+        start_datetime=start_dt,
+        end_datetime=end_dt,
     )
 
     key = asset_path.stem if not (asset_path.is_dir() and asset_path.name.lower().endswith(".zarr")) else asset_path.name[:-5]
-    item.add_asset(
-        key,
-        pystac.Asset(
-            href=ctx.asset_href(rel_asset),
-            media_type=guess_mime_type(asset_path),
-            roles=["data"],
-            title=asset_path.name,
-        ),
+    asset = pystac.Asset(
+        href=ctx.asset_href(rel_asset),
+        media_type=guess_mime_type(asset_path),
+        roles=["data"],
+        title=asset_path.name,
     )
+    # Nécessaire pour certaines extensions (EO) qui exigent un owner.
+    asset.set_owner(item)
+
+    # Datacube + EO extensions pour NetCDF/Zarr (dimensions + variables + unités).
+    cube = datacube_metadata_from_asset(asset_path)
+    if cube is not None:
+        cube_dims, cube_vars = cube
+
+        # Datacube via l'API pystac.extensions.datacube
+        dc_ext = stac_datacube.DatacubeExtension.ext(item, add_if_missing=True)
+        dc_ext.dimensions = {k: stac_datacube.Dimension.from_dict(v) for k, v in cube_dims.items()}
+        dc_ext.variables = {k: stac_datacube.Variable.from_dict(v) for k, v in cube_vars.items()}
+
+        # EO via l'API pystac.extensions.eo (bands sur l'asset)
+        stac_eo.EOExtension.ext(item, add_if_missing=True)
+        eo_asset_ext = stac_eo.AssetEOExtension.ext(asset, add_if_missing=True)
+        eo_asset_ext.bands = [
+            stac_eo.Band({k: v for k, v in {"name": name, "description": spec.get("description"), "unit": spec.get("unit")}.items() if v is not None})
+            for name, spec in cube_vars.items()
+        ]
+
+    item.add_asset(key, asset)
 
     # Self href in `<collection>/items/<id>.json`
     out_items_dir = ctx.out_dir / rel_collection_dir / "items"

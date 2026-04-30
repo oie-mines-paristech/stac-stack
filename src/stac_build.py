@@ -7,7 +7,6 @@ from typing import Any
 
 import pystac
 from pystac.extensions import datacube as stac_datacube
-from pystac.extensions import eo as stac_eo
 
 from discovery import expand_patterns, find_thumbnail
 from geo_metadata import datacube_metadata_from_asset, extent_from_asset, union_extents
@@ -278,11 +277,10 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
         dc_ext.dimensions = {k: stac_datacube.Dimension.from_dict(v) for k, v in cube_dims.items()}
         dc_ext.variables = {k: stac_datacube.Variable.from_dict(v) for k, v in cube_vars.items()}
 
-        # EO via l'API pystac.extensions.eo (bands sur l'asset)
-        stac_eo.EOExtension.ext(item, add_if_missing=True)
-        eo_asset_ext = stac_eo.AssetEOExtension.ext(asset, add_if_missing=True)
-        eo_asset_ext.bands = [
-            stac_eo.Band({k: v for k, v in {"name": name, "description": spec.get("description"), "unit": spec.get("unit")}.items() if v is not None})
+        # Bands (Common Metadata) sur l'asset.
+        # `bands` remplace `eo:bands` (et `raster:bands`) : les champs EO restent possibles via des clés `eo:*` dans chaque Band Object.
+        asset.extra_fields["bands"] = [
+            {k: v for k, v in {"name": name, "description": spec.get("description"), "unit": spec.get("unit")}.items() if v is not None}
             for name, spec in cube_vars.items()
         ]
 

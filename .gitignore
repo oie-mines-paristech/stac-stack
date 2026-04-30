@@ -3,6 +3,7 @@
 node_modules
 dist
 data/stac-index/*
+data/*
 
 # local env files
 .env

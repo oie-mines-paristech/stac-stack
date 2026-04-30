@@ -9,11 +9,13 @@ services:
       SB_catalogUrl: "http://localhost/api/"
       SB_allowExternalAccess : false
       SB_allowedDomains: "['localhost']"
+      SB_itemsPerPage : 20
 
     depends_on:
       - static-api
     volumes:
       - ./services/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data:/data:ro
 
   static-api:
     image: ghcr.io/fntb/stac-fastapi-static:1.0.1
@@ -23,7 +25,7 @@ services:
       app_port: 80
       app_host: 0.0.0.0
       root_path: /api/
-      catalog_href: /data/catalog.json
+      catalog_href: /data/IEA_PVPS.zarr/catalog.json
     volumes:
-      - /home/rjolivet/zarr/data/out/IEA_PVPS.zarr/:/data
+      - ./data/:/data:ro
 

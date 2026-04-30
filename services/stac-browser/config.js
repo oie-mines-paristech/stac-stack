@@ -1,6 +1,6 @@
 const TITLE = "OIE - MinesParis PSL - STAC catalog";
 module.exports = {
-    catalogUrl: "https://stac.dataspace.copernicus.eu/v1/",
+    catalogUrl: "/api/",
     catalogTitle: TITLE,
     catalogImage: "/img/logo.png",
     allowExternalAccess: true,

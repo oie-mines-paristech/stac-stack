@@ -8,7 +8,7 @@ services:
 
       SB_catalogUrl: "http://localhost/api/"
       SB_allowExternalAccess : false
-      SB_allowedDomains: "['localhost']"
+      SB_allowedDomains: localhost
       SB_itemsPerPage : 20
 
     depends_on:
@@ -18,7 +18,8 @@ services:
       - ./data:/data:ro
 
   static-api:
-    image: ghcr.io/fntb/stac-fastapi-static:1.0.1
+    build: ./services/stac-fastapi-static
+    # image: ghcr.io/fntb/stac-fastapi-static:1.0.1
     ports:
       - "8080:80"
     environment:

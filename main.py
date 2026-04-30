@@ -96,7 +96,7 @@ def _atomic_generate_to_output(*, root_dir: Path, out_dir: Path, root_href: str)
         # absolus (souvent écrits par pystac via self_href) en liens relatifs.
         _rewrite_local_links_to_relative(folder_root=tmp_dir)
 
-        # Remplacement atomique (best-effort) : out_dir -> backup, tmp -> out_dir, puis cleanup backup.
+        # Publication atomique (best-effort) : out_dir -> backup, tmp -> out_dir, puis cleanup backup.
         backup_dir = None
         if out_dir.exists():
             backup_dir = Path(

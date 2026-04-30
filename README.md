@@ -69,6 +69,57 @@ uv run python main.py \
   --root-href "http://site.tld/path/"
 ```
 
+## Logs, status file, and atomic output
+
+Each generation attempt:
+
+- prints a few lines on stdout (start/end + duration)
+- writes a `status.log` file in the output directory:
+  - `OK` on success
+  - `ERROR` + stack trace on failure (with context: input/output)
+
+In watch mode, errors are caught and the watcher continues running.
+
+To avoid leaving a half-written catalog, the generator writes to a temporary directory and only
+replaces the output directory on success.
+
+## Docker
+
+This repository ships with a `Dockerfile` and an entrypoint that automatically runs `generate-stac` in `--watch` mode
+and **restarts it if it crashes**.
+
+### Environment variables
+
+The container is configured via environment variables:
+
+- `INPUT_DIR` (default: `/data/in`): passed to `--input`
+- `OUTPUT_DIR` (default: `/data/catalog`): passed to `--output`
+- `ROOT_HREF` (default: `/root`): passed to `--root-href`
+- `WATCH_DEBOUNCE` (default: `10`): passed to `--watch-debounce`
+
+### Recommended volume mounts
+
+The Docker image **does not include the `data/` directory** (see `.dockerignore`).
+Mount your data at runtime, for example by mounting the whole `./data` directory:
+
+- `./data:/data` (so the defaults `INPUT_DIR=/data/in` and `OUTPUT_DIR=/data/catalog` work out of the box)
+
+### docker-compose example
+
+```yaml
+services:
+  stac:
+    build: .
+    image: stac-generator:dev
+    environment:
+      INPUT_DIR: /data/in
+      OUTPUT_DIR: /data/catalog
+      ROOT_HREF: /root
+      WATCH_DEBOUNCE: "10"
+    volumes:
+      - ./data:/data
+```
+
 ## Writing `metadata.yml`
 
 ### Key idea

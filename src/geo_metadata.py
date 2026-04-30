@@ -243,7 +243,8 @@ def extent_from_netcdf(path: Path) -> GeoExtent | None:
 
 
 def extent_from_zarr(path: Path) -> GeoExtent | None:
-    ds = xr.open_zarr(path, consolidated=None)
+    # Évite le warning "Failed to open Zarr store with consolidated metadata".
+    ds = xr.open_zarr(path, consolidated=False)
     try:
         # open_zarr ne décode pas forcément les variables CF (ex: time numeric + units)
         try:
@@ -329,7 +330,8 @@ def datacube_metadata_from_asset(path: Path) -> tuple[dict[str, Any], dict[str, 
     lower = path.name.lower()
     try:
         if path.is_dir() and lower.endswith(".zarr"):
-            ds = xr.open_zarr(path, consolidated=None)
+            # Évite le warning "Failed to open Zarr store with consolidated metadata".
+            ds = xr.open_zarr(path, consolidated=False)
             try:
                 try:
                     ds = xr.decode_cf(ds)

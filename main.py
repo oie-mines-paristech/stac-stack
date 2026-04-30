@@ -256,6 +256,10 @@ def main(argv: list[str] | None = None) -> None:
                 pass
             etype = getattr(event, "event_type", "unknown")
             src_path = getattr(event, "src_path", "")
+            # Ne réagir qu'aux événements qui correspondent à une écriture / création / déplacement.
+            # (ignore notamment opened/closed qui peuvent spammer selon l'OS/FS)
+            if etype not in {"created", "modified", "moved"}:
+                return
             print(f"[watch] change detected ({etype}): {src_path}", flush=True)
             _schedule_regen()
 

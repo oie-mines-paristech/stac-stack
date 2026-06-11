@@ -39,7 +39,7 @@ services:
       app_port: 80
       app_host: 0.0.0.0
       root_path: /api/
-      catalog_href: /catalog/catalog.json
+      catalog_href: file:///catalog/catalog.json
     volumes:
       - ./volumes/catalog:/catalog:ro
 

@@ -19,8 +19,6 @@ from .errors import (
     BadStacObjectError
 )
 from .model import (
-    get_self_href,
-    set_self_href,
     guess_id_from_href
 )
 from .requests import (
@@ -86,18 +84,17 @@ def fetch_walkable(href: str, *, session: requests.Session = Session(), assume_a
             errors
         )
 
-    try:
-        self_href = get_self_href(catalog)
-    except ValueError:
-        set_self_href(catalog, self_href := href)
-
+    # Resolve relative links from the fetched URL, not from the document's self link.
+    # A relative self href (e.g. ./catalog.json) would break urljoin and yield paths like
+    # "cube/collection.json" that requests cannot fetch.
+    base_href = href
     if not assume_absolute_hrefs:
         for link in catalog.links.link_iterator():
-            link.href = urljoin(self_href, link.href)
+            link.href = urljoin(base_href, link.href)
 
         if isinstance(catalog, (Item, Collection)) and catalog.assets is not None:
             for asset in catalog.assets.values():
-                asset.href = urljoin(self_href, asset.href)
+                asset.href = urljoin(base_href, asset.href)
 
     return catalog
 
@@ -114,17 +111,13 @@ def fetch_item(href: str, *, session: requests.Session = Session(), assume_absol
             href=href
         ) from error
 
-    try:
-        self_href = get_self_href(item)
-    except ValueError:
-        set_self_href(item, self_href := href)
-
+    base_href = href
     if not assume_absolute_hrefs:
         for link in item.links.link_iterator():
-            link.href = urljoin(self_href, link.href)
+            link.href = urljoin(base_href, link.href)
 
         if item.assets is not None:
             for asset in item.assets.values():
-                asset.href = urljoin(self_href, asset.href)
+                asset.href = urljoin(base_href, asset.href)
 
     return item

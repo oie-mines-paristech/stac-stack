@@ -1,0 +1,8 @@
+title: Test tiff files
+description: Test for tiff files
+items:
+    - "*.tiff"
+assets:
+    - file: doc.pdf
+      roles : ["doc"]
+      name: documentation

@@ -1,0 +1,74 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [],
+  "id": "tiffs-lst",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          5.299880513248353,
+          43.09973002760005
+        ],
+        [
+          5.299880513248353,
+          43.600450966968275
+        ],
+        [
+          5.700349466908835,
+          43.600450966968275
+        ],
+        [
+          5.700349466908835,
+          43.09973002760005
+        ],
+        [
+          5.299880513248353,
+          43.09973002760005
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    5.299880513248353,
+    43.09973002760005,
+    5.700349466908835,
+    43.600450966968275
+  ],
+  "properties": {
+    "stac_generator:datetime_unknown": true,
+    "datetime": "1970-01-01T00:00:00Z"
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../../catalog.json",
+      "type": "application/json",
+      "title": "OIE Stac Catalog"
+    },
+    {
+      "rel": "parent",
+      "href": "../collection.json",
+      "type": "application/json",
+      "title": "Test tiff files"
+    },
+    {
+      "rel": "collection",
+      "href": "../collection.json",
+      "type": "application/json",
+      "title": "Test tiff files"
+    }
+  ],
+  "assets": {
+    "lst": {
+      "href": "/root/tiffs/lst.tiff",
+      "type": "image/tiff; application=geotiff",
+      "title": "lst.tiff",
+      "roles": [
+        "data"
+      ]
+    }
+  },
+  "collection": "tiffs"
+}

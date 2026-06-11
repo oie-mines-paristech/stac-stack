@@ -15,15 +15,14 @@ services:
   stac-browser:
     build: ./services/stac-browser
     ports:
-      - 80:8080
+      - 8000:8080
 
     restart: unless-stopped
     environment:
 
-      SB_catalogUrl: "http://localhost/api/"
-      SB_allowExternalAccess : false
-      SB_allowedDomains: localhost
-      SB_itemsPerPage : 20
+      SB_catalogUrl: "/api/"
+      SB_allowExternalAccess : true
+      SB_itemsPerPage : 100
 
     depends_on:
       - static-api

@@ -33,11 +33,8 @@ from .config import Settings
 
 from stac_fastapi.static.core import (
     WalkResult,
-    walk_collections,
-    make_filter_depth,
     BadStacObjectFilterError,
     BadWalkResultError,
-    WalkFilter
 )
 
 from stac_fastapi.static.core.requests import (
@@ -173,23 +170,9 @@ class CoreClient(BaseCoreClient):
             }
         ])
 
-        landing_page["links"].extend([
-            {
-                "rel": Relations.child.value,
-                "type": MimeTypes.json.value,
-                "title": walk_result.resolve().title or walk_result.resolve().id,
-                "href": urljoin(base_url, f"collections/{walk_result.resolve().id}"),
-            }
-            for walk_result
-            in WalkFilter(
-                walk_collections(
-                    settings.catalog_href,
-                    session=session,
-                    settings=settings
-                ),
-                make_filter_depth(depth=settings.landing_page_child_collections_max_depth)
-            )
-        ])
+        # Collections are exposed via the standard `data` link (/collections).
+        # Do not also emit `child` links here: stac-browser loads both sources and
+        # fails to deduplicate them when catalogUrl is a relative path like /api/.
 
         return landing_page
 

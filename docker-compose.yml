@@ -1,9 +1,23 @@
 services:
 
+  stac-generator:
+    # Transform Zarr / NetCDF to static stac catalog
+    build: ./services/stac-generator
+    environment:
+      INPUT_DIR: /data # By default
+      OUTPUT_DIR: /catalog # By default
+      ROOT_HREF: /data # Root href for resource URLs
+      WATCH_DEBOUNCE: "10"
+    volumes:
+      - ./volumes/data:/data:ro
+      - ./volumes/catalog:/catalog
+
   stac-browser:
     build: ./services/stac-browser
     ports:
       - 80:8080
+
+    restart: unless-stopped
     environment:
 
       SB_catalogUrl: "http://localhost/api/"
@@ -13,20 +27,19 @@ services:
 
     depends_on:
       - static-api
+      - stac-generator
     volumes:
       - ./services/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./data:/data:ro
+      - ./volumes/data:/data:ro
 
   static-api:
+    # Serve the static catalog as an API
     build: ./services/stac-fastapi-static
-    # image: ghcr.io/fntb/stac-fastapi-static:1.0.1
-    ports:
-      - "8080:80"
     environment:
       app_port: 80
       app_host: 0.0.0.0
       root_path: /api/
-      catalog_href: /data/IEA_PVPS.zarr/catalog.json
+      catalog_href: /catalog/catalog.json
     volumes:
-      - ./data/:/data:ro
+      - ./volumes/catalog:/catalog:ro
 

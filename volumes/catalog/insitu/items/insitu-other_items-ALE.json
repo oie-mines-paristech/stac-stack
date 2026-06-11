@@ -204,7 +204,7 @@
   ],
   "assets": {
     "ALE": {
-      "href": "/root/insitu/other_items/ALE.nc",
+      "href": "/data/insitu/other_items/ALE.nc",
       "type": "application/x-netcdf",
       "title": "ALE.nc",
       "bands": [

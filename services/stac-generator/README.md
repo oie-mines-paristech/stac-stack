@@ -110,11 +110,10 @@ Mount your data at runtime, for example by mounting the whole `./data` directory
 services:
   stac:
     build: .
-    image: stac-generator:dev
     environment:
-      INPUT_DIR: /data/in
-      OUTPUT_DIR: /data/catalog
-      ROOT_HREF: /root
+      INPUT_DIR: /data # By default
+      OUTPUT_DIR: /catalog # By default
+      ROOT_HREF: /data # Root href for resource URLs
       WATCH_DEBOUNCE: "10"
     volumes:
       - ./data:/data

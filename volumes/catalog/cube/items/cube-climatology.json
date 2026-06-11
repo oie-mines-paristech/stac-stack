@@ -164,7 +164,7 @@
   ],
   "assets": {
     "climatology": {
-      "href": "/root/cube/climatology.nc",
+      "href": "/data/cube/climatology.nc",
       "type": "application/x-netcdf",
       "title": "climatology.nc",
       "bands": [

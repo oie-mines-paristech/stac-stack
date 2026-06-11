@@ -46,7 +46,7 @@
   "license": "other",
   "assets": {
     "documentation": {
-      "href": "/root/tiffs/doc.pdf",
+      "href": "/data/tiffs/doc.pdf",
       "type": "application/pdf",
       "title": "documentation",
       "roles": [

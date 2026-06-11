@@ -56,7 +56,7 @@
   "license": "other",
   "assets": {
     "thumbnail": {
-      "href": "/root/insitu/thumbnail.png",
+      "href": "/data/insitu/thumbnail.png",
       "type": "image/png",
       "title": "thumbnail",
       "roles": [

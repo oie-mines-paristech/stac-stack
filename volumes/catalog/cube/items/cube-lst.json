@@ -106,7 +106,7 @@
   ],
   "assets": {
     "lst": {
-      "href": "/root/cube/lst.zarr",
+      "href": "/data/cube/lst.zarr",
       "type": "application/vnd+zarr",
       "title": "lst.zarr",
       "bands": [

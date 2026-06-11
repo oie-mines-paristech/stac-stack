@@ -62,7 +62,7 @@
   ],
   "assets": {
     "lst": {
-      "href": "/root/tiffs/lst.tiff",
+      "href": "/data/tiffs/lst.tiff",
       "type": "image/tiff; application=geotiff",
       "title": "lst.tiff",
       "roles": [

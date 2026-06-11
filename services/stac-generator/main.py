@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from __future__ import annotations
 import argparse
+import errno
 import json
 import os
 import shutil
@@ -30,6 +31,61 @@ def _generate(*, root_dir: Path, out_dir: Path, root_href: str) -> None:
     save_catalog(root, out_dir)
 
 
+def _publish_into_mount(*, src: Path, dst: Path) -> None:
+    """Publie le contenu de `src` dans `dst` quand `dst` est un point de montage."""
+    dst.mkdir(parents=True, exist_ok=True)
+    src_names = {entry.name for entry in src.iterdir()}
+    for entry in src.iterdir():
+        dest = dst / entry.name
+        if entry.is_dir() and dest.exists():
+            shutil.rmtree(dest)
+        os.replace(str(entry), str(dest))
+    for entry in dst.iterdir():
+        if entry.name == src.name:
+            continue
+        if entry.name not in src_names:
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+
+
+def _make_tmp_dir(*, out_dir: Path, parent: Path) -> Path:
+    """Crée un répertoire temporaire sur le même filesystem que `out_dir` si possible."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        tmp_dir = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.tmp-", dir=str(parent)))
+        if os.stat(tmp_dir).st_dev == os.stat(out_dir).st_dev:
+            return tmp_dir
+        shutil.rmtree(tmp_dir)
+    except OSError:
+        pass
+    return Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.tmp-", dir=str(out_dir)))
+
+
+def _try_atomic_publish(*, tmp_dir: Path, out_dir: Path, parent: Path) -> None:
+    if tmp_dir.parent == out_dir:
+        _publish_into_mount(src=tmp_dir, dst=out_dir)
+        return
+
+    backup_dir = None
+    try:
+        if out_dir.exists():
+            backup_dir = Path(
+                tempfile.mkdtemp(prefix=f".{out_dir.name}.bak-", dir=str(parent))
+            )
+            shutil.rmtree(backup_dir)
+            os.replace(str(out_dir), str(backup_dir))
+        os.replace(str(tmp_dir), str(out_dir))
+    except OSError as exc:
+        if exc.errno != errno.EBUSY:
+            raise
+        _publish_into_mount(src=tmp_dir, dst=out_dir)
+    finally:
+        if backup_dir is not None:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+
+
 def _atomic_generate_to_output(*, root_dir: Path, out_dir: Path, root_href: str) -> None:
     """
     Génère dans un répertoire temporaire puis remplace `out_dir` uniquement en cas de succès.
@@ -38,8 +94,7 @@ def _atomic_generate_to_output(*, root_dir: Path, out_dir: Path, root_href: str)
     parent = out_dir.parent
     parent.mkdir(parents=True, exist_ok=True)
 
-    tmp_dir_str = tempfile.mkdtemp(prefix=f".{out_dir.name}.tmp-", dir=str(parent))
-    tmp_dir = Path(tmp_dir_str)
+    tmp_dir = _make_tmp_dir(out_dir=out_dir, parent=parent)
     status_path = out_dir / "status.log"
 
     def _rewrite_local_links_to_relative(*, folder_root: Path) -> None:
@@ -96,23 +151,7 @@ def _atomic_generate_to_output(*, root_dir: Path, out_dir: Path, root_href: str)
         # absolus (souvent écrits par pystac via self_href) en liens relatifs.
         _rewrite_local_links_to_relative(folder_root=tmp_dir)
 
-        # Publication atomique (best-effort) : out_dir -> backup, tmp -> out_dir, puis cleanup backup.
-        backup_dir = None
-        if out_dir.exists():
-            backup_dir = Path(
-                tempfile.mkdtemp(prefix=f".{out_dir.name}.bak-", dir=str(parent))
-            )
-            shutil.rmtree(backup_dir)
-            os.replace(str(out_dir), str(backup_dir))
-
-        os.replace(str(tmp_dir), str(out_dir))
-
-        if backup_dir is not None:
-            try:
-                shutil.rmtree(backup_dir)
-            except Exception:
-                # Best effort cleanup only.
-                pass
+        _try_atomic_publish(tmp_dir=tmp_dir, out_dir=out_dir, parent=parent)
 
         elapsed = time.perf_counter() - start
         print(f"[stac-generator] generation OK in {elapsed:.2f}s -> {out_dir}", flush=True)

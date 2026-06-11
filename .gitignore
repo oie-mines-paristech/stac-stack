@@ -5,6 +5,12 @@ dist
 data/stac-index/*
 data/*
 
+# Docker volume mounts (generated at runtime)
+volumes/data/**
+!volumes/data/.gitkeep
+volumes/catalog/**
+!volumes/catalog/.gitkeep
+
 # local env files
 .env
 .env.local

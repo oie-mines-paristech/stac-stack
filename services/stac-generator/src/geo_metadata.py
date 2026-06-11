@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -8,11 +9,14 @@ from typing import Any, Iterable
 import rasterio
 from rasterio.warp import transform_bounds
 import xarray as xr
+import imagecodecs.zarr as zarr3codecs
+
+zarr3codecs.register_codecs()
 
 
 @dataclass(frozen=True)
 class GeoExtent:
-    bbox_wgs84: list[float]  # [minx, miny, maxx, maxy]
+    bbox_wgs84: list[float] | None = None  # [minx, miny, maxx, maxy]
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
 
@@ -215,8 +219,6 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
 
     if bbox is None:
         bbox = _bbox_from_lonlat(ds)
-    if bbox is None:
-        return None
 
     time = _guess_time_coord(ds)
     start_dt = end_dt = None
@@ -229,6 +231,9 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
         start_dt = None
     if end_dt is not None and not isinstance(end_dt, datetime):
         end_dt = None
+
+    if bbox is None and start_dt is None and end_dt is None:
+        return None
 
     return GeoExtent(bbox_wgs84=bbox, start_datetime=start_dt, end_datetime=end_dt)
 
@@ -369,14 +374,23 @@ def union_extents(extents: Iterable[GeoExtent]) -> GeoExtent | None:
     exts = [e for e in extents if e is not None]
     if not exts:
         return None
-    minx = min(e.bbox_wgs84[0] for e in exts)
-    miny = min(e.bbox_wgs84[1] for e in exts)
-    maxx = max(e.bbox_wgs84[2] for e in exts)
-    maxy = max(e.bbox_wgs84[3] for e in exts)
+
+    spatial_exts = [e for e in exts if e.bbox_wgs84 is not None]
+    bbox: list[float] | None = None
+    if spatial_exts:
+        minx = min(e.bbox_wgs84[0] for e in spatial_exts)
+        miny = min(e.bbox_wgs84[1] for e in spatial_exts)
+        maxx = max(e.bbox_wgs84[2] for e in spatial_exts)
+        maxy = max(e.bbox_wgs84[3] for e in spatial_exts)
+        bbox = [minx, miny, maxx, maxy]
 
     starts = [e.start_datetime for e in exts if e.start_datetime is not None]
     ends = [e.end_datetime for e in exts if e.end_datetime is not None]
     start_dt = min(starts) if starts else None
     end_dt = max(ends) if ends else None
-    return GeoExtent(bbox_wgs84=[minx, miny, maxx, maxy], start_datetime=start_dt, end_datetime=end_dt)
+
+    if bbox is None and start_dt is None and end_dt is None:
+        return None
+
+    return GeoExtent(bbox_wgs84=bbox, start_datetime=start_dt, end_datetime=end_dt)
 

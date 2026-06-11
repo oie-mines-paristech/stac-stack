@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     environment:
 
-      SB_catalogUrl: "/api/"
+      SB_catalogUrl: "http://localhost:8000/api/"
       SB_allowExternalAccess : true
       SB_itemsPerPage : 100
 

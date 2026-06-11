@@ -1,5 +1,0 @@
-title: In situ irradiance data
-description: Test for timeseries data
-items:
-    - ADR.nc
-    - other_items/*.nc

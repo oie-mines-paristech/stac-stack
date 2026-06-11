@@ -10,7 +10,7 @@ from pystac.extensions import datacube as stac_datacube
 
 from discovery import expand_patterns, find_thumbnail
 from geo_metadata import datacube_metadata_from_asset, extent_from_asset, union_extents
-from mime import guess_mime_type
+from mime import ZARR_EXTENSION_HREF, guess_mime_type, is_zarr_store, zarr_store_metadata
 from models import FolderMetadata, normalize_asset_entry
 from yaml_io import read_yaml
 
@@ -28,7 +28,10 @@ class BuildContext:
 
     def asset_href(self, rel_to_root: Path) -> str:
         base = self.root_href.rstrip("/") + "/"
-        return base + rel_to_root.as_posix().lstrip("/")
+        href = base + rel_to_root.as_posix().lstrip("/")
+        if rel_to_root.is_dir() and rel_to_root.name.lower().endswith(".zarr"):
+            href = href.rstrip("/") + "/"
+        return href
 
 
 def _default_id(rel_dir: Path) -> str:
@@ -144,8 +147,9 @@ def build_tree(ctx: BuildContext, folder: Path) -> pystac.Catalog | pystac.Colle
 
     u = union_extents(item_extents)
     if u is not None:
+        spatial_bbox = u.bbox_wgs84 if u.bbox_wgs84 is not None else [-180.0, -90.0, 180.0, 90.0]
         coll.extent = pystac.Extent(
-            spatial=pystac.SpatialExtent([[u.bbox_wgs84[0], u.bbox_wgs84[1], u.bbox_wgs84[2], u.bbox_wgs84[3]]]),
+            spatial=pystac.SpatialExtent([[spatial_bbox[0], spatial_bbox[1], spatial_bbox[2], spatial_bbox[3]]]),
             temporal=pystac.TemporalExtent([[u.start_datetime, u.end_datetime]]),
         )
 
@@ -221,7 +225,7 @@ def _item_id_from_rel(rel_to_root: Path) -> str:
 
 def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, rel_collection_dir: Path) -> pystac.Item:
     ex = extent_from_asset(asset_path)
-    bbox = ex.bbox_wgs84 if ex is not None else [-180.0, -90.0, 180.0, 90.0]
+    bbox = ex.bbox_wgs84 if ex is not None and ex.bbox_wgs84 is not None else [-180.0, -90.0, 180.0, 90.0]
     geom: dict[str, Any]
     if _is_point_bbox(bbox):
         # In-situ: géométrie point + bbox élargie
@@ -264,6 +268,15 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
         roles=["data"],
         title=asset_path.name,
     )
+    if is_zarr_store(asset_path):
+        zarr_meta = zarr_store_metadata(asset_path)
+        asset.extra_fields["zarr:node_type"] = zarr_meta["node_type"]
+        asset.extra_fields["zarr:zarr_format"] = zarr_meta["zarr_format"]
+        if zarr_meta["consolidated"]:
+            asset.extra_fields["zarr:consolidated"] = True
+        extensions = list(item.stac_extensions or [])
+        if ZARR_EXTENSION_HREF not in extensions:
+            item.stac_extensions = [*extensions, ZARR_EXTENSION_HREF]
     # Nécessaire pour certaines extensions (EO) qui exigent un owner.
     asset.set_owner(item)
 

@@ -50,6 +50,22 @@ import AuthUtils from './auth/utils';
 import { Asset } from 'stac-js';
 import { browserProtocols } from 'stac-js/src/http';
 
+// STAC Browser 5+ uses stac-js zarrMediaTypes; backport for v4 (see radiantearth/stac-browser#758).
+const zarrMediaTypes = [
+  'application/vnd+zarr',
+  'application/vnd.zarr; version=2',
+  'application/vnd.zarr; version=3',
+];
+
+function isZarrMediaType(type) {
+  if (typeof type !== 'string') {
+    return false;
+  }
+  const normalized = type.toLowerCase().split(';')[0].trim();
+  return zarrMediaTypes.some(t => t.toLowerCase().split(';')[0].trim() === normalized)
+    || normalized === 'application/vnd.zarr';
+}
+
 let i = 0;
 
 export default {
@@ -142,7 +158,7 @@ export default {
       return this.isAsset && this.canShow && !this.shown;
     },
     hasDownloadButton() {
-      return this.isAsset && this.isBrowserProtocol;
+      return this.isAsset && this.isBrowserProtocol && !isZarrMediaType(this.data?.type);
     },
     downloadEvents() {
       if (this.hasDownloadButton && this.useAltDownloadMethod) {

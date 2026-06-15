@@ -1,7 +1,59 @@
 # STAC Browser (for Mines Paris OIE)
 
+Stack Docker : **stac-generator** (catalogue statique) + **static-api** (STAC API) + **stac-browser** (interface web), orchestrés par [`docker-compose.yml`](docker-compose.yml).
 
+## Déploiement Docker
 
+Copier [`.env.example`](.env.example) vers `.env` et ajuster si besoin :
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+| Variable | Défaut | Rôle |
+|----------|--------|------|
+| `PORT` | `8000` | Port exposé sur l'hôte |
+| `PATH_PREFIX` | `/` | Préfixe URL de toute la stack |
+
+### `PATH_PREFIX=/` (défaut)
+
+| Service | URL |
+|---------|-----|
+| Browser | `http://localhost:PORT/` |
+| API STAC | `http://localhost:PORT/api/` |
+| Données | `http://localhost:PORT/data/...` |
+
+### `PATH_PREFIX=/stac/` (coexistence avec d'autres apps)
+
+Utile derrière un reverse proxy HTTPS qui route `https://monsite.tld/stac/` vers ce conteneur **sans retirer** le préfixe `/stac` :
+
+```bash
+PATH_PREFIX=/stac/ docker compose build stac-browser   # build obligatoire
+PATH_PREFIX=/stac/ docker compose up -d
+```
+
+| Service | URL |
+|---------|-----|
+| Browser | `https://monsite.tld/stac/` |
+| API STAC | `https://monsite.tld/stac/api/` |
+| Données | `https://monsite.tld/stac/data/...` |
+
+Le proxy externe doit transmettre `Host`, `X-Forwarded-Proto` (et idéalement `X-Forwarded-Host`). Exemple minimal Caddy :
+
+```caddy
+monsite.tld {
+    reverse_proxy localhost:8000
+}
+```
+
+**Notes :**
+
+- Changer `PATH_PREFIX` impose de **rebuilder** l'image `stac-browser` (`pathPrefix` est une option de build).
+- Après changement de préfixe, le **stac-generator** régénère les hrefs d'assets (`ROOT_HREF` dérivé automatiquement : `{PATH_PREFIX}data`).
+- Formes acceptées : `/`, `/stac`, `/stac/` (normalisées en `/` ou `/stac/`).
+
+---
 
 This is a [Spatio-Temporal Asset Catalog (STAC)](https://github.com/radiantearth/stac-spec) browser for static catalogs.
 Minimal support for APIs is implemented, but it not the focus of the Browser and may lead to issues.

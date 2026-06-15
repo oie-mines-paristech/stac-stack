@@ -23,7 +23,6 @@ COPY . /app/
 # Default configuration (override with env vars)
 ENV INPUT_DIR=/data/ \
     OUTPUT_DIR=/catalog \
-    ROOT_HREF=/data \
     WATCH_DEBOUNCE=10
 
 COPY docker/entrypoint.sh /entrypoint.sh

@@ -40,8 +40,22 @@ from stac_fastapi.static.core import (
 from stac_fastapi.static.core.requests import (
     Session,
     file_uri_to_file_path,
-    is_file_uri
 )
+
+
+def _rewrite_catalog_file_href(href: str, *, catalog_dir: str, base_api_href: str) -> str:
+    # Only rewrite file:// paths inside the catalog directory.
+    # Path-absolute asset URLs (/stac/data/...) and file:///stac/... (from a bad
+    # urljoin) must be left unchanged.
+    if not href.startswith("file://"):
+        return href
+
+    file_path = file_uri_to_file_path(href)
+    rel = path.relpath(file_path, catalog_dir)
+    if rel.startswith(".."):
+        return href
+
+    return urljoin(base_api_href, rel)
 
 from stac_fastapi.static.core.client import (
     search_items as _search_items,
@@ -105,26 +119,20 @@ def resolve(
         catalog_dir = path.dirname(file_uri_to_file_path(catalog_href))
 
         for link in object.links.link_iterator():
-            if is_file_uri(link.href):
-                link.href = urljoin(
-                    base_api_href,
-                    path.relpath(
-                        file_uri_to_file_path(link.href),
-                        catalog_dir
-                    )
-                )
+            link.href = _rewrite_catalog_file_href(
+                link.href,
+                catalog_dir=catalog_dir,
+                base_api_href=base_api_href,
+            )
             link.title = link.title if link.title is not None else link.rel.capitalize()
 
         if isinstance(object, (Item, Collection)) and object.assets is not None:
             for asset in object.assets.values():
-                if is_file_uri(asset.href):
-                    asset.href = urljoin(
-                        base_api_href,
-                        path.relpath(
-                            file_uri_to_file_path(asset.href),
-                            catalog_dir
-                        )
-                    )
+                asset.href = _rewrite_catalog_file_href(
+                    asset.href,
+                    catalog_dir=catalog_dir,
+                    base_api_href=base_api_href,
+                )
 
     return object
 

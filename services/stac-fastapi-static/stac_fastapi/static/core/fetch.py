@@ -27,6 +27,16 @@ from .requests import (
 )
 
 
+def _href_needs_resolution(href: str) -> bool:
+    """True only for hrefs relative to the fetched document (not path-absolute or absolute URLs)."""
+    if not href:
+        return False
+    parsed = urlparse(href)
+    if parsed.scheme or parsed.netloc:
+        return False
+    return not href.startswith("/")
+
+
 class IdObject(pydantic.BaseModel):
 
     id: str = pydantic.Field(..., alias="id", min_length=1)
@@ -90,11 +100,13 @@ def fetch_walkable(href: str, *, session: requests.Session = Session(), assume_a
     base_href = href
     if not assume_absolute_hrefs:
         for link in catalog.links.link_iterator():
-            link.href = urljoin(base_href, link.href)
+            if _href_needs_resolution(link.href):
+                link.href = urljoin(base_href, link.href)
 
         if isinstance(catalog, (Item, Collection)) and catalog.assets is not None:
             for asset in catalog.assets.values():
-                asset.href = urljoin(base_href, asset.href)
+                if _href_needs_resolution(asset.href):
+                    asset.href = urljoin(base_href, asset.href)
 
     return catalog
 
@@ -114,10 +126,12 @@ def fetch_item(href: str, *, session: requests.Session = Session(), assume_absol
     base_href = href
     if not assume_absolute_hrefs:
         for link in item.links.link_iterator():
-            link.href = urljoin(base_href, link.href)
+            if _href_needs_resolution(link.href):
+                link.href = urljoin(base_href, link.href)
 
         if item.assets is not None:
             for asset in item.assets.values():
-                asset.href = urljoin(base_href, asset.href)
+                if _href_needs_resolution(asset.href):
+                    asset.href = urljoin(base_href, asset.href)
 
     return item

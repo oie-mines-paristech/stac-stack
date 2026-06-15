@@ -1,0 +1,9 @@
+.git*
+.venv*
+.env
+.vscode
+.idea
+node_modules
+.cache
+*.pyc
+__pycache__

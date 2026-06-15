@@ -9,15 +9,15 @@ if [ ! -f "$CONFIG" ]; then
     exit 0
 fi
 
-# Inject absolute catalogUrl (origin + API path) so stac-browser matches API hrefs.
+# Inject path-absolute catalogUrl so the browser uses the page origin (http or https).
 tmp="$(mktemp)"
 awk -v path="$CATALOG_URL" '
   /^}$/ && !done {
-    print "  catalogUrl: window.location.origin + '\''" path "'\'',"
+    print "  catalogUrl: '\''" path "'\'',"
     done=1
   }
   { print }
 ' "$CONFIG" > "$tmp"
 mv "$tmp" "$CONFIG"
 
-echo "[nginx] patched config.js catalogUrl=window.location.origin + '${CATALOG_URL}'"
+echo "[nginx] patched config.js catalogUrl='${CATALOG_URL}'"

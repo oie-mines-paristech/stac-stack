@@ -39,7 +39,22 @@ PATH_PREFIX=/stac/ docker compose up -d
 | API STAC | `https://monsite.tld/stac/api/` |
 | Données | `https://monsite.tld/stac/data/...` |
 
-Le proxy externe doit transmettre `Host`, `X-Forwarded-Proto` (et idéalement `X-Forwarded-Host`). Exemple minimal Caddy :
+Le proxy externe doit transmettre `Host`, `X-Forwarded-Proto` (et idéalement `X-Forwarded-Host`). Exemple nginx :
+
+```nginx
+location /stac {
+    proxy_pass http://localhost:7777/stac;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+}
+```
+
+Ne pas dupliquer `X-Forwarded-Host` sur plusieurs proxies (valeurs séparées par des virgules) : cela casse les liens de l'API STAC. La stack interne normalise déjà cet en-tête avant d'appeler `static-api`.
+
+Exemple minimal Caddy :
 
 ```caddy
 monsite.tld {
@@ -52,6 +67,32 @@ monsite.tld {
 - Changer `PATH_PREFIX` impose de **rebuilder** l'image `stac-browser` (`pathPrefix` est une option de build).
 - Après changement de préfixe, le **stac-generator** régénère les hrefs d'assets (`ROOT_HREF` dérivé automatiquement : `{PATH_PREFIX}data`).
 - Formes acceptées : `/`, `/stac`, `/stac/` (normalisées en `/` ou `/stac/`).
+
+### Tests E2E déploiement
+
+Vérifie automatiquement deux scénarios (ports dédiés pour ne pas perturber une stack en cours) :
+
+| Cible Make | Scénario |
+|------------|----------|
+| `make test` | Les deux scénarios ci-dessous |
+| `make test-direct` | HTTP direct `localhost:18001` avec `PATH_PREFIX=/` puis `/stac/` |
+| `make test-proxy` | Nginx HTTPS auto-signé `https://localhost:18443/stac/` → stack sur `:18002` |
+
+```bash
+make test
+# ou séparément :
+make test-direct
+make test-proxy
+make e2e-clean   # arrête les projets compose E2E
+```
+
+Prérequis : Docker, `curl`, `openssl`, Python 3.
+
+Les tests contrôlent notamment :
+- liens API en chemins absolus (`/stac/api/collections`, sans `http://` embarqué)
+- absence de mixed content (aucun lien `http://` quand la page est en HTTPS)
+- `GET /collections` non vide
+- page browser et `config.js` (`catalogUrl` path-absolute)
 
 ---
 

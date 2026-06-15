@@ -36,6 +36,8 @@ def main():
             log_level=settings.log_level,
             reload=settings.reload,
             root_path=settings.root_path,
+            proxy_headers=True,
+            forwarded_allow_ips="*",
         )
     except ImportError as error:
         raise RuntimeError("Uvicorn must be installed") from error

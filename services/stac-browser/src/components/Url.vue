@@ -1,10 +1,10 @@
 <template>
   <b-form-group :label="label" :label-for="id">
     <b-input-group size="sm">
-      <b-form-input :id="id" ref="input" :value="url" readonly />
+      <b-form-input :id="id" ref="input" :value="resolvedUrl" readonly />
       <b-input-group-append>
-        <CopyButton :copyText="url" variant="primary" />
-        <b-button v-if="open" :href="url" target="_blank" variant="primary" :title="$t('open')"><b-icon-arrow-up-right-square /></b-button>
+        <CopyButton :copyText="resolvedUrl" variant="primary" />
+        <b-button v-if="open" :href="resolvedUrl" target="_blank" variant="primary" :title="$t('open')"><b-icon-arrow-up-right-square /></b-button>
       </b-input-group-append>
     </b-input-group>
   </b-form-group>
@@ -15,6 +15,7 @@ import {
   BFormInput, BFormGroup,
   BIconArrowUpRightSquare,
   BInputGroup, BInputGroupAppend } from 'bootstrap-vue';
+import { mapGetters } from 'vuex';
 
 export default {
   name: "Url",
@@ -42,6 +43,12 @@ export default {
     open: {
       type: Boolean,
       default: true
+    }
+  },
+  computed: {
+    ...mapGetters(['getShareableUrl']),
+    resolvedUrl() {
+      return this.getShareableUrl(this.url);
     }
   }
 };

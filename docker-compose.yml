@@ -1,5 +1,5 @@
 x-path-prefix: &path-prefix
-  PATH_PREFIX: ${PATH_PREFIX:-/}
+
 
 services:
 
@@ -7,7 +7,7 @@ services:
     # Transform Zarr / NetCDF to static stac catalog
     build: ./services/stac-generator
     environment:
-      <<: *path-prefix
+      PATH_PREFIX: ${PATH_PREFIX:-/}
       INPUT_DIR: /data
       OUTPUT_DIR: /catalog
       WATCH_DEBOUNCE: "10"
@@ -24,7 +24,7 @@ services:
       - ${PORT:-8000}:8080
     restart: unless-stopped
     environment:
-      <<: *path-prefix
+      PATH_PREFIX: ${PATH_PREFIX:-/}
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: 100
     depends_on:
@@ -41,7 +41,7 @@ services:
     # Serve the static catalog as an API
     build: ./services/stac-fastapi-static
     environment:
-      <<: *path-prefix
+      PATH_PREFIX: ${PATH_PREFIX:-/}
       app_port: 80
       app_host: 0.0.0.0
       root_path: ${PATH_PREFIX:-/}api/

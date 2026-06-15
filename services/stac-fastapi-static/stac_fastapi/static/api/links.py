@@ -16,7 +16,7 @@ from stac_pydantic.shared import MimeTypes
 from stac_pydantic.links import Link
 
 from stac_fastapi.types.core import Relations
-from stac_fastapi.types.requests import get_base_url
+from stac_fastapi.static.api.requests import get_base_url
 
 from stac_fastapi.static.core import (
     WalkPage

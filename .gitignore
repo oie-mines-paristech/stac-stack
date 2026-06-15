@@ -16,6 +16,10 @@ volumes/catalog/**
 .env.local
 .env.*.local
 
+# E2E TLS test certificates
+tests/certs/*.pem
+tests/nginx/https-stac.generated.conf
+
 # lock files
 /yarn.lock
 

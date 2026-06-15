@@ -3,6 +3,13 @@ map $http_x_forwarded_proto $forwarded_proto {
     ''      $scheme;
 }
 
+# Sanitize upstream X-Forwarded-Host only (never synthesize from Host — that duplicates the port).
+map $http_x_forwarded_host $forwarded_host {
+    ""             "";
+    "~^([^,\s:]+)" $1;
+    default        $http_x_forwarded_host;
+}
+
 server {
     listen 8080;
     server_name  localhost;
@@ -17,7 +24,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
-        proxy_set_header X-Forwarded-Host $http_x_forwarded_host;
+        proxy_set_header X-Forwarded-Host $forwarded_host;
         proxy_set_header X-Forwarded-Port $http_x_forwarded_port;
     }
 
@@ -26,6 +33,15 @@ server {
         autoindex on;
         autoindex_exact_size off;
         autoindex_localtime on;
+
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Range, Content-Type, Accept, Authorization, X-Requested-With" always;
+        add_header Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges" always;
+
+        if ($request_method = OPTIONS) {
+            return 204;
+        }
     }
 
     ${PATH_PREFIX_REDIRECT_BLOCK}

@@ -1,0 +1,14 @@
+# Overlay compose : reverse proxy nginx HTTPS pour les tests E2E.
+# Usage : voir Makefile cible `test-proxy`.
+
+services:
+  reverse-proxy:
+    image: nginx:1-alpine
+    ports:
+      - "${TEST_HTTPS_PORT:-18443}:443"
+    volumes:
+      - ./tests/nginx/https-stac.generated.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tests/certs:/etc/nginx/certs:ro
+    depends_on:
+      stac-browser:
+        condition: service_started

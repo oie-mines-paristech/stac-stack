@@ -25,7 +25,7 @@ from stac_pydantic.item_collection import ItemCollection
 
 from stac_fastapi.types import stac
 from stac_fastapi.types.core import Relations, BaseCoreClient
-from stac_fastapi.types.requests import get_base_url
+from stac_fastapi.static.api.requests import get_base_url
 
 from pydantic import BaseModel, ValidationError
 

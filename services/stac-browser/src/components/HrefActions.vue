@@ -10,7 +10,7 @@
         <b-icon-download v-else />
         {{ buttonText }}
       </b-button>
-      <CopyButton variant="primary" :copyText="href" :title="href">
+      <CopyButton variant="primary" :copyText="shareableHref" :title="shareableHref">
         {{ copyButtonText }}
       </CopyButton>
       <b-button v-if="hasShowButton" @click="show" variant="primary">
@@ -117,7 +117,7 @@ export default {
   },
   computed: {
     ...mapState(['pathPrefix', 'requestHeaders', 'buildTileUrlTemplate', 'useTileLayerAsFallback']),
-    ...mapGetters(['getRequestUrl']),
+    ...mapGetters(['getRequestUrl', 'getShareableUrl']),
     ...mapGetters('auth', ['isLoggedIn']),
     requiresAuth() {
       return !this.isLoggedIn && this.auth.length > 0;
@@ -229,6 +229,12 @@ export default {
         return null;
       }
       return this.getRequestUrl(this.data.getAbsoluteUrl());
+    },
+    shareableHref() {
+      if (typeof this.data.href !== 'string') {
+        return null;
+      }
+      return this.getShareableUrl(this.data.getAbsoluteUrl());
     },
     parsedHref() {
       return URI(this.href);

@@ -1,0 +1,27 @@
+{
+  "name": "zarr-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Generic Zarr v3 image cube viewer with CF dimension discovery",
+  "author": "Raphaël Jolivet - OIE - Mines Paris - PSL",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "smoke": "tsx scripts/smoke.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@oie-minesparis-psl/jpegxl-zarr": "^0.1.0",
+    "zarrita": "^0.7.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^26.1.1",
+    "tsx": "^4.22.4",
+    "typescript": "~5.7.3",
+    "vite": "^6.0.7"
+  }
+}

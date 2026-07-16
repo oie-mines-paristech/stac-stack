@@ -1,5 +1,5 @@
 import * as zarr from "zarrita";
-import { registerJpegxlCodec } from "jpegxl-zarr";
+import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
 import { buildDatasetSchema, type DatasetSchema, type ImageVariable } from "./dimensions.js";
 
 export interface OpenDatasetResult {

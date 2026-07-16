@@ -1,6 +1,6 @@
 # Zarr Image Viewer
 
-Generic browser viewer for **Zarr v3** image cubes, including **JPEG-XL** compressed arrays via the local [`jpegxl-zarr`](../jpegxl-zarr-codec) codec plugin.
+Generic browser viewer for **Zarr v3** image cubes, including **JPEG-XL** compressed arrays via the [`@oie-minesparis-psl/jpegxl-zarr`](https://www.npmjs.com/package/@oie-minesparis-psl/jpegxl-zarr) codec plugin.
 
 ## Features
 
@@ -14,20 +14,10 @@ Generic browser viewer for **Zarr v3** image cubes, including **JPEG-XL** compre
 ## Requirements
 
 - Node.js 20+
-- Sibling checkout of [`jpegxl-zarr-codec`](../jpegxl-zarr-codec) (linked via `file:` dependency)
 
 ## Local development
 
-The viewer depends on the sibling checkout via `file:../jpegxl-zarr-codec`. Vite is configured to allow that path (`server.fs.allow` in `vite.config.ts`).
-
 ```bash
-# Build the codec first
-cd ../jpegxl-zarr-codec
-npm install
-npm run build
-
-# Run the viewer
-cd ../zarr-viewer
 npm install
 npm run dev
 ```

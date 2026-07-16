@@ -1,4 +1,4 @@
-import { registerJpegxlCodec } from "jpegxl-zarr";
+import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
 import { openDataset, openVariableArray } from "../src/store.js";
 import { loadImagePlane } from "../src/render.js";
 

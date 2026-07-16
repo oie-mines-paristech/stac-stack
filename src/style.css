@@ -33,21 +33,106 @@ header h1 {
 .body {
   flex: 1;
   display: grid;
-  grid-template-columns: 280px 1fr 280px;
+  grid-template-columns: var(--left-w, 280px) 5px minmax(0, 1fr) 5px var(--right-w, 280px);
   gap: 0;
   min-height: 0;
 }
 
+.body.left-hidden {
+  grid-template-columns: 0 0 minmax(0, 1fr) 5px var(--right-w, 280px);
+}
+
+.body.right-hidden {
+  grid-template-columns: var(--left-w, 280px) 5px minmax(0, 1fr) 0 0;
+}
+
+.body.left-hidden.right-hidden {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
+}
+
+.body.left-hidden .splitter-left,
+.body.left-hidden #panel-left {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.body.right-hidden .splitter-right,
+.body.right-hidden #panel-right {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.panel-left,
+.panel-right {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #111418;
+}
+
+.panel-left {
+  border-right: none;
+}
+
+.panel-right {
+  border-left: none;
+}
+
+.panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #2a3140;
+  color: #c3cad4;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.panel-toggle {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.splitter {
+  cursor: col-resize;
+  background: #1a1f27;
+  border-left: 1px solid #2a3140;
+  border-right: 1px solid #2a3140;
+  touch-action: none;
+}
+
+.splitter:hover,
+body.panel-dragging .splitter {
+  background: #2a3140;
+}
+
+body.panel-dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .sidebar,
 .metadata {
-  padding: 1rem;
-  overflow: auto;
-  border-right: 1px solid #2a3140;
+  padding: 0;
+  overflow: hidden;
+  border-right: none;
 }
 
 .metadata {
-  border-right: none;
-  border-left: 1px solid #2a3140;
+  border-left: none;
 }
 
 .stage {
@@ -59,6 +144,25 @@ header h1 {
   padding: 0.75rem;
   overflow: hidden;
   background: #0a0c10;
+  position: relative;
+}
+
+.dock-toggle {
+  position: absolute;
+  top: 0.5rem;
+  z-index: 3;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.dock-toggle#dock-left {
+  left: 0.35rem;
+}
+
+.dock-toggle#dock-right {
+  right: 0.35rem;
 }
 
 .stage-inner {
@@ -299,19 +403,49 @@ legend {
   margin-top: 0.75rem;
 }
 
+.histogram-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2a3140;
+}
+
+.histogram-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.histogram-canvas {
+  display: block;
+  width: 100%;
+  height: 140px;
+  border: 1px solid #2a3140;
+  border-radius: 6px;
+  background: #0a0c10;
+}
+
 @media (max-width: 960px) {
   .layout {
     height: auto;
     min-height: 100vh;
   }
 
-  .body {
+  .body,
+  .body.left-hidden,
+  .body.right-hidden,
+  .body.left-hidden.right-hidden {
     grid-template-columns: 1fr;
   }
 
-  .metadata {
-    border-left: none;
-    border-top: 1px solid #2a3140;
+  .splitter-left,
+  .splitter-right {
+    display: none;
+  }
+
+  #panel-left,
+  #panel-right {
+    visibility: visible !important;
+    pointer-events: auto !important;
+    max-height: 40vh;
   }
 
   .stage {

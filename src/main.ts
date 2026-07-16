@@ -5,6 +5,7 @@ import {
   type ImageVariable,
 } from "./dimensions.js";
 import { canvasPixelCoords, formatHoverLine, type SpatialCoords } from "./hover.js";
+import { updateHistogram } from "./histogram.js";
 import {
   cancelPrefetch,
   loadPlaneWithCache,
@@ -32,6 +33,7 @@ import {
   timeValuesToDates,
 } from "./time.js";
 import { renderMetadataPanel, renderStatus, renderTimings } from "./ui/metadata.js";
+import { initPanels, wirePanels } from "./ui/panels.js";
 import {
   applyDatetimeToControls,
   readViewerParams,
@@ -83,6 +85,19 @@ function formatTimings(timings: FrameTimings): string {
     return `cache hit · render ${timings.renderMs.toFixed(0)} ms`;
   }
   return `fetch ${timings.fetchMs.toFixed(0)} ms · render ${timings.renderMs.toFixed(0)} ms`;
+}
+
+function refreshHistogram(): void {
+  if (!state.variable) return;
+  const bandAxis = axisByRole(state.variable, "band");
+  const mode = displayMode(state.variable);
+  const rgbIndices = mode === "rgb" ? [...state.rgbBands] : null;
+  updateHistogram(
+    el<HTMLCanvasElement>("#histogram"),
+    state.currentPlane,
+    bandAxis?.coordinate?.labels,
+    rgbIndices,
+  );
 }
 
 function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
@@ -463,6 +478,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     renderImageToCanvas(canvas, plane, options_);
     timings.renderMs = performance.now() - renderStart;
     fitCanvasDisplay(canvas);
+    refreshHistogram();
     syncTimeSlider();
     renderStatus(status, "");
     renderTimings(timingsEl, formatTimings(timings));
@@ -534,8 +550,13 @@ function mountLayout(): void {
           <input id="url-input" type="url" value="${DEFAULT_URL}" />
         </label>
       </header>
-      <div class="body">
-        <aside class="sidebar">
+      <div class="body" id="body-grid">
+        <aside class="panel-left sidebar" id="panel-left">
+          <div class="panel-header">
+            <span>Controls</span>
+            <button type="button" id="toggle-left" class="panel-toggle" title="Hide controls panel">◀</button>
+          </div>
+          <div class="panel-scroll">
           <label class="control">
             Variable
             <select id="variable-select"></select>
@@ -567,8 +588,12 @@ function mountLayout(): void {
           <div id="other-dims"></div>
           <p id="timings" class="muted"></p>
           <p id="status" class="muted"></p>
+          </div>
         </aside>
+        <div class="splitter" id="splitter-left" aria-hidden="true"></div>
         <main class="stage">
+          <button type="button" id="dock-left" class="dock-toggle" hidden title="Show controls panel">▶</button>
+          <button type="button" id="dock-right" class="dock-toggle" hidden title="Show metadata panel">◀</button>
           <div class="stage-inner">
             <div id="canvas-wrap" class="canvas-wrap">
               <button type="button" id="btn-zoom" class="canvas-tool" aria-label="Zoom image to fill view">⛶</button>
@@ -577,7 +602,20 @@ function mountLayout(): void {
             <p id="hover-bar" class="hover-bar">&nbsp;</p>
           </div>
         </main>
-        <aside id="metadata" class="metadata"></aside>
+        <div class="splitter" id="splitter-right" aria-hidden="true"></div>
+        <aside class="panel-right metadata" id="panel-right">
+          <div class="panel-header">
+            <span>Info</span>
+            <button type="button" id="toggle-right" class="panel-toggle" title="Hide metadata panel">▶</button>
+          </div>
+          <div class="panel-scroll">
+            <div id="metadata"></div>
+            <section class="histogram-section">
+              <h3>Histogram</h3>
+              <canvas id="histogram" class="histogram-canvas"></canvas>
+            </section>
+          </div>
+        </aside>
       </div>
     </div>
   `;
@@ -673,7 +711,12 @@ function wireEvents(): void {
 
 async function main(): Promise<void> {
   mountLayout();
+  initPanels();
   wireEvents();
+  wirePanels(() => {
+    fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
+    refreshHistogram();
+  });
   wireCanvasHover();
   await loadViewer(readViewerParams(DEFAULT_URL));
 }

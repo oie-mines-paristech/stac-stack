@@ -14,7 +14,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "jpegxl-zarr": "file:../jpegxl-zarr-codec",
+    "@oie-minesparis-psl/jpegxl-zarr": "^0.1.0",
     "zarrita": "^0.7.3"
   },
   "devDependencies": {

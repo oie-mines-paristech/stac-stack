@@ -1,0 +1,297 @@
+:root {
+  color: #e8eaed;
+  background: #111418;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.layout {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  flex: 0 0 auto;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #2a3140;
+}
+
+header h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  gap: 0;
+  min-height: 0;
+}
+
+.sidebar,
+.metadata {
+  padding: 1rem;
+  overflow: auto;
+  border-right: 1px solid #2a3140;
+}
+
+.metadata {
+  border-right: none;
+  border-left: 1px solid #2a3140;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 0.75rem;
+  overflow: hidden;
+  background: #0a0c10;
+}
+
+.stage-inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.canvas-tool {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 2;
+  padding: 0.3rem 0.45rem;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.canvas-tool:hover,
+.canvas-tool.active {
+  opacity: 1;
+  background: #252b36;
+}
+
+.control {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox input {
+  width: auto;
+  margin: 0;
+}
+
+.url-control input {
+  width: 100%;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input[type="url"],
+input[type="date"],
+select {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #394150;
+  background: #1a1f27;
+  color: inherit;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #6ea8fe;
+}
+
+button {
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #394150;
+  background: #1a1f27;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #252b36;
+}
+
+fieldset {
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+}
+
+legend {
+  padding: 0 0.35rem;
+}
+
+.time-scrubber {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.time-scrubber #btn-play-pause {
+  font-size: 1rem;
+  line-height: 1;
+  min-width: 2.25rem;
+}
+
+.time-label {
+  grid-column: 1 / -1;
+  color: #9aa4b2;
+  font-size: 0.875rem;
+}
+
+.rgb-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.rgb-row label {
+  font-size: 0.875rem;
+}
+
+.rgb-row select {
+  margin-top: 0.2rem;
+}
+
+#canvas {
+  display: block;
+  image-rendering: pixelated;
+  border: 1px solid #394150;
+  background: #000;
+  cursor: crosshair;
+}
+
+.hover-bar {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 1.5rem;
+  margin: 0.5rem 0 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: #1a1f27;
+  border: 1px solid #2a3140;
+  color: #c3cad4;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted {
+  color: #9aa4b2;
+  font-size: 0.875rem;
+}
+
+.metadata h2,
+.metadata h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.metadata h4 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.85rem;
+}
+
+.metadata section {
+  margin-bottom: 1rem;
+}
+
+.metadata dl {
+  margin: 0;
+}
+
+.metadata dt {
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+.metadata dd {
+  margin: 0.1rem 0 0;
+  color: #c3cad4;
+  word-break: break-word;
+}
+
+.extra-metadata {
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.extra-metadata summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #c3cad4;
+}
+
+.extra-block {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .metadata {
+    border-left: none;
+    border-top: 1px solid #2a3140;
+  }
+
+  .stage {
+    min-height: 50vh;
+  }
+}

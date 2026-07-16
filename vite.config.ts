@@ -6,6 +6,8 @@ const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const codecDir = path.resolve(rootDir, "../jpegxl-zarr-codec");
 
 export default defineConfig({
+  // Relative asset URLs so the built app works under any mount path (/dist/, etc.).
+  base: "./",
   server: {
     port: 5173,
     fs: {

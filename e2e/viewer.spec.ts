@@ -73,7 +73,7 @@ test("shared url restores variable and datetime", async ({ page }) => {
   await page.goto(target);
   await assertCanvasRendered(page);
   await expect(page.locator("#variable-select")).toHaveValue("overexposure_mask");
-  await expect(page.locator("#rgb-controls")).toBeVisible();
+  await expect(page.locator("#rgb-bands")).toBeVisible();
   await expect(page.locator("#autoscale")).not.toBeChecked();
   await expect(page).toHaveURL(/variable=overexposure_mask/);
   await expect(page).toHaveURL(/datetime=2024-06-16T12%3A00%3A00Z/);

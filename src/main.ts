@@ -321,12 +321,12 @@ function buildVariableSelect(schema: OpenDatasetResult["schema"]): void {
 }
 
 function buildRgbBandControls(variable: ImageVariable): void {
-  const fieldset = el<HTMLFieldSetElement>("#rgb-controls");
+  const rgbBands = el<HTMLDivElement>("#rgb-bands");
   const bandAxis = axisByRole(variable, "band");
   const mode = displayMode(variable);
-  fieldset.hidden = mode !== "rgb" || !bandAxis;
+  rgbBands.hidden = mode !== "rgb" || !bandAxis;
 
-  if (fieldset.hidden || !bandAxis) return;
+  if (rgbBands.hidden || !bandAxis) return;
 
   const labels = bandAxis.coordinate?.labels;
   state.rgbBands = defaultRgbBands(labels, bandAxis.size);
@@ -552,18 +552,18 @@ function mountLayout(): void {
               <span id="time-label" class="time-label"></span>
             </div>
           </fieldset>
-          <fieldset id="rgb-controls" hidden>
-            <legend>RGB bands</legend>
-            <div class="rgb-row">
+          <details class="sidebar-section" id="color-controls" open>
+            <summary>Colors</summary>
+            <div id="rgb-bands" class="rgb-row" hidden>
               <label>R <select id="band-r"></select></label>
               <label>G <select id="band-g"></select></label>
               <label>B <select id="band-b"></select></label>
             </div>
-          </fieldset>
-          <label class="control checkbox">
-            <input id="autoscale" type="checkbox" checked />
-            Autoscale (P5–P95)
-          </label>
+            <label class="control checkbox">
+              <input id="autoscale" type="checkbox" checked />
+              Autoscale (P5–P95)
+            </label>
+          </details>
           <div id="other-dims"></div>
           <p id="timings" class="muted"></p>
           <p id="status" class="muted"></p>

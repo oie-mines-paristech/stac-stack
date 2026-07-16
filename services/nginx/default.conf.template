@@ -3,6 +3,8 @@ map $http_x_forwarded_proto $forwarded_proto {
     ''      $scheme;
 }
 
+
+
 # Sanitize upstream X-Forwarded-Host only (never synthesize from Host — that duplicates the port).
 map $http_x_forwarded_host $forwarded_host {
     ""             "";
@@ -16,6 +18,15 @@ server {
     # Relative redirects so the client keeps the original host:port (e.g. :8000).
     absolute_redirect off;
     port_in_redirect off;
+
+    include /etc/nginx/mime.types;
+
+    types {
+        application/javascript  js mjs;
+        application/wasm        wasm;
+        text/css                css;
+        text/html               html;
+    }
 
     location ${PATH_PREFIX}api/ {
         proxy_pass http://static-api/;

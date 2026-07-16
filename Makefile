@@ -56,3 +56,8 @@ e2e-clean:
 	-$(COMPOSE) -p stac-e2e-direct-stac down -v --remove-orphans 2>/dev/null
 	-$(COMPOSE) -p stac-e2e-proxy down -v --remove-orphans 2>/dev/null
 	@echo "Projets E2E nettoyés"
+
+
+bind :
+	sudo mount --bind ~/zarr-cam/data/out/all.zarr/ volumes/data/fisheye/sophia.zarr
+	sudo mount --bind ~/zarr-cam/tmp/ome_ngff/stores/ volumes/data/fisheye/ome

@@ -33,6 +33,11 @@ sync-dry:
 sync:
 	rsync -avh --exclude-from .rsyncignore ./ demos:~/stac/
 
+
+sync-code:
+	rsync -avh --exclude volumes --exclude-from .rsyncignore ./ demos:~/stac/
+
+
 test-certs:
 	@mkdir -p tests/certs
 	@if [ ! -f tests/certs/cert.pem ]; then \

@@ -30,6 +30,13 @@ export function resolveStoreUrl(raw: string): string {
   return normalizeTrailingSlash(absolute);
 }
 
+/** Example same-origin store path derived from the viewer URL (/stac/viewer/ → /stac/data/...). */
+export function defaultStorePathExample(dataset = "fisheye/sophia.zarr"): string {
+  const match = window.location.pathname.match(/^(.*)\/viewer\/?$/);
+  const prefix = match?.[1] ?? "";
+  return `${prefix}/data/${dataset}/`;
+}
+
 /** Keep same-origin stores as path-only URLs for sharing in the address bar. */
 export function toShareableStoreUrl(resolved: string): string {
   const trimmed = resolved.trim();

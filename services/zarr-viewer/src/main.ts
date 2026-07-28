@@ -171,6 +171,22 @@ function el<T extends HTMLElement>(selector: string): T {
   return node as T;
 }
 
+const IDLE_MESSAGE =
+  "Saisissez une Store URL dans le champ ci-dessus, ou ouvrez le viewer avec ?url=";
+
+function showIdleState(): void {
+  const urlInput = el<HTMLInputElement>("#url-input");
+  urlInput.value = "";
+  urlInput.removeAttribute("value");
+  el<HTMLDivElement>("#viewer-idle").hidden = false;
+  renderStatus(el<HTMLParagraphElement>("#status"), IDLE_MESSAGE);
+  el<HTMLParagraphElement>("#timings").textContent = "";
+}
+
+function hideIdleState(): void {
+  el<HTMLDivElement>("#viewer-idle").hidden = true;
+}
+
 function defaultSelection(variable: ImageVariable): Record<string, number> {
   const values: Record<string, number> = {};
   for (const axis of variable.axes) {
@@ -472,6 +488,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     if (generation !== state.renderGeneration) return null;
 
     state.currentPlane = plane;
+    hideIdleState();
     const canvas = el<HTMLCanvasElement>("#canvas");
     const renderStart = performance.now();
     renderImageToCanvas(canvas, plane, options_);
@@ -546,7 +563,15 @@ function mountLayout(): void {
         <h1>Zarr Image Viewer</h1>
         <label class="control url-control">
           Store URL
-          <input id="url-input" type="text" value="" placeholder="/stac/data/fisheye/sophia.zarr/" />
+          <input
+            id="url-input"
+            type="text"
+            name="zarr-store-url"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            value=""
+          />
         </label>
       </header>
       <div class="body" id="body-grid">
@@ -595,6 +620,9 @@ function mountLayout(): void {
           <button type="button" id="dock-right" class="dock-toggle" hidden title="Show metadata panel">◀</button>
           <div class="stage-inner">
             <div id="canvas-wrap" class="canvas-wrap">
+              <div id="viewer-idle" class="viewer-idle">
+                <p>${IDLE_MESSAGE}</p>
+              </div>
               <button type="button" id="btn-zoom" class="canvas-tool" aria-label="Zoom image to fill view">⛶</button>
               <canvas id="canvas"></canvas>
             </div>
@@ -622,13 +650,11 @@ function mountLayout(): void {
 
 async function loadViewer(params: ViewerUrlParams): Promise<void> {
   if (!params.storeUrl.trim()) {
-    renderStatus(
-      el<HTMLParagraphElement>("#status"),
-      "Saisissez une Store URL ou utilisez ?url=",
-    );
+    showIdleState();
     return;
   }
 
+  hideIdleState();
   stopAnimation();
   el<HTMLInputElement>("#url-input").value = toShareableStoreUrl(params.storeUrl);
   renderStatus(el<HTMLParagraphElement>("#status"), "Opening store…");
@@ -736,10 +762,7 @@ async function main(): Promise<void> {
   if (params.storeUrl) {
     await loadViewer(params);
   } else {
-    renderStatus(
-      el<HTMLParagraphElement>("#status"),
-      "Saisissez une Store URL ou utilisez ?url=",
-    );
+    showIdleState();
   }
 }
 

@@ -52,8 +52,10 @@ function collectPageErrors(page: import("@playwright/test").Page): string[] {
 test("default page shows idle prompt", async ({ page }) => {
   const errors = collectPageErrors(page);
   await page.goto("/");
-  await expect(page.locator("#status")).toContainText("Saisissez une Store URL");
+  await expect(page.locator("#viewer-idle")).toBeVisible();
+  await expect(page.locator("#viewer-idle")).toContainText("Saisissez une Store URL");
   await expect(page.locator("#url-input")).toHaveValue("");
+  await expect(page.locator("#url-input")).not.toHaveValue(/demos\.oie-lab\.net/);
   expect(errors).toEqual([]);
 });
 

@@ -13,7 +13,42 @@ export interface ViewerUrlParams {
   dims: Record<string, number>;
 }
 
-export function readViewerParams(defaultStoreUrl: string): ViewerUrlParams {
+function normalizeTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url : `${url}/`;
+}
+
+/** Resolve path-only or relative store URLs against the current page origin. */
+export function resolveStoreUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return normalizeTrailingSlash(trimmed);
+  }
+
+  const absolute = new URL(trimmed, window.location.origin).href;
+  return normalizeTrailingSlash(absolute);
+}
+
+/** Keep same-origin stores as path-only URLs for sharing in the address bar. */
+export function toShareableStoreUrl(resolved: string): string {
+  const trimmed = resolved.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed);
+    if (url.origin === window.location.origin) {
+      const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+      return path;
+    }
+  } catch {
+    return normalizeTrailingSlash(trimmed);
+  }
+
+  return normalizeTrailingSlash(trimmed);
+}
+
+export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
   const params = new URLSearchParams(window.location.search);
   const rgbParam = params.get("rgb");
   let rgb: [number, number, number] | undefined;
@@ -35,8 +70,17 @@ export function readViewerParams(defaultStoreUrl: string): ViewerUrlParams {
 
   const autoscaleParam = params.get("autoscale");
   const zoomParam = params.get("zoom");
+  const rawUrl = params.get("url");
+  const storeUrl =
+    rawUrl !== null
+      ? rawUrl.trim()
+        ? resolveStoreUrl(rawUrl)
+        : ""
+      : defaultStoreUrl?.trim()
+        ? resolveStoreUrl(defaultStoreUrl)
+        : "";
   return {
-    storeUrl: params.get("url") ?? defaultStoreUrl,
+    storeUrl,
     variable: params.get("variable") ?? undefined,
     datetime: params.get("datetime") ?? undefined,
     rgb,
@@ -56,7 +100,7 @@ export function writeViewerParams(input: {
   fillView: boolean;
 }): void {
   const params = new URLSearchParams();
-  params.set("url", input.storeUrl);
+  params.set("url", toShareableStoreUrl(input.storeUrl));
   params.set("variable", input.variable.path);
 
   const timeAxis = axisByRole(input.variable, "time");

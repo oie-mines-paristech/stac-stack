@@ -37,13 +37,12 @@ import { initPanels, wirePanels } from "./ui/panels.js";
 import {
   applyDatetimeToControls,
   readViewerParams,
+  resolveStoreUrl,
   resolveTimeIndexFromDatetime,
+  toShareableStoreUrl,
   writeViewerParams,
   type ViewerUrlParams,
 } from "./url_state.js";
-
-const DEFAULT_URL =
-  "https://demos.oie-lab.net/stac/data/fisheye/sophia.zarr/";
 
 interface AppState {
   dataset: OpenDatasetResult | null;
@@ -202,7 +201,7 @@ function renderOptions(variable: ImageVariable): RenderOptions {
 function pushViewerUrl(): void {
   if (!state.dataset || !state.variable) return;
   writeViewerParams({
-    storeUrl: state.dataset.schema.url,
+    storeUrl: toShareableStoreUrl(state.dataset.schema.url),
     variable: state.variable,
     timeDates: state.timeDates,
     selection: state.selection,
@@ -547,7 +546,7 @@ function mountLayout(): void {
         <h1>Zarr Image Viewer</h1>
         <label class="control url-control">
           Store URL
-          <input id="url-input" type="url" value="${DEFAULT_URL}" />
+          <input id="url-input" type="text" value="" placeholder="/stac/data/fisheye/sophia.zarr/" />
         </label>
       </header>
       <div class="body" id="body-grid">
@@ -622,21 +621,36 @@ function mountLayout(): void {
 }
 
 async function loadViewer(params: ViewerUrlParams): Promise<void> {
+  if (!params.storeUrl.trim()) {
+    renderStatus(
+      el<HTMLParagraphElement>("#status"),
+      "Saisissez une Store URL ou utilisez ?url=",
+    );
+    return;
+  }
+
   stopAnimation();
+  el<HTMLInputElement>("#url-input").value = toShareableStoreUrl(params.storeUrl);
   renderStatus(el<HTMLParagraphElement>("#status"), "Opening store…");
-  state.dataset = await openDataset(params.storeUrl);
-  buildVariableSelect(state.dataset.schema);
-  el<HTMLInputElement>("#url-input").value = params.storeUrl;
+  try {
+    state.dataset = await openDataset(params.storeUrl);
+    buildVariableSelect(state.dataset.schema);
 
-  const defaultVariable =
-    params.variable ??
-    state.dataset.schema.variables.find((item) => item.path === "radiance")?.path ??
-    state.dataset.schema.variables[0]?.path;
+    const defaultVariable =
+      params.variable ??
+      state.dataset.schema.variables.find((item) => item.path === "radiance")?.path ??
+      state.dataset.schema.variables[0]?.path;
 
-  if (defaultVariable) {
-    await selectVariable(defaultVariable);
-    applyViewerParams(params);
-    await renderCurrentFrame();
+    if (defaultVariable) {
+      await selectVariable(defaultVariable);
+      applyViewerParams(params);
+      await renderCurrentFrame();
+    }
+  } catch (error) {
+    renderStatus(
+      el<HTMLParagraphElement>("#status"),
+      `Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -666,7 +680,7 @@ function wireCanvasHover(): void {
 function wireEvents(): void {
   el<HTMLInputElement>("#url-input").addEventListener("change", (event) => {
     const url = (event.target as HTMLInputElement).value.trim();
-    void loadViewer({ ...readViewerParams(DEFAULT_URL), storeUrl: url });
+    void loadViewer({ ...readViewerParams(), storeUrl: url ? resolveStoreUrl(url) : "" });
   });
 
   el<HTMLSelectElement>("#variable-select").addEventListener("change", (event) => {
@@ -718,7 +732,15 @@ async function main(): Promise<void> {
     refreshHistogram();
   });
   wireCanvasHover();
-  await loadViewer(readViewerParams(DEFAULT_URL));
+  const params = readViewerParams();
+  if (params.storeUrl) {
+    await loadViewer(params);
+  } else {
+    renderStatus(
+      el<HTMLParagraphElement>("#status"),
+      "Saisissez une Store URL ou utilisez ?url=",
+    );
+  }
 }
 
 void main();

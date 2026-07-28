@@ -49,10 +49,11 @@ function collectPageErrors(page: import("@playwright/test").Page): string[] {
   return errors;
 }
 
-test("default page renders a non-empty canvas", async ({ page }) => {
+test("default page shows idle prompt", async ({ page }) => {
   const errors = collectPageErrors(page);
   await page.goto("/");
-  await assertCanvasRendered(page);
+  await expect(page.locator("#status")).toContainText("Saisissez une Store URL");
+  await expect(page.locator("#url-input")).toHaveValue("");
   expect(errors).toEqual([]);
 });
 
@@ -64,6 +65,14 @@ test("url query param serves the app and renders canvas", async ({ page }) => {
   await expect(page.locator("body")).not.toContainText("403 Restricted");
   await assertCanvasRendered(page);
   expect(errors).toEqual([]);
+});
+
+test("path-only url is accepted in query param", async ({ page }) => {
+  const target = `/?url=${encodeURIComponent("/stac/data/fisheye/sophia.zarr/")}`;
+  await page.goto(target);
+  await expect(page.locator("#url-input")).toHaveValue("/stac/data/fisheye/sophia.zarr/");
+  await expect(page.locator("#status")).toContainText("Error:");
+  await expect(page.locator("#status")).not.toContainText("Invalid URL");
 });
 
 test("shared url restores variable and datetime", async ({ page }) => {

@@ -22,10 +22,19 @@ npm install
 npm run dev
 ```
 
-Open the default demo store:
+No dataset is loaded by default. Open a store via the **Store URL** field or a query parameter:
 
 ```
+http://localhost:5173/?url=/stac/data/fisheye/sophia.zarr/
 http://localhost:5173/?url=https://demos.oie-lab.net/stac/data/fisheye/sophia.zarr/
+```
+
+Path-only URLs such as `/stac/data/...` are resolved against the current page origin (scheme, host, and port).
+
+Run unit tests for URL helpers:
+
+```bash
+npm run test:unit
 ```
 
 ## CF axis tagging (recommended)

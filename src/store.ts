@@ -1,6 +1,7 @@
 import * as zarr from "zarrita";
 import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
 import { buildDatasetSchema, type DatasetSchema, type ImageVariable } from "./dimensions.js";
+import { resolveStoreUrl } from "./url_state.js";
 
 export interface OpenDatasetResult {
   schema: DatasetSchema;
@@ -43,7 +44,10 @@ export function resetDatasetCaches(): void {
 export async function openDataset(url: string): Promise<OpenDatasetResult> {
   ensureCodec();
   resetDatasetCaches();
-  const normalized = url.endsWith("/") ? url : `${url}/`;
+  const normalized = resolveStoreUrl(url);
+  if (!normalized) {
+    throw new Error("Empty store URL");
+  }
   const zarrJson = await loadZarrJson(normalized);
   const rootAttributes = asRecord(zarrJson.attributes);
   const consolidated = asRecord(zarrJson.consolidated_metadata).metadata;

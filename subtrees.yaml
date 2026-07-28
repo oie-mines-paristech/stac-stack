@@ -23,4 +23,3 @@ subtrees:
     remote: git@github.com:eu-cdse/stac-browser-cdse.git
     branch: main
     remote_name: cdse
-    squash: true

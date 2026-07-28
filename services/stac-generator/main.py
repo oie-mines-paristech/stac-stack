@@ -204,6 +204,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=10.0,
         help="Debounce delay (seconds) before regenerating after changes when --watch is enabled (default: 10)",
     )
+    p.add_argument(
+        "--skip-initial",
+        action="store_true",
+        help="In watch mode, skip the initial generation (e.g. after a strict bootstrap run)",
+    )
     return p.parse_args(argv)
 
 
@@ -302,17 +307,20 @@ def main(argv: list[str] | None = None) -> None:
             print(f"[watch] change detected ({etype}): {src_path}", flush=True)
             _schedule_regen()
 
-    # Initial build, then watch forever.
-    print(f"[watch] initial generation from {root_dir} -> {out_dir}", flush=True)
-    try:
-        run_once()
-    except Exception:
-        # Keep watching even if initial generation fails.
-        print(
-            "[watch] initial generation failed, still watching for future changes",
-            file=sys.stderr,
-            flush=True,
-        )
+    # Initial build, then watch forever (unless already done by a strict bootstrap).
+    if args.skip_initial:
+        print("[watch] skipping initial generation (--skip-initial)", flush=True)
+    else:
+        print(f"[watch] initial generation from {root_dir} -> {out_dir}", flush=True)
+        try:
+            run_once()
+        except Exception:
+            print(
+                "[watch] initial generation failed",
+                file=sys.stderr,
+                flush=True,
+            )
+            raise SystemExit(1) from None
 
     obs = Observer()
     obs.schedule(Handler(), str(root_dir), recursive=True)

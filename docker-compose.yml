@@ -11,6 +11,12 @@ services:
       INPUT_DIR: /data
       OUTPUT_DIR: /catalog
       WATCH_DEBOUNCE: "10"
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /catalog/catalog.json && grep -qx OK /catalog/status.log"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     volumes:
       - ./volumes/data:/data:ro
       - ./volumes/catalog:/catalog
@@ -31,7 +37,7 @@ services:
       static-api:
         condition: service_started
       stac-generator:
-        condition: service_started
+        condition: service_healthy
       zarr-viewer-build:
         condition: service_completed_successfully
     volumes:
@@ -52,6 +58,9 @@ services:
   static-api:
     # Serve the static catalog as an API
     build: ./services/stac-fastapi-static
+    depends_on:
+      stac-generator:
+        condition: service_healthy
     environment:
       PATH_PREFIX: ${PATH_PREFIX:-/}
       app_port: 80

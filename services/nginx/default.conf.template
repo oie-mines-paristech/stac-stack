@@ -61,6 +61,11 @@ server {
         try_files $uri $uri/ ${PATH_PREFIX}viewer/index.html;
     }
 
+    location = ${PATH_PREFIX}viewer/index.html {
+        alias /usr/share/nginx/html/viewer/index.html;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
+
     ${PATH_PREFIX_REDIRECT_BLOCK}
 
     location ${PATH_PREFIX} {

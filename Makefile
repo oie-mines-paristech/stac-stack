@@ -5,7 +5,7 @@
 #   make test-direct   — localhost:TEST_DIRECT_PORT seulement
 #   make test-proxy    — nginx HTTPS auto-signé → stack /stac/
 
-.PHONY: build up down sync sync-dry test test-direct test-proxy test-certs e2e-clean
+.PHONY: build up down sync sync-dry test test-direct test-proxy test-certs e2e-clean rebuild-viewer
 
 COMPOSE := docker compose
 PORT ?= 8000
@@ -20,6 +20,11 @@ export TEST_DIRECT_PORT TEST_BACKEND_PORT TEST_HTTPS_PORT
 build:
 	$(COMPOSE) down
 	$(COMPOSE) build
+
+rebuild-viewer:
+	$(COMPOSE) build zarr-viewer-build
+	$(COMPOSE) run --rm zarr-viewer-build
+	$(COMPOSE) up -d --force-recreate stac-browser
 
 up:
 	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE) up -d --build

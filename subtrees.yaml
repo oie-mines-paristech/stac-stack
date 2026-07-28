@@ -1,0 +1,26 @@
+# Git subtrees under services/ — source of truth for scripts/sync-subtree.sh
+subtrees:
+  zarr-viewer:
+    path: services/zarr-viewer
+    remote: git@git.sophia.minesparis.psl.eu:oie/zarr-viewer.git
+    branch: main
+    remote_name: zarr-viewer
+
+  stac-generator:
+    path: services/stac-generator
+    remote: git@git.sophia.minesparis.psl.eu:oie/stac-generator.git
+    branch: main
+    remote_name: stac-generator
+
+  stac-fastapi-static:
+    path: services/stac-fastapi-static
+    remote: https://github.com/fntb/stac-fastapi-static.git
+    branch: main
+    remote_name: stac-fastapi-static
+
+  stac-browser:
+    path: services/stac-browser
+    remote: git@github.com:eu-cdse/stac-browser-cdse.git
+    branch: main
+    remote_name: cdse
+    squash: true

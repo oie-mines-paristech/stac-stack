@@ -185,6 +185,31 @@ body.panel-dragging {
   overflow: hidden;
 }
 
+.viewer-idle[hidden] {
+  display: none !important;
+}
+
+.viewer-idle {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: #c8d0dc;
+  background: rgba(12, 16, 22, 0.92);
+}
+
+.viewer-idle p {
+  margin: 0;
+  max-width: 36rem;
+  line-height: 1.5;
+}
+
 .canvas-tool {
   position: absolute;
   top: 0.4rem;

@@ -1,8 +1,10 @@
-import { resolveStoreUrl, toShareableStoreUrl } from "./url_state.js";
+import { defaultStorePathExample, resolveStoreUrl, toShareableStoreUrl } from "./url_state.js";
 
-function withLocation(origin: string, run: () => void): void {
+function withLocation(origin: string, pathname: string, run: () => void): void {
   const previous = globalThis.window;
-  globalThis.window = { location: { origin } } as Window & typeof globalThis;
+  globalThis.window = {
+    location: { origin, pathname },
+  } as Window & typeof globalThis;
   try {
     run();
   } finally {
@@ -14,7 +16,21 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-withLocation("https://demos.oie-lab.net", () => {
+withLocation("http://localhost:8000", "/viewer/", () => {
+  assert(
+    defaultStorePathExample() === "/data/fisheye/sophia.zarr/",
+    "viewer at /viewer/ suggests /data/ example path",
+  );
+});
+
+withLocation("https://demos.oie-lab.net", "/stac/viewer/", () => {
+  assert(
+    defaultStorePathExample() === "/stac/data/fisheye/sophia.zarr/",
+    "viewer at /stac/viewer/ suggests /stac/data/ example path",
+  );
+});
+
+withLocation("https://demos.oie-lab.net", "/stac/viewer/", () => {
   assert(
     resolveStoreUrl("/stac/data/fisheye/sophia.zarr/") ===
       "https://demos.oie-lab.net/stac/data/fisheye/sophia.zarr/",

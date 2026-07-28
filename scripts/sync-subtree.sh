@@ -105,7 +105,9 @@ cmd_status_one() {
       printf '%-22s %-28s state=upstream has new commits\n' "" ""
     fi
   fi
-  [[ "$squash" == "true" ]] && printf '%-22s %-28s note=squash subtree\n' "" ""
+  if [[ "$squash" == "true" ]]; then
+    printf '%-22s %-28s note=squash subtree\n' "" ""
+  fi
 }
 
 cmd_status() {

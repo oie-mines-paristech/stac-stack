@@ -340,6 +340,15 @@ function getStore(config, router) {
         }
         return absoluteUrl.toString();
       },
+      getShareableUrl: (state, getters) => (url, baseUrl = null) => {
+        let shareUrl = URI(getters.getRequestUrl(url, baseUrl, false));
+        // Path-absolute same-origin (/stac/data/...) : full URL for copy/share only
+        if (!shareUrl.hostname() && shareUrl.path().startsWith('/') && !shareUrl.path().startsWith('//')) {
+          shareUrl = URI(window.location.origin).path(shareUrl.path())
+            .search(shareUrl.query()).fragment(shareUrl.hash());
+        }
+        return shareUrl.toString();
+      },
 
       acceptedLanguages: state => {
         const languages = {};

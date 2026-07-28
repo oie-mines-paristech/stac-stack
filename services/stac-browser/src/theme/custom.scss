@@ -2,10 +2,11 @@
   > header {
   
     > .site {
-      background-color: map-get($theme-colors, "primary");
+      background-color: #005e9e;
 
       .logo {
-        height: 2rem;
+        height: 4rem;
+        max-height: 4rem !important;
       }
 
       > .col-md-12 {

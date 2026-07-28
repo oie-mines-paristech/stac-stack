@@ -10,7 +10,7 @@
         <b-icon-download v-else />
         {{ buttonText }}
       </b-button>
-      <CopyButton variant="primary" :copyText="href" :title="href">
+      <CopyButton variant="primary" :copyText="shareableHref" :title="shareableHref">
         {{ copyButtonText }}
       </CopyButton>
       <b-button v-if="hasShowButton" @click="show" variant="primary">
@@ -49,6 +49,22 @@ import URI from 'urijs';
 import AuthUtils from './auth/utils';
 import { Asset } from 'stac-js';
 import { browserProtocols } from 'stac-js/src/http';
+
+// STAC Browser 5+ uses stac-js zarrMediaTypes; backport for v4 (see radiantearth/stac-browser#758).
+const zarrMediaTypes = [
+  'application/vnd+zarr',
+  'application/vnd.zarr; version=2',
+  'application/vnd.zarr; version=3',
+];
+
+function isZarrMediaType(type) {
+  if (typeof type !== 'string') {
+    return false;
+  }
+  const normalized = type.toLowerCase().split(';')[0].trim();
+  return zarrMediaTypes.some(t => t.toLowerCase().split(';')[0].trim() === normalized)
+    || normalized === 'application/vnd.zarr';
+}
 
 let i = 0;
 
@@ -101,7 +117,7 @@ export default {
   },
   computed: {
     ...mapState(['pathPrefix', 'requestHeaders', 'buildTileUrlTemplate', 'useTileLayerAsFallback']),
-    ...mapGetters(['getRequestUrl']),
+    ...mapGetters(['getRequestUrl', 'getShareableUrl']),
     ...mapGetters('auth', ['isLoggedIn']),
     requiresAuth() {
       return !this.isLoggedIn && this.auth.length > 0;
@@ -142,7 +158,7 @@ export default {
       return this.isAsset && this.canShow && !this.shown;
     },
     hasDownloadButton() {
-      return this.isAsset && this.isBrowserProtocol;
+      return this.isAsset && this.isBrowserProtocol && !isZarrMediaType(this.data?.type);
     },
     downloadEvents() {
       if (this.hasDownloadButton && this.useAltDownloadMethod) {
@@ -213,6 +229,12 @@ export default {
         return null;
       }
       return this.getRequestUrl(this.data.getAbsoluteUrl());
+    },
+    shareableHref() {
+      if (typeof this.data.href !== 'string') {
+        return null;
+      }
+      return this.getShareableUrl(this.data.getAbsoluteUrl());
     },
     parsedHref() {
       return URI(this.href);

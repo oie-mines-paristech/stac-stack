@@ -23,6 +23,10 @@ docker compose up -d --build
 | Browser | `http://localhost:PORT/` |
 | API STAC | `http://localhost:PORT/api/` |
 | Données | `http://localhost:PORT/data/...` |
+| Viewer Zarr | `http://localhost:PORT/viewer/` |
+| Proxy Zarr (stores cross-origin) | `http://localhost:PORT/viewer/proxy/https/{host}/{path}` |
+
+Les stores same-origin (`/data/...`) passent en direct ; le proxy ne sert qu'à contourner CORS pour les URLs distantes.
 
 ### `PATH_PREFIX=/stac/` (coexistence avec d'autres apps)
 
@@ -38,6 +42,8 @@ PATH_PREFIX=/stac/ docker compose up -d
 | Browser | `https://monsite.tld/stac/` |
 | API STAC | `https://monsite.tld/stac/api/` |
 | Données | `https://monsite.tld/stac/data/...` |
+| Viewer Zarr | `https://monsite.tld/stac/viewer/` |
+| Proxy Zarr (stores cross-origin) | `https://monsite.tld/stac/viewer/proxy/https/{host}/{path}` |
 
 Le proxy externe doit transmettre `Host`, `X-Forwarded-Proto` (et idéalement `X-Forwarded-Host`). Exemple nginx :
 
@@ -93,6 +99,7 @@ Les tests contrôlent notamment :
 - absence de mixed content (aucun lien `http://` quand la page est en HTTPS)
 - `GET /collections` non vide
 - page browser et `config.js` (`catalogUrl` path-absolute)
+- viewer Zarr (`/viewer/` ou `/stac/viewer/`) et proxy same-origin (`…/viewer/proxy/https/…`)
 
 ---
 

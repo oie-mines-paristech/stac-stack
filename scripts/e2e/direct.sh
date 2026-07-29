@@ -28,6 +28,7 @@ run_case() {
   wait_http "http://localhost:${PORT}${api_path}"
   assert_api_links "http://localhost:${PORT}${api_path}" "$expected_data"
   assert_browser "http://localhost:${PORT}${browser_path}" "$api_path"
+  assert_viewer_proxy "http://localhost:${PORT}" "$path_prefix"
 
   trap - EXIT
   stack_down

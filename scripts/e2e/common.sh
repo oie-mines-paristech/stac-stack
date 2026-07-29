@@ -127,6 +127,29 @@ assert_browser() {
   log "OK: browser ${browser_url}"
 }
 
+assert_viewer_proxy() {
+  local base_url="$1"
+  local path_prefix="$2"
+  local viewer_url="${base_url%/}${path_prefix}viewer/"
+  local proxy_url="${viewer_url}proxy/https/httpbin.org/get"
+
+  log "Vérification viewer ${viewer_url}"
+  local html
+  html="$(curl -fsS "${viewer_url}")"
+  [[ "$html" == *"Zarr Image Viewer"* || "$html" == *'id="app"'* ]] \
+    || fail "Page viewer inattendue: ${viewer_url}"
+
+  log "Vérification proxy Zarr OPTIONS ${proxy_url}"
+  local status
+  status="$(curl -fsS -o /dev/null -w '%{http_code}' -X OPTIONS "${proxy_url}")"
+  [[ "$status" == "204" ]] || fail "Proxy OPTIONS attendu 204, reçu ${status}: ${proxy_url}"
+
+  log "Vérification proxy Zarr HEAD ${proxy_url}"
+  status="$(curl -sS -o /dev/null -w '%{http_code}' -I "${proxy_url}")"
+  [[ "$status" != "404" ]] || fail "Proxy HEAD ne doit pas retourner 404: ${proxy_url}"
+  log "OK: viewer + proxy ${path_prefix}viewer/"
+}
+
 ensure_certs() {
   local cert_dir="$ROOT_DIR/tests/certs"
   mkdir -p "$cert_dir"

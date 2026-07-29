@@ -2,6 +2,7 @@ import { warpCoastlinePaths } from "../coastline_warp.js";
 import { createGeoPixelMapper, spatialCoordsMatchPlane } from "../spatial.js";
 import type { SpatialCoords } from "../hover.js";
 import type { ImagePlane } from "../render.js";
+import type { DisplayTransform } from "../view_transform.js";
 import { strokeWidthForViewBox } from "./svg_stroke.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -13,6 +14,7 @@ export async function updateCoastlineOverlay(
   spatial: SpatialCoords | null,
   visible: boolean,
   plane?: ImagePlane | null,
+  displayTransform?: DisplayTransform | null,
 ): Promise<void> {
   if (!overlay) return;
 
@@ -28,14 +30,46 @@ export async function updateCoastlineOverlay(
 
   const canvasWidth = canvas.width;
   const canvasHeight = canvas.height;
+  const regionX0 = displayTransform?.regionX0 ?? 0;
+  const regionY0 = displayTransform?.regionY0 ?? 0;
+  const regionWidth = displayTransform?.regionWidth ?? planeWidth;
+  const regionHeight = displayTransform?.regionHeight ?? planeHeight;
 
-  const mapper = createGeoPixelMapper(
-    spatial.xValues,
-    spatial.yValues,
-    spatial.flipY,
-    canvasWidth,
-    canvasHeight,
-  );
+  const downsampledView =
+    regionX0 === 0 &&
+    regionY0 === 0 &&
+    regionWidth === planeWidth &&
+    regionHeight === planeHeight &&
+    (canvasWidth !== planeWidth || canvasHeight !== planeHeight);
+
+  const mapper = downsampledView
+    ? createGeoPixelMapper(
+        spatial.xValues,
+        spatial.yValues,
+        spatial.flipY,
+        canvasWidth,
+        canvasHeight,
+      )
+    : (() => {
+        const fullMapper = createGeoPixelMapper(
+          spatial.xValues,
+          spatial.yValues,
+          spatial.flipY,
+          planeWidth,
+          planeHeight,
+        );
+        return {
+          flipY: fullMapper.flipY,
+          width: regionWidth,
+          height: regionHeight,
+          lonToPixel(lon: number): number {
+            return fullMapper.lonToPixel(lon) - regionX0;
+          },
+          latToPixel(lat: number): number {
+            return fullMapper.latToPixel(lat) - regionY0;
+          },
+        };
+      })();
 
   const warpedPaths = await warpCoastlinePaths(mapper);
 

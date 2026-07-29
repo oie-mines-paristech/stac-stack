@@ -4,6 +4,7 @@ import {
   computeDisplaySize,
   renderImageToCanvas,
 } from "./render.js";
+import { computeViewLayout } from "./view_transform.js";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -14,6 +15,12 @@ assert(arrayMinMax(data)[0] === 1 && arrayMinMax(data)[1] === 6, "arrayMinMax on
 
 const display = computeDisplaySize(8192, 4096, 1200, 800, true);
 assert(display?.width === 1200 && display?.height === 600, "computeDisplaySize fit");
+
+const visibleLayout = computeViewLayout(8192, 4096, 1200, 800, false, { x: 100, y: 50 });
+assert(visibleLayout.region.x0 === 100, "visible region x0");
+assert(visibleLayout.region.y0 === 50, "visible region y0");
+assert(visibleLayout.target.width === 1200, "visible target width");
+assert(visibleLayout.target.height === 800, "visible target height");
 
 const plane = {
   data: new Float32Array([0, 50, 100, 150]),
@@ -47,7 +54,7 @@ const result = renderImageToCanvas(
     flipY: false,
     colormap: "viridis",
   },
-  { width: 1, height: 1 },
+  { viewportWidth: 1, viewportHeight: 1, fillView: true },
 );
 
 assert(canvas.width === 1 && canvas.height === 1, "render respects displaySize");

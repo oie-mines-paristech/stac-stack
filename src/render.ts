@@ -4,6 +4,7 @@ import { spatialChunkGrid, type SpatialRegionPick } from "./chunk_plan.js";
 import { chunkValue, resolvePlaneAxes, type PlaneData } from "./chunk_utils.js";
 import { DEFAULT_COLORMAP, getColormapLut } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
+import { putRgbaOnCanvas2d, renderRgbRegionToRgba, renderScalarRegionToRgba } from "./render_core.js";
 import {
   arrayMinMax,
   cfScaleBounds,
@@ -11,30 +12,21 @@ import {
   type ScaleRange,
 } from "./scaling.js";
 import { dataRowFromCanvas } from "./spatial.js";
+import {
+  canvasToPlanePixel,
+  computeViewLayout,
+  type DisplayTransform,
+  type DisplaySize,
+  type ViewLayout,
+  type ViewOrigin,
+} from "./view_transform.js";
 
-function normalize(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (max <= min) return 0;
-  const scaled = ((value - min) / (max - min)) * 255;
-  return Math.max(0, Math.min(255, scaled));
-}
+export type { DisplaySize, DisplayTransform, ViewLayout, ViewOrigin };
 
 export interface ImagePlane {
   data: PlaneData;
   shape: number[];
   axes: ReturnType<typeof resolvePlaneAxes>;
-}
-
-export interface DisplaySize {
-  width: number;
-  height: number;
-}
-
-export interface DisplayTransform {
-  planeWidth: number;
-  planeHeight: number;
-  canvasWidth: number;
-  canvasHeight: number;
 }
 
 export function countFiniteSamples(plane: ImagePlane): number {
@@ -87,25 +79,6 @@ export async function loadImagePlane(
   return { data: loaded.data, shape: loaded.shape, axes };
 }
 
-function sourcePixel(
-  ox: number,
-  oy: number,
-  outWidth: number,
-  outHeight: number,
-  planeWidth: number,
-  planeHeight: number,
-): { x: number; y: number } {
-  const srcX = Math.min(
-    planeWidth - 1,
-    Math.floor(((ox + 0.5) * planeWidth) / outWidth),
-  );
-  const canvasRow = Math.min(
-    planeHeight - 1,
-    Math.floor(((oy + 0.5) * planeHeight) / outHeight),
-  );
-  return { x: srcX, y: canvasRow };
-}
-
 export function autoscaleRangesFromPlane(
   plane: ImagePlane,
   flipY: boolean,
@@ -150,89 +123,59 @@ export function autoscaleRangesFromPlane(
   return ranges;
 }
 
+export interface RenderLayoutInput {
+  viewportWidth: number;
+  viewportHeight: number;
+  fillView: boolean;
+  viewOrigin?: ViewOrigin;
+}
+
+/** Synchronous Canvas 2D render (tests and benchmarks). */
 export function renderImageToCanvas(
   canvas: HTMLCanvasElement,
   plane: ImagePlane,
   options: RenderOptions,
-  displaySize?: DisplaySize,
+  layoutInput?: RenderLayoutInput,
 ): RenderResult {
   const { data, shape, axes } = plane;
-  const ctx = canvas.getContext("2d");
   const planeHeight = shape[axes.y];
   const planeWidth = shape[axes.x];
-  const displayTransform: DisplayTransform = {
+  const fillView = layoutInput?.fillView ?? false;
+  const viewportWidth = layoutInput?.viewportWidth ?? planeWidth;
+  const viewportHeight = layoutInput?.viewportHeight ?? planeHeight;
+  const viewOrigin = layoutInput?.viewOrigin ?? { x: 0, y: 0 };
+  const layout = computeViewLayout(
     planeWidth,
     planeHeight,
-    canvasWidth: planeWidth,
-    canvasHeight: planeHeight,
-  };
-
-  if (!ctx || !Number.isFinite(planeHeight) || !Number.isFinite(planeWidth) || planeHeight <= 0 || planeWidth <= 0) {
-    return { scaleMin: 0, scaleMax: 1, displayTransform };
-  }
-
+    viewportWidth,
+    viewportHeight,
+    fillView,
+    viewOrigin,
+  );
   const flipY = options.flipY ?? false;
   const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
   const { min: cfMin, max: cfMax } = cfScaleBounds(options.attributes);
-
-  const outWidth = displaySize
-    ? Math.max(1, Math.min(displaySize.width, planeWidth))
-    : planeWidth;
-  const outHeight = displaySize
-    ? Math.max(1, Math.min(displaySize.height, planeHeight))
-    : planeHeight;
-
-  canvas.width = outWidth;
-  canvas.height = outHeight;
-  displayTransform.canvasWidth = outWidth;
-  displayTransform.canvasHeight = outHeight;
-
-  const image = ctx.createImageData(outWidth, outHeight);
-  const pixels = image.data;
-  const fullResolution = outWidth === planeWidth && outHeight === planeHeight;
-  const stride = computeStrides(shape);
-  const coords = new Array<number>(shape.length).fill(0);
 
   if (options.mode === "scalar" || bandCount === 1) {
     const [min, max] = options.autoscale
       ? arrayMinMax(data)
       : resolveManualScaleRange(options.manualRanges?.[0], data, cfMin, cfMax);
     const lut = getColormapLut(options.colormap ?? DEFAULT_COLORMAP);
-
-    if (fullResolution && axes.band < 0 && shape.length === 2) {
-      for (let canvasY = 0; canvasY < outHeight; canvasY++) {
-        const dataY = dataRowFromCanvas(canvasY, planeHeight, flipY);
-        const rowOffset = dataY * planeWidth;
-        for (let x = 0; x < outWidth; x++) {
-          const raw = data[rowOffset + x]!;
-          const index = Math.min(255, Math.max(0, Math.round(normalize(raw, min, max))));
-          const px = (canvasY * outWidth + x) * 4;
-          pixels[px] = lut[index * 3]!;
-          pixels[px + 1] = lut[index * 3 + 1]!;
-          pixels[px + 2] = lut[index * 3 + 2]!;
-          pixels[px + 3] = 255;
-        }
-      }
-    } else {
-      for (let oy = 0; oy < outHeight; oy++) {
-        for (let ox = 0; ox < outWidth; ox++) {
-          const src = sourcePixel(ox, oy, outWidth, outHeight, planeWidth, planeHeight);
-          coords[axes.y] = dataRowFromCanvas(src.y, planeHeight, flipY);
-          coords[axes.x] = src.x;
-          if (axes.band >= 0) coords[axes.band] = 0;
-          const raw = chunkValue(data, stride, coords);
-          const index = Math.min(255, Math.max(0, Math.round(normalize(raw, min, max))));
-          const px = (oy * outWidth + ox) * 4;
-          pixels[px] = lut[index * 3]!;
-          pixels[px + 1] = lut[index * 3 + 1]!;
-          pixels[px + 2] = lut[index * 3 + 2]!;
-          pixels[px + 3] = 255;
-        }
-      }
-    }
-
-    ctx.putImageData(image, 0, 0);
-    return { scaleMin: min, scaleMax: max, displayTransform };
+    const rgba = renderScalarRegionToRgba({
+      data,
+      planeWidth,
+      planeHeight,
+      shape,
+      axes,
+      region: layout.region,
+      target: layout.target,
+      min,
+      max,
+      lut,
+      flipY,
+    });
+    putRgbaOnCanvas2d(canvas, rgba, layout.target.width, layout.target.height);
+    return { scaleMin: min, scaleMax: max, displayTransform: layout.displayTransform };
   }
 
   const bandIndices = options.rgbBands;
@@ -249,27 +192,22 @@ export function renderImageToCanvas(
     return resolveManualScaleRange(options.manualRanges?.[channel], data, cfMin, cfMax);
   });
 
-  for (let oy = 0; oy < outHeight; oy++) {
-    for (let ox = 0; ox < outWidth; ox++) {
-      const src = fullResolution
-        ? { x: ox, y: oy }
-        : sourcePixel(ox, oy, outWidth, outHeight, planeWidth, planeHeight);
-      coords[axes.y] = dataRowFromCanvas(src.y, planeHeight, flipY);
-      coords[axes.x] = src.x;
-      const px = (oy * outWidth + ox) * 4;
-      bandIndices.forEach((band, channel) => {
-        coords[axes.band] = band;
-        const [min, max] = ranges[channel]!;
-        pixels[px + channel] = normalize(chunkValue(data, stride, coords), min, max);
-      });
-      pixels[px + 3] = 255;
-    }
-  }
-
-  ctx.putImageData(image, 0, 0);
+  const rgba = renderRgbRegionToRgba({
+    data,
+    planeWidth,
+    planeHeight,
+    shape,
+    axes,
+    region: layout.region,
+    target: layout.target,
+    bandIndices,
+    ranges,
+    flipY,
+  });
+  putRgbaOnCanvas2d(canvas, rgba, layout.target.width, layout.target.height);
   const scaleMin = Math.min(...ranges.map(([min]) => min));
   const scaleMax = Math.max(...ranges.map(([, max]) => max));
-  return { scaleMin, scaleMax, displayTransform };
+  return { scaleMin, scaleMax, displayTransform: layout.displayTransform };
 }
 
 export function samplePlaneValues(
@@ -309,29 +247,7 @@ function computeStrides(shape: number[]): number[] {
   return stride;
 }
 
-export function canvasToPlanePixel(
-  canvasX: number,
-  canvasY: number,
-  transform: DisplayTransform,
-  flipY: boolean,
-): { x: number; y: number } {
-  const x = Math.max(
-    0,
-    Math.min(
-      transform.planeWidth - 1,
-      Math.floor((canvasX * transform.planeWidth) / Math.max(1, transform.canvasWidth)),
-    ),
-  );
-  const canvasRow = Math.max(
-    0,
-    Math.min(
-      transform.planeHeight - 1,
-      Math.floor((canvasY * transform.planeHeight) / Math.max(1, transform.canvasHeight)),
-    ),
-  );
-  const y = dataRowFromCanvas(canvasRow, transform.planeHeight, flipY);
-  return { x, y };
-}
+export { canvasToPlanePixel, computeViewLayout };
 
 export function computeDisplaySize(
   planeWidth: number,
@@ -341,9 +257,13 @@ export function computeDisplaySize(
   fillView: boolean,
 ): DisplaySize | undefined {
   if (!fillView || viewportWidth <= 0 || viewportHeight <= 0) return undefined;
-  const scale = Math.min(viewportWidth / planeWidth, viewportHeight / planeHeight);
-  return {
-    width: Math.max(1, Math.floor(planeWidth * scale)),
-    height: Math.max(1, Math.floor(planeHeight * scale)),
-  };
+  const layout = computeViewLayout(
+    planeWidth,
+    planeHeight,
+    viewportWidth,
+    viewportHeight,
+    true,
+    { x: 0, y: 0 },
+  );
+  return { width: layout.target.width, height: layout.target.height };
 }

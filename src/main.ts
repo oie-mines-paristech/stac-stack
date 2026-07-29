@@ -38,13 +38,13 @@ import {
 import {
   autoscaleRangesFromPlane,
   canvasToPlanePixel,
-  computeDisplaySize,
+  computeViewLayout,
   countFiniteSamples,
-  renderImageToCanvas,
   type DisplayTransform,
   type ImagePlane,
   type RenderOptions,
 } from "./render.js";
+import { renderPlaneToView } from "./render_pipeline.js";
 import { defaultRgbBands, type ScaleRange } from "./scaling.js";
 import {
   openDataset,
@@ -71,7 +71,7 @@ import {
   subscribeChunkProgress,
 } from "./chunk_progress.js";
 import { updateCoastlineOverlay } from "./ui/coastline_overlay.js";
-import { wireCanvasPan, type CanvasPanController } from "./ui/canvas_pan.js";
+import { wireViewPan, type ViewPanController } from "./ui/canvas_pan.js";
 import { updateColorLegend } from "./ui/color_legend.js";
 import { mountColormapPicker, type ColormapPickerHandle } from "./ui/colormap_picker.js";
 import { renderMetadataPanel, renderStatus, renderTimings } from "./ui/metadata.js";
@@ -118,6 +118,7 @@ interface AppState {
   spatialRegion: SpatialRegionPick | null;
   currentPlane: ImagePlane | null;
   displayTransform: DisplayTransform | null;
+  viewOrigin: { x: number; y: number };
   scaleRange: { min: number; max: number } | null;
   isPlaying: boolean;
   renderGeneration: number;
@@ -139,6 +140,7 @@ const state: AppState = {
   spatialRegion: null,
   currentPlane: null,
   displayTransform: null,
+  viewOrigin: { x: 0, y: 0 },
   scaleRange: null,
   isPlaying: false,
   renderGeneration: 0,
@@ -150,7 +152,15 @@ const PLAYBACK_INTERVAL_MS = 500;
 
 let suppressSliderEvent = false;
 const planeCache = new LruPlaneCache(128);
-let canvasPan: CanvasPanController | null = null;
+let viewPan: ViewPanController | null = null;
+
+function commitViewOrigin(origin: { x: number; y: number }): void {
+  if (origin.x === state.viewOrigin.x && origin.y === state.viewOrigin.y) return;
+  state.viewOrigin = origin;
+  if (state.currentPlane && state.variable) {
+    void renderCurrentFrame({ quiet: true });
+  }
+}
 let loadingStatusPrefix = "";
 
 function refreshLoadingStatus(): void {
@@ -205,6 +215,13 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
   const height = canvas.height;
   if (width <= 0 || height <= 0) return;
 
+  if (state.currentPlane) {
+    const planeWidth = state.currentPlane.shape[state.currentPlane.axes.x];
+    const planeHeight = state.currentPlane.shape[state.currentPlane.axes.y];
+    canvas.dataset.planeWidth = String(planeWidth);
+    canvas.dataset.planeHeight = String(planeHeight);
+  }
+
   if (state.fillView) {
     const scale = Math.min(wrap.clientWidth / width, wrap.clientHeight / height);
     canvas.style.width = `${Math.floor(width * scale)}px`;
@@ -214,19 +231,23 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
     canvas.style.height = `${height}px`;
   }
 
+  const stack = canvas.parentElement;
+  if (stack) stack.style.transform = "";
+
   updateZoomButton();
   syncCoastlineOverlay(canvas);
-  canvasPan?.sync();
+  viewPan?.sync();
 }
 
-function renderDisplaySize(plane: ImagePlane): ReturnType<typeof computeDisplaySize> {
+function viewLayoutForPlane(plane: ImagePlane) {
   const wrap = el<HTMLDivElement>("#canvas-wrap");
-  return computeDisplaySize(
+  return computeViewLayout(
     plane.shape[plane.axes.x],
     plane.shape[plane.axes.y],
     wrap.clientWidth,
     wrap.clientHeight,
     state.fillView,
+    state.viewOrigin,
   );
 }
 
@@ -239,6 +260,7 @@ function syncCoastlineOverlay(canvas: HTMLCanvasElement): void {
     effectiveSpatialCoords(),
     show && state.showCoastlines,
     state.currentPlane,
+    state.displayTransform,
   ).catch(() => {
     // Coastline fetch/parse failure is non-fatal for the viewer.
   });
@@ -269,7 +291,8 @@ function updateZoomButton(): void {
 
 function toggleFillView(): void {
   state.fillView = !state.fillView;
-  if (state.fillView) canvasPan?.reset();
+  state.viewOrigin = { x: 0, y: 0 };
+  viewPan?.reset();
   pushViewerUrl();
   if (state.currentPlane && state.variable) {
     void renderCurrentFrame();
@@ -983,12 +1006,16 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
       buildScaleControls(state.variable);
     }
     const renderStart = performance.now();
-    const displaySize = renderDisplaySize(plane);
-    const { scaleMin, scaleMax, displayTransform } = renderImageToCanvas(
+    const layout = viewLayoutForPlane(plane);
+    state.viewOrigin = {
+      x: layout.displayTransform.regionX0,
+      y: layout.displayTransform.regionY0,
+    };
+    const { scaleMin, scaleMax, displayTransform } = await renderPlaneToView(
       canvas,
       plane,
       renderOptions(state.variable),
-      displaySize,
+      layout,
     );
     timings.renderMs = performance.now() - renderStart;
     state.displayTransform = displayTransform;
@@ -1248,6 +1275,10 @@ function wireCanvasHover(): void {
       planeHeight: state.currentPlane.shape[state.currentPlane.axes.y],
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
+      regionX0: 0,
+      regionY0: 0,
+      regionWidth: state.currentPlane.shape[state.currentPlane.axes.x],
+      regionHeight: state.currentPlane.shape[state.currentPlane.axes.y],
     };
     const planePixel = canvasToPlanePixel(
       pixel.x,
@@ -1331,6 +1362,10 @@ function wireEvents(): void {
   });
 
   window.addEventListener("resize", () => {
+    if (state.currentPlane && state.variable) {
+      void renderCurrentFrame({ quiet: true });
+      return;
+    }
     fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
   });
 }
@@ -1364,8 +1399,27 @@ async function main(): Promise<void> {
   const canvasWrap = el<HTMLDivElement>("#canvas-wrap");
   const canvasStack = document.querySelector<HTMLDivElement>(".canvas-stack");
   if (!canvasStack) throw new Error("Missing .canvas-stack");
-  canvasPan = wireCanvasPan(canvasWrap, canvasStack, canvas, () => !state.fillView);
-  canvasPan.sync();
+  viewPan = wireViewPan(
+    canvasWrap,
+    canvasStack,
+    canvas,
+    () => !state.fillView,
+    () => {
+      const plane = state.currentPlane;
+      if (!plane) return { width: 0, height: 0 };
+      return {
+        width: plane.shape[plane.axes.x],
+        height: plane.shape[plane.axes.y],
+      };
+    },
+    () => ({
+      width: canvasWrap.clientWidth,
+      height: canvasWrap.clientHeight,
+    }),
+    () => state.viewOrigin,
+    commitViewOrigin,
+  );
+  viewPan.sync();
   const params = readViewerParams();
   if (params.storeUrl) {
     await loadViewer(params);

@@ -67,6 +67,7 @@ test("url query param serves the app and renders canvas", async ({ page }) => {
   const response = await page.goto(target);
   expect(response?.status()).toBe(200);
   await expect(page.locator("body")).not.toContainText("403 Restricted");
+  await expect(page.locator("#coastline-control")).toBeHidden();
   await assertCanvasRendered(page);
   expect(errors).toEqual([]);
 });

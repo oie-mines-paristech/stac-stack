@@ -6,7 +6,11 @@ const URL =
   process.env.ZARR_URL ??
   "https://demos.oie-lab.net/stac/data/fisheye/sophia.zarr/";
 
-async function probe(variable: string, timeIndex: number): Promise<void> {
+async function probe(
+  variable: string,
+  timeIndex: number,
+  mode: "rgb" | "scalar" = "scalar",
+): Promise<void> {
   const dataset = await openDataset(URL);
   const variableMeta = dataset.schema.variables.find((item) => item.path === variable);
   if (!variableMeta) throw new Error(`Variable not found: ${variable}`);
@@ -16,7 +20,7 @@ async function probe(variable: string, timeIndex: number): Promise<void> {
     selection[axis.name] = axis.role === "time" ? timeIndex : 0;
   }
   const indices = variableMeta.axes.map((axis) => selection[axis.name] ?? 0);
-  const plane = await loadImagePlane(arr, variableMeta, indices);
+  const plane = await loadImagePlane(arr, variableMeta, indices, mode);
   let finite = 0;
   let min = Infinity;
   let max = -Infinity;
@@ -26,12 +30,17 @@ async function probe(variable: string, timeIndex: number): Promise<void> {
     min = Math.min(min, value);
     max = Math.max(max, value);
   }
-  console.log(`${variable} t=${timeIndex}: finite=${finite} min/max=${min}/${max}`);
+  console.log(
+    `${variable} t=${timeIndex} mode=${mode}: finite=${finite} min/max=${min}/${max} shape=[${plane.shape.join(", ")}]`,
+  );
 }
 
 async function main(): Promise<void> {
   registerJpegxlCodec();
-  await probe("radiance", 100);
+  for (const timeIndex of [100, 2855]) {
+    await probe("radiance", timeIndex, "scalar");
+    await probe("radiance", timeIndex, "rgb");
+  }
   await probe("raw_sensor", 100);
   const dataset = await openDataset(URL);
   const mask = dataset.schema.variables.find((item) => item.path === "mask");

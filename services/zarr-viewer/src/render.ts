@@ -1,27 +1,40 @@
 import * as zarr from "zarrita";
-import { chunkValue, materializeChunk, resolvePlaneAxes } from "./chunk_utils.js";
+import { loadFullPlane, type SpatialRegionSelection } from "./array_load.js";
+import { spatialChunkGrid, type SpatialRegionPick } from "./chunk_plan.js";
+import { chunkValue, resolvePlaneAxes, type PlaneData } from "./chunk_utils.js";
 import { DEFAULT_COLORMAP, getColormapLut } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
+import { putRgbaOnCanvas2d, renderRgbRegionToRgba, renderScalarRegionToRgba } from "./render_core.js";
 import {
+  arrayMinMax,
   cfScaleBounds,
-  percentileMinMax,
   resolveManualScaleRange,
-  resolveScaleRange,
   type ScaleRange,
 } from "./scaling.js";
 import { dataRowFromCanvas } from "./spatial.js";
+import {
+  canvasToPlanePixel,
+  computeViewLayout,
+  type DisplayTransform,
+  type DisplaySize,
+  type ViewLayout,
+  type ViewOrigin,
+} from "./view_transform.js";
 
-function normalize(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (max <= min) return 0;
-  const scaled = ((value - min) / (max - min)) * 255;
-  return Math.max(0, Math.min(255, scaled));
-}
+export type { DisplaySize, DisplayTransform, ViewLayout, ViewOrigin };
 
 export interface ImagePlane {
-  data: Float64Array;
+  data: PlaneData;
   shape: number[];
   axes: ReturnType<typeof resolvePlaneAxes>;
+}
+
+export function countFiniteSamples(plane: ImagePlane): number {
+  let count = 0;
+  for (const value of plane.data) {
+    if (Number.isFinite(value)) count++;
+  }
+  return count;
 }
 
 export interface RenderOptions {
@@ -37,6 +50,7 @@ export interface RenderOptions {
 export interface RenderResult {
   scaleMin: number;
   scaleMax: number;
+  displayTransform: DisplayTransform;
 }
 
 export function selectionFromState(
@@ -51,50 +65,18 @@ export async function loadImagePlane(
   variable: ImageVariable,
   indices: number[],
   mode: "rgb" | "scalar" = "scalar",
+  spatialRegion?: SpatialRegionPick,
 ): Promise<ImagePlane> {
-  const selection = variable.axes.map((axis, dim) => {
-    if (axis.role === "x" || axis.role === "y") {
-      return zarr.slice(null);
+  let regionSelection: SpatialRegionSelection | undefined;
+  if (spatialRegion) {
+    const grid = spatialChunkGrid(variable);
+    if (grid) {
+      regionSelection = { ...spatialRegion, grid };
     }
-    if (axis.role === "band" && mode === "rgb") {
-      return zarr.slice(null);
-    }
-    return indices[dim] ?? 0;
-  });
-
-  const chunk = await zarr.get(arr, selection);
-  const shape = [...chunk.shape];
-  const logical = materializeChunk(
-    chunk.data as ArrayLike<number>,
-    shape,
-    [...chunk.stride],
-  );
-  const axes = resolvePlaneAxes(variable, shape, mode === "rgb");
-  return { data: logical, shape, axes };
-}
-
-export function collectPlaneBandSamples(plane: ImagePlane, flipY: boolean): number[][] {
-  const { data, shape, axes } = plane;
-  const height = shape[axes.y];
-  const width = shape[axes.x];
-  const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
-  const stride = computeStrides(shape);
-  const coords = new Array<number>(shape.length).fill(0);
-  const result: number[][] = [];
-
-  for (let band = 0; band < bandCount; band++) {
-    const samples: number[] = [];
-    for (let canvasY = 0; canvasY < height; canvasY++) {
-      coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
-      for (let x = 0; x < width; x++) {
-        coords[axes.x] = x;
-        if (axes.band >= 0) coords[axes.band] = band;
-        samples.push(chunkValue(data, stride, coords));
-      }
-    }
-    result.push(samples);
   }
-  return result;
+  const loaded = await loadFullPlane(arr, variable, indices, mode, regionSelection);
+  const axes = resolvePlaneAxes(variable, loaded.shape, mode === "rgb");
+  return { data: loaded.data, shape: loaded.shape, axes };
 }
 
 export function autoscaleRangesFromPlane(
@@ -103,125 +85,129 @@ export function autoscaleRangesFromPlane(
   attributes: Record<string, unknown>,
 ): ScaleRange[] {
   const { min: cfMin, max: cfMax } = cfScaleBounds(attributes);
-  return collectPlaneBandSamples(plane, flipY).map((samples) => {
-    const [min, max] = percentileMinMax(samples, 5, 95);
+  const { data, shape, axes } = plane;
+  const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
+  const height = shape[axes.y];
+  const width = shape[axes.x];
+  const stride = computeStrides(shape);
+  const coords = new Array<number>(shape.length).fill(0);
+  const ranges: ScaleRange[] = [];
+
+  for (let band = 0; band < bandCount; band++) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let canvasY = 0; canvasY < height; canvasY++) {
+      coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
+      for (let x = 0; x < width; x++) {
+        coords[axes.x] = x;
+        if (axes.band >= 0) coords[axes.band] = band;
+        const value = chunkValue(data, stride, coords);
+        if (!Number.isFinite(value)) continue;
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      ranges.push({ min: 0, max: 1 });
+      continue;
+    }
     if (cfMin !== undefined && cfMax !== undefined && cfMax > cfMin) {
-      return {
+      ranges.push({
         min: Math.max(min, cfMin),
         max: Math.min(max, cfMax),
-      };
+      });
+    } else {
+      ranges.push({ min, max: min === max ? max + 1 : max });
     }
-    return { min, max };
-  });
-}
-
-function bandScaleRange(
-  samples: number[],
-  options: RenderOptions,
-  bandIndex: number,
-  cfMin: unknown,
-  cfMax: unknown,
-): [number, number] {
-  if (options.autoscale) {
-    return resolveScaleRange(samples, true, cfMin, cfMax);
   }
-  return resolveManualScaleRange(options.manualRanges?.[bandIndex], samples, cfMin, cfMax);
+  return ranges;
 }
 
+export interface RenderLayoutInput {
+  viewportWidth: number;
+  viewportHeight: number;
+  fillView: boolean;
+  viewOrigin?: ViewOrigin;
+}
+
+/** Synchronous Canvas 2D render (tests and benchmarks). */
 export function renderImageToCanvas(
   canvas: HTMLCanvasElement,
   plane: ImagePlane,
   options: RenderOptions,
+  layoutInput?: RenderLayoutInput,
 ): RenderResult {
   const { data, shape, axes } = plane;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return { scaleMin: 0, scaleMax: 1 };
-
-  const height = shape[axes.y];
-  const width = shape[axes.x];
-  if (!Number.isFinite(height) || !Number.isFinite(width) || height <= 0 || width <= 0) {
-    throw new Error(`Invalid image plane size: ${width}×${height}`);
-  }
-
+  const planeHeight = shape[axes.y];
+  const planeWidth = shape[axes.x];
+  const fillView = layoutInput?.fillView ?? false;
+  const viewportWidth = layoutInput?.viewportWidth ?? planeWidth;
+  const viewportHeight = layoutInput?.viewportHeight ?? planeHeight;
+  const viewOrigin = layoutInput?.viewOrigin ?? { x: 0, y: 0 };
+  const layout = computeViewLayout(
+    planeWidth,
+    planeHeight,
+    viewportWidth,
+    viewportHeight,
+    fillView,
+    viewOrigin,
+  );
   const flipY = options.flipY ?? false;
   const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
   const { min: cfMin, max: cfMax } = cfScaleBounds(options.attributes);
 
-  canvas.width = width;
-  canvas.height = height;
-
-  const image = ctx.createImageData(width, height);
-  const pixels = image.data;
-  const stride = computeStrides(shape);
-  const coords = new Array<number>(shape.length).fill(0);
-
   if (options.mode === "scalar" || bandCount === 1) {
-    const samples: number[] = [];
-    for (let canvasY = 0; canvasY < height; canvasY++) {
-      coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
-      for (let x = 0; x < width; x++) {
-        coords[axes.x] = x;
-        if (axes.band >= 0) coords[axes.band] = 0;
-        samples.push(chunkValue(data, stride, coords));
-      }
-    }
-    const [min, max] = bandScaleRange(samples, options, 0, cfMin, cfMax);
+    const [min, max] = options.autoscale
+      ? arrayMinMax(data)
+      : resolveManualScaleRange(options.manualRanges?.[0], data, cfMin, cfMax);
     const lut = getColormapLut(options.colormap ?? DEFAULT_COLORMAP);
-    for (let canvasY = 0; canvasY < height; canvasY++) {
-      coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
-      for (let x = 0; x < width; x++) {
-        coords[axes.x] = x;
-        if (axes.band >= 0) coords[axes.band] = 0;
-        const raw = chunkValue(data, stride, coords);
-        const t = normalize(raw, min, max) / 255;
-        const index = Math.min(255, Math.max(0, Math.round(t * 255)));
-        const px = (canvasY * width + x) * 4;
-        pixels[px] = lut[index * 3];
-        pixels[px + 1] = lut[index * 3 + 1];
-        pixels[px + 2] = lut[index * 3 + 2];
-        pixels[px + 3] = 255;
-      }
-    }
-    ctx.putImageData(image, 0, 0);
-    return { scaleMin: min, scaleMax: max };
+    const rgba = renderScalarRegionToRgba({
+      data,
+      planeWidth,
+      planeHeight,
+      shape,
+      axes,
+      region: layout.region,
+      target: layout.target,
+      min,
+      max,
+      lut,
+      flipY,
+    });
+    putRgbaOnCanvas2d(canvas, rgba, layout.target.width, layout.target.height);
+    return { scaleMin: min, scaleMax: max, displayTransform: layout.displayTransform };
   }
 
   const bandIndices = options.rgbBands;
-  const channelSamples = bandIndices.map((band) => {
-    const samples: number[] = [];
-    for (let canvasY = 0; canvasY < height; canvasY++) {
-      coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
-      for (let x = 0; x < width; x++) {
-        coords[axes.x] = x;
-        coords[axes.band] = band;
-        samples.push(chunkValue(data, stride, coords));
+  const ranges = bandIndices.map((band, channel) => {
+    if (options.autoscale) {
+      if (axes.band >= 0 && shape.length === 3) {
+        const bandHeight = shape[axes.y];
+        const bandWidth = shape[axes.x];
+        const bandStride = band * bandHeight * bandWidth;
+        return arrayMinMax(data.subarray(bandStride, bandStride + bandHeight * bandWidth));
       }
+      return arrayMinMax(data);
     }
-    return samples;
+    return resolveManualScaleRange(options.manualRanges?.[channel], data, cfMin, cfMax);
   });
 
-  const ranges = channelSamples.map((samples, channel) =>
-    bandScaleRange(samples, options, bandIndices[channel], cfMin, cfMax),
-  );
-
-  for (let canvasY = 0; canvasY < height; canvasY++) {
-    coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
-    for (let x = 0; x < width; x++) {
-      coords[axes.x] = x;
-      const px = (canvasY * width + x) * 4;
-      bandIndices.forEach((band, channel) => {
-        coords[axes.band] = band;
-        const [min, max] = ranges[channel];
-        pixels[px + channel] = normalize(chunkValue(data, stride, coords), min, max);
-      });
-      pixels[px + 3] = 255;
-    }
-  }
-
-  ctx.putImageData(image, 0, 0);
+  const rgba = renderRgbRegionToRgba({
+    data,
+    planeWidth,
+    planeHeight,
+    shape,
+    axes,
+    region: layout.region,
+    target: layout.target,
+    bandIndices,
+    ranges,
+    flipY,
+  });
+  putRgbaOnCanvas2d(canvas, rgba, layout.target.width, layout.target.height);
   const scaleMin = Math.min(...ranges.map(([min]) => min));
   const scaleMax = Math.max(...ranges.map(([, max]) => max));
-  return { scaleMin, scaleMax };
+  return { scaleMin, scaleMax, displayTransform: layout.displayTransform };
 }
 
 export function samplePlaneValues(
@@ -259,4 +245,25 @@ function computeStrides(shape: number[]): number[] {
     step *= shape[axis];
   }
   return stride;
+}
+
+export { canvasToPlanePixel, computeViewLayout };
+
+export function computeDisplaySize(
+  planeWidth: number,
+  planeHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  fillView: boolean,
+): DisplaySize | undefined {
+  if (!fillView || viewportWidth <= 0 || viewportHeight <= 0) return undefined;
+  const layout = computeViewLayout(
+    planeWidth,
+    planeHeight,
+    viewportWidth,
+    viewportHeight,
+    true,
+    { x: 0, y: 0 },
+  );
+  return { width: layout.target.width, height: layout.target.height };
 }

@@ -250,6 +250,19 @@ body.panel-dragging {
   overflow: hidden;
 }
 
+.canvas-wrap--pannable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas-wrap--pannable.canvas-wrap--panning {
+  cursor: grabbing;
+}
+
+.canvas-wrap--pannable #canvas {
+  cursor: inherit;
+}
+
 .viewer-idle[hidden] {
   display: none !important;
 }
@@ -391,6 +404,103 @@ body.panel-dragging {
   margin-top: 0.85rem;
 }
 
+.chunk-confirm-dialog {
+  max-width: 32rem;
+}
+
+.chunk-picker-map-wrap {
+  position: relative;
+  margin-top: 0.75rem;
+  width: 100%;
+}
+
+.chunk-picker-coastlines {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.chunk-picker-coastlines[hidden] {
+  display: none !important;
+}
+
+.chunk-picker-coastlines path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+}
+
+.chunk-picker-grid {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  max-height: 14rem;
+  background: #252b36;
+  border: 1px solid #394150;
+  border-radius: 6px;
+  padding: 2px;
+  position: relative;
+  z-index: 1;
+}
+
+.chunk-picker-cell {
+  min-height: 0.75rem;
+  padding: 0;
+  border: 1px solid #394150;
+  border-radius: 2px;
+  background: #1a1f27;
+  cursor: pointer;
+}
+
+.chunk-picker-cell:hover {
+  background: #2a3340;
+}
+
+.chunk-picker-cell.selected {
+  background: #3d5a80;
+  border-color: #6ea8fe;
+  box-shadow: 0 0 0 1px #6ea8fe inset;
+}
+
+.chunk-picker-cell.in-preview {
+  background: #5b8fc9;
+  border-color: #9ec5fe;
+}
+
+.chunk-picker-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.chunk-picker-estimate {
+  margin: 0.65rem 0 0;
+  font-size: 0.9rem;
+  color: #adb5bd;
+}
+
+.chunk-picker-estimate-warn {
+  color: #fd9843;
+}
+
+.link-button {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  color: #6ea8fe;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.link-button:hover {
+  color: #9ec5fe;
+}
+
 button.secondary {
   background: #252b36;
 }
@@ -501,7 +611,8 @@ legend {
 
 #rgb-bands[hidden],
 #colormap-row[hidden],
-#scale-controls[hidden] {
+#scale-controls[hidden],
+#coastline-control[hidden] {
   display: none !important;
 }
 
@@ -680,10 +791,10 @@ legend {
   transform-origin: top left;
 }
 
-.coastline-overlay use {
+.coastline-overlay path,
+.coastline-overlay .country {
   fill: none;
   stroke: rgba(255, 255, 255, 0.65);
-  stroke-width: 0.25;
 }
 
 .hover-bar {

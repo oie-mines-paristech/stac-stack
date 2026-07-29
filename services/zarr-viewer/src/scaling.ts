@@ -1,7 +1,8 @@
-export function arrayMinMax(values: number[]): [number, number] {
+export function arrayMinMax(values: ArrayLike<number>): [number, number] {
   let min = Infinity;
   let max = -Infinity;
-  for (const value of values) {
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]!;
     if (!Number.isFinite(value)) continue;
     if (value < min) min = value;
     if (value > max) max = value;
@@ -10,6 +11,7 @@ export function arrayMinMax(values: number[]): [number, number] {
   return min === max ? [min, min + 1] : [min, max];
 }
 
+/** @deprecated use arrayMinMax on TypedArray directly */
 export function percentileMinMax(
   values: number[],
   low = 5,
@@ -23,13 +25,13 @@ export function percentileMinMax(
 }
 
 export function resolveScaleRange(
-  samples: number[],
+  samples: ArrayLike<number>,
   autoscale: boolean,
   cfMin: unknown,
   cfMax: unknown,
 ): [number, number] {
   if (autoscale) {
-    return percentileMinMax(samples, 5, 95);
+    return arrayMinMax(samples);
   }
   const min = Number(cfMin);
   const max = Number(cfMax);
@@ -46,7 +48,7 @@ export interface ScaleRange {
 
 export function resolveManualScaleRange(
   manual: ScaleRange | undefined,
-  samples: number[],
+  samples: ArrayLike<number>,
   cfMin: unknown,
   cfMax: unknown,
 ): [number, number] {

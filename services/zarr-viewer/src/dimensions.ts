@@ -1,3 +1,5 @@
+import { extractChunkShape } from "./consolidated.js";
+
 export type AxisRole = "time" | "x" | "y" | "band" | "other";
 
 export interface CoordinateMeta {
@@ -5,6 +7,9 @@ export interface CoordinateMeta {
   dimensionNames: string[];
   attributes: Record<string, unknown>;
   labels?: string[];
+  chunkShape?: number[];
+  shape?: number[];
+  dtype?: string;
 }
 
 export interface AxisInfo {
@@ -22,6 +27,7 @@ export interface ImageVariable {
   axes: AxisInfo[];
   attributes: Record<string, unknown>;
   dtype: string;
+  chunkShape?: number[];
 }
 
 export interface DatasetSchema {
@@ -141,6 +147,9 @@ export function buildDatasetSchema(
       dimensionNames,
       attributes,
       labels: bandLabels(attributes),
+      chunkShape: extractChunkShape(meta),
+      shape: Array.isArray(shape) ? shape.map(Number) : undefined,
+      dtype: typeof meta.data_type === "string" ? meta.data_type : undefined,
     };
   }
 
@@ -173,7 +182,9 @@ export function buildDatasetSchema(
       };
     });
 
-    variables.push({ path, shape, dimensionNames, axes, attributes, dtype });
+    const chunkShape = extractChunkShape(meta);
+
+    variables.push({ path, shape, dimensionNames, axes, attributes, dtype, chunkShape });
   }
 
   variables.sort((a, b) => a.path.localeCompare(b.path));

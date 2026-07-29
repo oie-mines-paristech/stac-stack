@@ -9,7 +9,10 @@ import {
   parseLegacySearchParams,
   readViewerParams,
   resolveStoreUrl,
+  freshViewerParamsForStore,
+  sameStoreUrl,
   serializeBearerAuthParam,
+  toDisplayStoreUrl,
   toShareableStoreUrl,
   type ViewerUrlParams,
 } from "./url_state.js";
@@ -126,8 +129,12 @@ withLocation("https://example.com", "/", () => {
   const params = readViewerParams();
   assert(params.auth?.kind === "basic", "readViewerParams parses basic auth from url");
   assert(
-    toShareableStoreUrl("https://alice:secret@host/data.zarr/").includes("alice"),
-    "toShareableStoreUrl keeps basic credentials",
+    !toShareableStoreUrl("https://alice:secret@host/data.zarr/").includes("alice"),
+    "toShareableStoreUrl strips basic credentials",
+  );
+  assert(
+    !toDisplayStoreUrl(basicUrl, params.auth).includes("alice"),
+    "toDisplayStoreUrl strips basic credentials",
   );
 });
 
@@ -177,6 +184,53 @@ withLocation("https://example.com", "/", () => {
 });
 
 withLocation("https://example.com", "/", () => {
+  const original: ViewerUrlParams = {
+    storeUrl: "https://example.com/data.zarr/",
+    auth: { kind: "basic", username: "alice", password: "secret" },
+    variable: "t2m",
+    dims: {},
+  };
+  const json = viewerParamsToJson(original);
+  assert(json.auth === "basic:alice:secret", "viewerParamsToJson serializes basic auth");
+  const compressed = encodeViewerHash(json);
+  globalThis.window.history.replaceState({}, "", `/#${compressed}`);
+  const params = readViewerParams();
+  assert(params.auth?.kind === "basic", "hash round-trip basic auth kind");
+  assert(
+    (params.auth as { username: string }).username === "alice",
+    "hash round-trip basic username",
+  );
+  assert(
+    (params.auth as { password: string }).password === "secret",
+    "hash round-trip basic password",
+  );
+  assert(
+    !toDisplayStoreUrl(params.storeUrl, params.auth).includes("alice"),
+    "display url hides basic credentials after hash reload",
+  );
+});
+
+withLocation("https://example.com", "/", () => {
+  const original: ViewerUrlParams = {
+    storeUrl: "https://example.com/data.zarr/",
+    variable: "t2m",
+    dims: {},
+    spatialRegion: { y0: 1, y1: 2, x0: 3, x1: 5 },
+  };
+  const json = viewerParamsToJson(original);
+  assert(
+    json.region?.join(",") === "1,2,3,5",
+    "viewerParamsToJson serializes spatial region",
+  );
+  const compressed = encodeViewerHash(json);
+  globalThis.window.history.replaceState({}, "", `/#${compressed}`);
+  const params = readViewerParams();
+  assert(params.spatialRegion?.y0 === 1, "hash round-trip region y0");
+  assert(params.spatialRegion?.y1 === 2, "hash round-trip region y1");
+  assert(params.spatialRegion?.x1 === 5, "hash round-trip region x1");
+});
+
+withLocation("https://example.com", "/", () => {
   const legacy = parseLegacySearchParams("?variable=t2m", "");
   assert(legacy.hadLegacy, "parseLegacySearchParams detects reserved keys");
   assert(legacy.params.variable === "t2m", "parseLegacySearchParams extracts variable");
@@ -192,6 +246,26 @@ withLocation("https://example.com", "/", () => {
   });
   const decoded = jsonToViewerParams(roundTripJson, resolveStoreUrl);
   assert(decoded.variable === "rad", "jsonToViewerParams round-trip");
+});
+
+withLocation("https://example.com", "/", () => {
+  assert(
+    sameStoreUrl(
+      "https://example.com/data.zarr/",
+      "/data.zarr/",
+    ),
+    "sameStoreUrl matches path-only against origin",
+  );
+  assert(
+    !sameStoreUrl("https://example.com/a.zarr/", "https://example.com/b.zarr/"),
+    "sameStoreUrl rejects different stores",
+  );
+  const fresh = freshViewerParamsForStore("/data/sophia.zarr/");
+  assert(fresh.variable === undefined, "freshViewerParamsForStore omits variable");
+  assert(
+    fresh.storeUrl === "https://example.com/data/sophia.zarr/",
+    "freshViewerParamsForStore resolves store url",
+  );
 });
 
 console.log("url_state.test.ts: ok");

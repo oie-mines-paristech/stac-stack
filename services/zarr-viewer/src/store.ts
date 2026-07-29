@@ -1,13 +1,23 @@
 import * as zarr from "zarrita";
 import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
+import { loadFull1DArray } from "./array_load.js";
 import type { StoreAuth } from "./auth.js";
-import { createAuthFetch, storeUrlForFetch } from "./auth.js";
+import { resolveStoreAuth, storeUrlForFetch } from "./auth.js";
+import { createStoreFetch } from "./proxy.js";
+import {
+  createInstrumentedByteCache,
+  wrapFetchWithConcurrency,
+} from "./chunk_progress.js";
 import {
   normalizeV2Consolidated,
   normalizeV3Consolidated,
   type ConsolidatedLoadResult,
 } from "./consolidated.js";
-import { buildDatasetSchema, type DatasetSchema, type ImageVariable } from "./dimensions.js";
+import {
+  buildDatasetSchema,
+  type DatasetSchema,
+  type ImageVariable,
+} from "./dimensions.js";
 import { resolveStoreUrl } from "./url_state.js";
 
 export interface OpenDatasetResult {
@@ -21,6 +31,7 @@ export interface OpenDatasetResult {
 let codecRegistered = false;
 const byteCache = new Map<string, Uint8Array | undefined>();
 const arrayCache = new Map<string, zarr.Array<zarr.DataType>>();
+const coordinateCache = new Map<string, unknown[]>();
 
 function ensureCodec(): void {
   if (!codecRegistered) {
@@ -35,23 +46,19 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function createInstrumentedStoreFetch(auth?: StoreAuth): typeof fetch {
+  return wrapFetchWithConcurrency(createStoreFetch(auth));
+}
+
 function createFetchStore(url: string, auth?: StoreAuth): zarr.FetchStore {
-  const authFetch = createAuthFetch(auth);
-  return new zarr.FetchStore(url, {
-    fetch(request) {
-      if (auth?.kind === "bearer") {
-        request.headers.set("Authorization", `Bearer ${auth.token}`);
-      }
-      return authFetch(request);
-    },
-  });
+  return new zarr.FetchStore(url, { fetch: createInstrumentedStoreFetch(auth) });
 }
 
 async function loadConsolidatedForSchema(
   fetchUrl: string,
   auth?: StoreAuth,
 ): Promise<ConsolidatedLoadResult> {
-  const authFetch = createAuthFetch(auth);
+  const authFetch = createInstrumentedStoreFetch(auth);
 
   const zarrJsonResponse = await authFetch(new URL("zarr.json", fetchUrl));
   if (zarrJsonResponse.ok) {
@@ -79,6 +86,36 @@ async function loadConsolidatedForSchema(
 export function resetDatasetCaches(): void {
   byteCache.clear();
   arrayCache.clear();
+  coordinateCache.clear();
+}
+
+export function clearCoordinateCache(): void {
+  coordinateCache.clear();
+}
+
+export function getCachedCoordinateValues(coordPath: string): unknown[] | undefined {
+  const cached = coordinateCache.get(coordPath);
+  return cached ? [...cached] : undefined;
+}
+
+export async function preloadVariableCoordinates(
+  root: OpenDatasetResult["root"],
+  variable: ImageVariable,
+): Promise<void> {
+  ensureCodec();
+  const paths = new Set<string>();
+  for (const axis of variable.axes) {
+    if (axis.coordinate?.path) paths.add(axis.coordinate.path);
+  }
+
+  await Promise.all(
+    [...paths].map(async (path) => {
+      if (coordinateCache.has(path)) return;
+      const node = await zarr.open(root.resolve(path), { kind: "array" });
+      if (!(node instanceof zarr.Array)) return;
+      coordinateCache.set(path, await loadFull1DArray(node));
+    }),
+  );
 }
 
 export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDatasetResult> {
@@ -89,11 +126,14 @@ export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDa
     throw new Error("Empty store URL");
   }
 
-  const fetchUrl = storeUrlForFetch(normalized, auth);
-  const { consolidated, rootAttributes } = await loadConsolidatedForSchema(fetchUrl, auth);
+  const effectiveAuth = auth ?? resolveStoreAuth(normalized, null);
+  const fetchUrl = storeUrlForFetch(normalized, effectiveAuth);
+  const { consolidated, rootAttributes } = await loadConsolidatedForSchema(fetchUrl, effectiveAuth);
 
-  const baseStore = createFetchStore(fetchUrl, auth);
-  const cachedStore = zarr.withByteCaching(baseStore, { cache: byteCache });
+  const baseStore = createFetchStore(fetchUrl, effectiveAuth);
+  const cachedStore = zarr.withByteCaching(baseStore, {
+    cache: createInstrumentedByteCache(byteCache),
+  });
   const store = await zarr.withConsolidatedMetadata(cachedStore, { format: ["v3", "v2"] });
   const root = zarr.root(store);
   const schema = buildDatasetSchema(fetchUrl, consolidated, rootAttributes);
@@ -123,14 +163,17 @@ export async function readCoordinateValues(
   root: OpenDatasetResult["root"],
   coordPath: string,
 ): Promise<unknown[]> {
+  const cached = coordinateCache.get(coordPath);
+  if (cached) return [...cached];
+
   ensureCodec();
   const node = await zarr.open(root.resolve(coordPath), { kind: "array" });
   if (!(node instanceof zarr.Array)) {
     throw new Error(`Expected coordinate array at ${coordPath}`);
   }
-  const chunk = await zarr.get(node, [zarr.slice(null)]);
-  const data = chunk.data as ArrayLike<number | bigint | string>;
-  return Array.from(data as ArrayLike<unknown>);
+  const values = await loadFull1DArray(node);
+  coordinateCache.set(coordPath, values);
+  return [...values];
 }
 
 export function shardSummary(variable: ImageVariable): string | undefined {

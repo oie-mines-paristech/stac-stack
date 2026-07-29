@@ -27,6 +27,34 @@ export function serializeBearerAuthParam(auth: StoreAuth): string | undefined {
   return `bearer:${auth.token}`;
 }
 
+/** Parse `auth=basic:<username>:<password>` viewer hash/query param value. */
+export function parseBasicAuthParam(value: string): StoreAuth | undefined {
+  const match = value.match(/^basic:(.+):(.+)$/i);
+  if (!match) return undefined;
+  const username = decodeURIComponent(match[1]);
+  const password = decodeURIComponent(match[2]);
+  if (!username) return undefined;
+  return { kind: "basic", username, password };
+}
+
+/** Serialize Basic auth for the viewer hash/query param. */
+export function serializeBasicAuthParam(auth: StoreAuth): string | undefined {
+  if (auth.kind !== "basic") return undefined;
+  return `basic:${encodeURIComponent(auth.username)}:${encodeURIComponent(auth.password)}`;
+}
+
+/** Parse Bearer or Basic auth from a serialized viewer auth param. */
+export function parseAuthParam(value: string): StoreAuth | undefined {
+  return parseBearerAuthParam(value) ?? parseBasicAuthParam(value);
+}
+
+/** Serialize auth for the viewer hash/query param. */
+export function serializeAuthParam(auth: StoreAuth): string | undefined {
+  return auth.kind === "bearer"
+    ? serializeBearerAuthParam(auth)
+    : serializeBasicAuthParam(auth);
+}
+
 /** Embed Basic credentials into a store URL (Bearer uses a separate query param). */
 export function applyAuthToUrl(baseUrl: string, auth?: StoreAuth): string {
   if (!auth || auth.kind !== "basic") return baseUrl;
@@ -50,15 +78,30 @@ export function stripAuthFromUrl(url: string): string {
   }
 }
 
-/** Return a fetch function that injects Bearer Authorization when needed. */
+/** RFC 7617 Basic Authorization header (UTF-8 safe). */
+export function basicAuthHeader(username: string, password: string): string {
+  const credentials = `${username}:${password}`;
+  const bytes = new TextEncoder().encode(credentials);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return `Basic ${btoa(binary)}`;
+}
+
+/** Return a fetch function that injects Authorization when needed. */
 export function createAuthFetch(auth?: StoreAuth): typeof fetch {
-  if (!auth || auth.kind === "basic") {
+  if (!auth) {
     return fetch.bind(globalThis);
   }
   return (input, init) => {
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
-    headers.set("Authorization", `Bearer ${auth.token}`);
+    if (auth.kind === "bearer") {
+      headers.set("Authorization", `Bearer ${auth.token}`);
+    } else {
+      headers.set("Authorization", basicAuthHeader(auth.username, auth.password));
+    }
     return fetch(new Request(request, { headers }));
   };
 }
@@ -76,14 +119,14 @@ export function formatAuthLabel(auth?: StoreAuth): string | undefined {
   return "Bearer (configured)";
 }
 
-/** Resolve auth from viewer params: Bearer param takes precedence over URL userinfo. */
+/** Resolve auth from viewer params: hash/query auth param takes precedence over URL userinfo. */
 export function resolveStoreAuth(
   storeUrl: string,
-  bearerParam?: string | null,
+  authParam?: string | null,
 ): StoreAuth | undefined {
-  if (bearerParam) {
-    const bearer = parseBearerAuthParam(bearerParam);
-    if (bearer) return bearer;
+  if (authParam) {
+    const fromParam = parseAuthParam(authParam);
+    if (fromParam) return fromParam;
   }
   try {
     return parseAuthFromUrl(new URL(storeUrl));
@@ -92,19 +135,7 @@ export function resolveStoreAuth(
   }
 }
 
-/** Store URL used for HTTP requests (userinfo for Basic, clean URL for Bearer). */
-export function storeUrlForFetch(resolvedUrl: string, auth?: StoreAuth): string {
-  const base = stripAuthFromUrl(resolvedUrl);
-  if (auth?.kind === "basic") {
-    return applyAuthToUrl(base, auth);
-  }
-  try {
-    const parsed = new URL(resolvedUrl);
-    if (parsed.username || parsed.password) {
-      return resolvedUrl.endsWith("/") ? resolvedUrl : `${resolvedUrl}/`;
-    }
-  } catch {
-    // fall through
-  }
-  return base;
+/** Store URL used for HTTP requests (never embeds credentials — use Authorization header). */
+export function storeUrlForFetch(resolvedUrl: string, _auth?: StoreAuth): string {
+  return stripAuthFromUrl(resolvedUrl);
 }

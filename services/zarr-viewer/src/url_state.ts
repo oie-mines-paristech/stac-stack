@@ -3,7 +3,9 @@ import {
   parseAuthFromUrl,
   parseBearerAuthParam,
   resolveStoreAuth,
+  serializeAuthParam,
   serializeBearerAuthParam,
+  stripAuthFromUrl,
 } from "./auth.js";
 import { DEFAULT_COLORMAP, isColormapName } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
@@ -18,6 +20,8 @@ import {
   viewerParamsToJson,
 } from "./url_hash.js";
 
+import type { SpatialRegionPick } from "./chunk_plan.js";
+
 export type { StoreAuth };
 
 export interface ViewerUrlParams {
@@ -31,6 +35,7 @@ export interface ViewerUrlParams {
   manualScale?: ScaleRange[];
   fillView?: boolean;
   dims: Record<string, number>;
+  spatialRegion?: SpatialRegionPick;
 }
 
 const RESERVED_VIEWER_PARAMS = new Set([
@@ -74,36 +79,23 @@ export function toShareableStoreUrl(resolved: string): string {
   const trimmed = resolved.trim();
   if (!trimmed) return "";
 
+  const stripped = stripAuthFromUrl(trimmed);
   try {
-    const url = new URL(trimmed);
-    if (url.username || url.password) {
-      const href = url.href;
-      return href.endsWith("/") ? href : `${href}/`;
-    }
+    const url = new URL(stripped);
     if (url.origin === window.location.origin) {
       const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
       return path;
     }
   } catch {
-    return normalizeTrailingSlash(trimmed);
+    return normalizeTrailingSlash(stripped);
   }
 
-  return normalizeTrailingSlash(trimmed);
+  return normalizeTrailingSlash(stripped);
 }
 
-/** Store URL for the url-input field (hides Bearer token, keeps Basic userinfo). */
-export function toDisplayStoreUrl(resolved: string, auth?: StoreAuth): string {
-  if (auth?.kind === "bearer") {
-    try {
-      const url = new URL(resolved);
-      url.username = "";
-      url.password = "";
-      return toShareableStoreUrl(url.href);
-    } catch {
-      return toShareableStoreUrl(resolved);
-    }
-  }
-  return toShareableStoreUrl(resolved);
+/** Store URL for the url-input field (never shows credentials). */
+export function toDisplayStoreUrl(resolved: string, _auth?: StoreAuth): string {
+  return toShareableStoreUrl(stripAuthFromUrl(resolved));
 }
 
 function hasLegacyViewerParams(params: URLSearchParams): boolean {
@@ -212,6 +204,24 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
   };
 }
 
+/** True when two store URLs resolve to the same absolute location. */
+export function sameStoreUrl(a: string, b: string): boolean {
+  if (!a.trim() || !b.trim()) return false;
+  return resolveStoreUrl(a) === resolveStoreUrl(b);
+}
+
+/** Params for loading a different store — omits hash-specific viewer state. */
+export function freshViewerParamsForStore(
+  storeUrl: string,
+  auth?: StoreAuth,
+): ViewerUrlParams {
+  return {
+    storeUrl: resolveStoreUrl(storeUrl),
+    auth,
+    dims: {},
+  };
+}
+
 export function writeViewerParams(input: {
   storeUrl: string;
   auth?: StoreAuth;
@@ -223,13 +233,14 @@ export function writeViewerParams(input: {
   autoscale: boolean;
   manualScale: ScaleRange[];
   fillView: boolean;
+  spatialRegion?: SpatialRegionPick | null;
 }): void {
   const json: ViewerStateJsonV1 = { v: 1 };
   json.u = toShareableStoreUrl(input.storeUrl);
   json.var = input.variable.path;
 
-  if (input.auth?.kind === "bearer") {
-    const serialized = serializeBearerAuthParam(input.auth);
+  if (input.auth) {
+    const serialized = serializeAuthParam(input.auth);
     if (serialized) json.auth = serialized;
   }
 
@@ -273,6 +284,11 @@ export function writeViewerParams(input: {
   }
   if (Object.keys(dims).length > 0) {
     json.dims = dims;
+  }
+
+  if (input.spatialRegion) {
+    const { y0, y1, x0, x1 } = input.spatialRegion;
+    json.region = [y0, y1, x0, x1];
   }
 
   replaceLocationHash(json);

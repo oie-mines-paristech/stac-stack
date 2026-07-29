@@ -1,8 +1,7 @@
 import "./style.css";
 import {
-  applyAuthToUrl,
   resolveStoreAuth,
-  serializeBearerAuthParam,
+  serializeAuthParam,
   stripAuthFromUrl,
   type StoreAuth,
 } from "./auth.js";
@@ -20,44 +19,78 @@ import { canvasPixelCoords, formatHoverLine, type SpatialCoords } from "./hover.
 import { updateHistogram } from "./histogram.js";
 import {
   cancelPrefetch,
+  ChunkLoadCancelledError,
   loadPlaneWithCache,
   LruPlaneCache,
   prefetchDayPlanes,
   type FrameTimings,
+  type LoadPlaneOptions,
+  type SpatialRegionPick,
 } from "./plane_cache.js";
 import {
+  normalizeRegion,
+  planLoadOperation,
+  planSpatialRegion,
+  spatialChunkGrid,
+  regionIndexRanges,
+  isSpatiallyMultiChunk,
+} from "./chunk_plan.js";
+import {
   autoscaleRangesFromPlane,
-  renderImageToCanvas,
+  canvasToPlanePixel,
+  computeViewLayout,
+  countFiniteSamples,
+  type DisplayTransform,
   type ImagePlane,
   type RenderOptions,
 } from "./render.js";
+import { renderPlaneToView } from "./render_pipeline.js";
 import { defaultRgbBands, type ScaleRange } from "./scaling.js";
 import {
   openDataset,
   openVariableArray,
+  preloadVariableCoordinates,
   readCoordinateValues,
+  getCachedCoordinateValues,
   type OpenDatasetResult,
 } from "./store.js";
 import {
   dateRangeFromDates,
   defaultDayFromDates,
+  defaultTimeIndexForDay,
   filterTimeIndicesByDay,
   formatTime,
+  timeIndicesSearchOrder,
   timeValuesToDates,
 } from "./time.js";
-import { shouldFlipYAxis, isLatLonVariable } from "./spatial.js";
+import { shouldFlipYAxis, canShowCoastlines } from "./spatial.js";
+import { CorsBlockedError } from "./proxy.js";
+import {
+  formatChunkProgressLine,
+  getChunkProgress,
+  subscribeChunkProgress,
+} from "./chunk_progress.js";
 import { updateCoastlineOverlay } from "./ui/coastline_overlay.js";
+import { wireViewPan, type ViewPanController } from "./ui/canvas_pan.js";
 import { updateColorLegend } from "./ui/color_legend.js";
 import { mountColormapPicker, type ColormapPickerHandle } from "./ui/colormap_picker.js";
 import { renderMetadataPanel, renderStatus, renderTimings } from "./ui/metadata.js";
 import { authDialogMarkup, wireAuthDialog } from "./ui/auth_dialog.js";
+import {
+  chunkConfirmDialogMarkup,
+  promptChunkLoadChoice,
+  resetChunkLoadConfirmations,
+  wireChunkConfirmDialog,
+} from "./ui/chunk_confirm_dialog.js";
 import { dismissErrorToast, showErrorToast } from "./ui/toast.js";
 import { initPanels, wirePanels } from "./ui/panels.js";
 import {
   applyDatetimeToControls,
+  freshViewerParamsForStore,
   readViewerParams,
   resolveStoreUrl,
   resolveTimeIndexFromDatetime,
+  sameStoreUrl,
   toDisplayStoreUrl,
   writeViewerParams,
   type ViewerUrlParams,
@@ -82,7 +115,10 @@ interface AppState {
     needsSeed: boolean;
   };
   spatialCoords: SpatialCoords | null;
+  spatialRegion: SpatialRegionPick | null;
   currentPlane: ImagePlane | null;
+  displayTransform: DisplayTransform | null;
+  viewOrigin: { x: number; y: number };
   scaleRange: { min: number; max: number } | null;
   isPlaying: boolean;
   renderGeneration: number;
@@ -101,7 +137,10 @@ const state: AppState = {
   autoscale: true,
   manualScale: { ranges: [], locked: false, needsSeed: false },
   spatialCoords: null,
+  spatialRegion: null,
   currentPlane: null,
+  displayTransform: null,
+  viewOrigin: { x: 0, y: 0 },
   scaleRange: null,
   isPlaying: false,
   renderGeneration: 0,
@@ -113,6 +152,34 @@ const PLAYBACK_INTERVAL_MS = 500;
 
 let suppressSliderEvent = false;
 const planeCache = new LruPlaneCache(128);
+let viewPan: ViewPanController | null = null;
+
+function commitViewOrigin(origin: { x: number; y: number }): void {
+  if (origin.x === state.viewOrigin.x && origin.y === state.viewOrigin.y) return;
+  state.viewOrigin = origin;
+  if (state.currentPlane && state.variable) {
+    void renderCurrentFrame({ quiet: true });
+  }
+}
+let loadingStatusPrefix = "";
+
+function refreshLoadingStatus(): void {
+  if (!loadingStatusPrefix) return;
+  const status = el<HTMLParagraphElement>("#status");
+  renderStatus(
+    status,
+    formatChunkProgressLine(getChunkProgress(), loadingStatusPrefix),
+  );
+}
+
+function setLoadingStatus(prefix: string): void {
+  loadingStatusPrefix = prefix;
+  refreshLoadingStatus();
+}
+
+function clearLoadingStatus(): void {
+  loadingStatusPrefix = "";
+}
 
 function formatTimings(timings: FrameTimings): string {
   if (timings.cacheHit) {
@@ -148,6 +215,13 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
   const height = canvas.height;
   if (width <= 0 || height <= 0) return;
 
+  if (state.currentPlane) {
+    const planeWidth = state.currentPlane.shape[state.currentPlane.axes.x];
+    const planeHeight = state.currentPlane.shape[state.currentPlane.axes.y];
+    canvas.dataset.planeWidth = String(planeWidth);
+    canvas.dataset.planeHeight = String(planeHeight);
+  }
+
   if (state.fillView) {
     const scale = Math.min(wrap.clientWidth / width, wrap.clientHeight / height);
     canvas.style.width = `${Math.floor(width * scale)}px`;
@@ -157,26 +231,51 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
     canvas.style.height = `${height}px`;
   }
 
+  const stack = canvas.parentElement;
+  if (stack) stack.style.transform = "";
+
   updateZoomButton();
   syncCoastlineOverlay(canvas);
+  viewPan?.sync();
+}
+
+function viewLayoutForPlane(plane: ImagePlane) {
+  const wrap = el<HTMLDivElement>("#canvas-wrap");
+  return computeViewLayout(
+    plane.shape[plane.axes.x],
+    plane.shape[plane.axes.y],
+    wrap.clientWidth,
+    wrap.clientHeight,
+    state.fillView,
+    state.viewOrigin,
+  );
 }
 
 function syncCoastlineOverlay(canvas: HTMLCanvasElement): void {
   const overlay = document.querySelector<SVGSVGElement>("#coastline-overlay");
-  const latLon = state.variable ? isLatLonVariable(state.variable) : false;
-  updateCoastlineOverlay(
+  const show = state.variable ? canShowCoastlines(state.variable) : false;
+  void updateCoastlineOverlay(
     overlay,
     canvas,
-    state.spatialCoords,
-    latLon && state.showCoastlines,
-  );
+    effectiveSpatialCoords(),
+    show && state.showCoastlines,
+    state.currentPlane,
+    state.displayTransform,
+  ).catch(() => {
+    // Coastline fetch/parse failure is non-fatal for the viewer.
+  });
 }
 
 function updateCoastlineControlVisibility(): void {
   const row = document.querySelector<HTMLElement>("#coastline-control");
   if (!row) return;
-  const visible = state.variable ? isLatLonVariable(state.variable) : false;
+  const visible = state.variable ? canShowCoastlines(state.variable) : false;
   row.hidden = !visible;
+  if (!visible) {
+    const checkbox = document.querySelector<HTMLInputElement>("#show-coastlines");
+    if (checkbox) checkbox.checked = false;
+    state.showCoastlines = false;
+  }
 }
 
 function updateZoomButton(): void {
@@ -192,8 +291,114 @@ function updateZoomButton(): void {
 
 function toggleFillView(): void {
   state.fillView = !state.fillView;
-  fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
+  state.viewOrigin = { x: 0, y: 0 };
+  viewPan?.reset();
   pushViewerUrl();
+  if (state.currentPlane && state.variable) {
+    void renderCurrentFrame();
+    return;
+  }
+  fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
+}
+
+function effectiveSpatialCoords(): SpatialCoords | null {
+  if (!state.spatialCoords || !state.spatialRegion || !state.variable) {
+    return state.spatialCoords;
+  }
+  const grid = spatialChunkGrid(state.variable);
+  if (!grid) return state.spatialCoords;
+  const ranges = regionIndexRanges(
+    grid,
+    state.spatialRegion.y0,
+    state.spatialRegion.y1,
+    state.spatialRegion.x0,
+    state.spatialRegion.x1,
+  );
+  const { xValues, yValues, ...rest } = state.spatialCoords;
+  return {
+    ...rest,
+    xValues: xValues ? xValues.slice(ranges.x[0], ranges.x[1]) : null,
+    yValues: yValues ? yValues.slice(ranges.y[0], ranges.y[1]) : null,
+  };
+}
+
+function planeLoadOptions(): LoadPlaneOptions {
+  return {
+    spatialRegion: state.spatialRegion,
+    setSpatialRegion: (region: SpatialRegionPick | null) => {
+      state.spatialRegion = region;
+    },
+    spatialCoords: state.spatialCoords,
+  };
+}
+
+function spatialRegionStatusHtml(): string {
+  if (!state.spatialRegion || !state.variable) return "";
+  const grid = spatialChunkGrid(state.variable);
+  if (!grid) return "";
+  const { y0, y1, x0, x1 } = state.spatialRegion;
+  const plan = planSpatialRegion(state.variable, y0, y1, x0, x1);
+  const chunkLabel = plan.imageChunks === 1 ? "1 chunk" : `${plan.imageChunks} chunks`;
+  return (
+    `Showing spatial region rows ${y0 + 1}–${y1 + 1} × cols ${x0 + 1}–${x1 + 1} (${chunkLabel}). ` +
+    `<button type="button" id="change-spatial-area" class="link-button">Change area…</button>`
+  );
+}
+
+async function changeSpatialArea(): Promise<void> {
+  if (!state.spatialRegion || !state.variable || !state.dataset) return;
+  const grid = spatialChunkGrid(state.variable);
+  if (!grid || !isSpatiallyMultiChunk(grid)) return;
+
+  const variable = state.variable;
+  const previous = { ...state.spatialRegion };
+  const cachedCoordPaths = new Set<string>();
+  for (const axis of variable.axes) {
+    const path = axis.coordinate?.path;
+    if (path && getCachedCoordinateValues(path) !== undefined) {
+      cachedCoordPaths.add(path);
+    }
+  }
+  const plan = planLoadOperation({
+    variable,
+    selection: state.selection,
+    mode: displayMode(variable),
+    schema: state.dataset.schema,
+    cachedCoordPaths,
+  });
+
+  const choice = await promptChunkLoadChoice(
+    plan,
+    grid,
+    variable.path,
+    variable,
+    state.spatialCoords,
+    previous,
+  );
+
+  if (choice.action === "dismiss") return;
+  if (choice.action === "region") {
+    state.spatialRegion = normalizeRegion(grid, {
+      y0: choice.y0,
+      y1: choice.y1,
+      x0: choice.x0,
+      x1: choice.x1,
+    });
+  } else if (choice.action === "full") {
+    state.spatialRegion = null;
+  }
+  clearFrameCache();
+  await renderCurrentFrame();
+}
+
+function retainSpatialRegionForVariable(variable: ImageVariable): void {
+  if (!state.spatialRegion) return;
+  const grid = spatialChunkGrid(variable);
+  if (!grid) {
+    state.spatialRegion = null;
+    return;
+  }
+  state.spatialRegion = normalizeRegion(grid, state.spatialRegion);
 }
 
 function clearFrameCache(): void {
@@ -202,7 +407,7 @@ function clearFrameCache(): void {
 }
 
 function schedulePrefetch(): void {
-  if (!state.dataset || !state.variable) return;
+  if (!state.dataset || !state.variable || state.spatialRegion) return;
   const timeAxis = axisByRole(state.variable, "time");
   if (!timeAxis || state.timeIndices.length === 0) return;
 
@@ -222,6 +427,7 @@ function schedulePrefetch(): void {
       timeIndices,
       cache: planeCache,
       generation,
+      spatialRegion: state.spatialRegion,
       isCurrentGeneration: () => generation === state.renderGeneration,
     }),
   );
@@ -237,7 +443,12 @@ const IDLE_MESSAGE =
   "Enter a store URL in the field above, or open the viewer with a shared link (#…).";
 
 function reportError(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+  const message =
+    error instanceof CorsBlockedError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : String(error);
   showErrorToast(message);
   renderStatus(el<HTMLParagraphElement>("#status"), "");
 }
@@ -280,7 +491,7 @@ function renderOptions(variable: ImageVariable): RenderOptions {
     rgbBands: state.rgbBands,
     autoscale: state.autoscale,
     attributes: variable.attributes,
-    flipY: state.spatialCoords?.flipY ?? false,
+    flipY: effectiveSpatialCoords()?.flipY ?? false,
     colormap: state.colormap,
     manualRanges: state.autoscale ? undefined : state.manualScale.ranges,
   };
@@ -295,7 +506,7 @@ function seedManualScaleFromCurrentFrame(): void {
   if (!state.variable || !state.currentPlane) return;
   state.manualScale.ranges = autoscaleRangesFromPlane(
     state.currentPlane,
-    state.spatialCoords?.flipY ?? false,
+    effectiveSpatialCoords()?.flipY ?? false,
     state.variable.attributes,
   );
   state.manualScale.needsSeed = false;
@@ -398,6 +609,7 @@ function pushViewerUrl(): void {
     autoscale: state.autoscale,
     manualScale: state.autoscale ? [] : state.manualScale.ranges,
     fillView: state.fillView,
+    spatialRegion: state.spatialRegion,
   });
 }
 
@@ -610,7 +822,7 @@ async function loadTimeCoordinate(dataset: OpenDatasetResult, variable: ImageVar
 
   refreshTimeIndices();
   if (state.timeIndices.length > 0) {
-    state.selection[timeAxis.name] = state.timeIndices.at(-1)!;
+    state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
     syncTimeSlider();
   }
 }
@@ -624,6 +836,10 @@ function applyViewerParams(params: ViewerUrlParams): void {
       state.manualScale.ranges = [];
       state.manualScale.needsSeed = false;
     }
+  } else if (!params.manualScale?.length) {
+    state.autoscale = true;
+    el<HTMLInputElement>("#autoscale").checked = true;
+    state.manualScale = { ranges: [], locked: false, needsSeed: false };
   }
 
   if (params.manualScale && params.manualScale.length > 0) {
@@ -646,6 +862,12 @@ function applyViewerParams(params: ViewerUrlParams): void {
   if (params.colormap) {
     state.colormap = params.colormap;
     updateColormapPickerSelection();
+  }
+
+  if (params.spatialRegion) {
+    state.spatialRegion = { ...params.spatialRegion };
+  } else {
+    state.spatialRegion = null;
   }
 
   if (params.datetime && state.timeDates.length > 0 && state.variable) {
@@ -676,11 +898,13 @@ async function selectVariable(path: string): Promise<void> {
   stopAnimation();
   clearFrameCache();
   state.variable = variable;
+  retainSpatialRegionForVariable(variable);
   state.selection = defaultSelection(variable);
   state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
   buildOtherDimControls(variable);
   buildColorControls(variable);
   updateCoastlineControlVisibility();
+  await preloadVariableCoordinates(state.dataset.root, variable);
   await Promise.all([
     loadTimeCoordinate(state.dataset, variable),
     loadSpatialCoords(state.dataset, variable),
@@ -690,18 +914,67 @@ async function selectVariable(path: string): Promise<void> {
   syncCoastlineOverlay(el<HTMLCanvasElement>("#canvas"));
 }
 
+async function loadPlaneWithFiniteFallback(
+  arr: Awaited<ReturnType<typeof openVariableArray>>,
+  variable: ImageVariable,
+  selection: Record<string, number>,
+  mode: "rgb" | "scalar",
+): Promise<{ plane: ImagePlane; timings: FrameTimings; usedFallback: boolean }> {
+  if (!state.dataset) {
+    throw new Error("Dataset not loaded");
+  }
+  const schema = state.dataset.schema;
+  const timeAxis = axisByRole(variable, "time");
+  let { plane, timings } = await loadPlaneWithCache(
+    planeCache,
+    arr,
+    variable,
+    schema,
+    selection,
+    mode,
+    planeLoadOptions(),
+  );
+  if (countFiniteSamples(plane) > 0 || !timeAxis || state.timeIndices.length === 0) {
+    return { plane, timings, usedFallback: false };
+  }
+
+  const currentTime = selection[timeAxis.name];
+  const candidates = timeIndicesSearchOrder(state.timeIndices).filter(
+    (index) => index !== currentTime,
+  );
+
+  for (const timeIndex of candidates) {
+    const trySelection = { ...selection, [timeAxis.name]: timeIndex };
+    const result = await loadPlaneWithCache(
+      planeCache,
+      arr,
+      variable,
+      schema,
+      trySelection,
+      mode,
+      planeLoadOptions(),
+    );
+    if (countFiniteSamples(result.plane) > 0) {
+      state.selection[timeAxis.name] = timeIndex;
+      syncTimeSlider();
+      return { plane: result.plane, timings: result.timings, usedFallback: true };
+    }
+  }
+
+  return { plane, timings, usedFallback: false };
+}
+
 async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameTimings | null> {
   if (!state.dataset || !state.variable) return null;
   const generation = ++state.renderGeneration;
   const status = el<HTMLParagraphElement>("#status");
   const timingsEl = el<HTMLParagraphElement>("#timings");
-  if (!options?.quiet) renderStatus(status, "Loading…");
+  if (!options?.quiet) setLoadingStatus("Loading…");
 
   try {
     const arr = await openVariableArray(state.dataset.root, state.variable);
     const options_ = renderOptions(state.variable);
-    const { plane, timings } = await loadPlaneWithCache(
-      planeCache,
+    const { plane, timings, usedFallback } = await loadPlaneWithFiniteFallback(
       arr,
       state.variable,
       state.selection,
@@ -709,13 +982,23 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     );
     if (generation !== state.renderGeneration) return null;
 
+    if (countFiniteSamples(plane) === 0) {
+      showErrorToast(
+        "Aucune valeur valide à cet instant — essayez un autre pas ou une autre date.",
+      );
+    } else if (usedFallback) {
+      showErrorToast(
+        "Aucune valeur valide à cet instant — affichage d'un pas voisin.",
+      );
+    }
+
     state.currentPlane = plane;
     hideIdleState();
     const canvas = el<HTMLCanvasElement>("#canvas");
     if (!state.autoscale && state.manualScale.needsSeed && !state.manualScale.locked) {
       state.manualScale.ranges = autoscaleRangesFromPlane(
         plane,
-        state.spatialCoords?.flipY ?? false,
+        effectiveSpatialCoords()?.flipY ?? false,
         state.variable.attributes,
       );
       state.manualScale.needsSeed = false;
@@ -723,12 +1006,19 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
       buildScaleControls(state.variable);
     }
     const renderStart = performance.now();
-    const { scaleMin, scaleMax } = renderImageToCanvas(
+    const layout = viewLayoutForPlane(plane);
+    state.viewOrigin = {
+      x: layout.displayTransform.regionX0,
+      y: layout.displayTransform.regionY0,
+    };
+    const { scaleMin, scaleMax, displayTransform } = await renderPlaneToView(
       canvas,
       plane,
       renderOptions(state.variable),
+      layout,
     );
     timings.renderMs = performance.now() - renderStart;
+    state.displayTransform = displayTransform;
     state.scaleRange = { min: scaleMin, max: scaleMax };
     const mode = displayMode(state.variable);
     const unit = variableDataUnit();
@@ -736,14 +1026,35 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     fitCanvasDisplay(canvas);
     refreshHistogram();
     syncTimeSlider();
-    renderStatus(status, "");
-    dismissErrorToast();
+    clearLoadingStatus();
+    const tileStatus = spatialRegionStatusHtml();
+    if (tileStatus) {
+      status.innerHTML = tileStatus;
+      status.querySelector<HTMLButtonElement>("#change-spatial-area")?.addEventListener(
+        "click",
+        () => {
+          void changeSpatialArea();
+        },
+        { once: true },
+      );
+    } else {
+      renderStatus(status, "");
+    }
+    if (countFiniteSamples(plane) > 0 && !usedFallback) {
+      dismissErrorToast();
+    }
     renderTimings(timingsEl, formatTimings(timings));
     pushViewerUrl();
     schedulePrefetch();
     return timings;
   } catch (error) {
     if (generation !== state.renderGeneration) return null;
+    clearLoadingStatus();
+    if (error instanceof ChunkLoadCancelledError) {
+      renderStatus(status, "");
+      renderTimings(timingsEl, "");
+      return null;
+    }
     renderTimings(timingsEl, "");
     reportError(error);
     return null;
@@ -814,6 +1125,7 @@ function mountLayout(): void {
         </div>
       </header>
       ${authDialogMarkup()}
+      ${chunkConfirmDialogMarkup()}
       <div id="error-toast" class="error-toast" role="alert" hidden></div>
       <div class="body" id="body-grid">
         <aside class="panel-left sidebar" id="panel-left">
@@ -922,18 +1234,27 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
   el<HTMLInputElement>("#url-input").value = toDisplayStoreUrl(params.storeUrl, params.auth);
   authDialogControls?.updateIndicator();
   renderStatus(el<HTMLParagraphElement>("#status"), "Opening store…");
+  resetChunkLoadConfirmations();
+  state.spatialRegion = null;
   try {
     state.dataset = await openDataset(params.storeUrl, params.auth);
     buildVariableSelect(state.dataset.schema);
 
+    const requested = params.variable;
+    const hasRequested =
+      requested !== undefined &&
+      state.dataset.schema.variables.some((item) => item.path === requested);
     const defaultVariable =
-      params.variable ??
+      (hasRequested ? requested : undefined) ??
       state.dataset.schema.variables.find((item) => item.path === "radiance")?.path ??
       state.dataset.schema.variables[0]?.path;
 
     if (defaultVariable) {
       await selectVariable(defaultVariable);
       applyViewerParams(params);
+      if (state.variable && state.spatialRegion) {
+        retainSpatialRegionForVariable(state.variable);
+      }
       await renderCurrentFrame();
     }
   } catch (error) {
@@ -949,12 +1270,28 @@ function wireCanvasHover(): void {
     if (!state.currentPlane || !state.variable) return;
     const pixel = canvasPixelCoords(canvas, event.clientX, event.clientY);
     if (!pixel) return;
+    const transform = state.displayTransform ?? {
+      planeWidth: state.currentPlane.shape[state.currentPlane.axes.x],
+      planeHeight: state.currentPlane.shape[state.currentPlane.axes.y],
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      regionX0: 0,
+      regionY0: 0,
+      regionWidth: state.currentPlane.shape[state.currentPlane.axes.x],
+      regionHeight: state.currentPlane.shape[state.currentPlane.axes.y],
+    };
+    const planePixel = canvasToPlanePixel(
+      pixel.x,
+      pixel.y,
+      transform,
+      effectiveSpatialCoords()?.flipY ?? false,
+    );
     const bandAxis = axisByRole(state.variable, "band");
     hoverBar.textContent = formatHoverLine(
       state.currentPlane,
-      pixel.x,
-      pixel.y,
-      state.spatialCoords,
+      planePixel.x,
+      planePixel.y,
+      effectiveSpatialCoords(),
       bandAxis?.coordinate?.labels,
       variableDataUnit(),
     );
@@ -969,10 +1306,9 @@ function wireEvents(): void {
   el<HTMLInputElement>("#url-input").addEventListener("change", (event) => {
     const url = (event.target as HTMLInputElement).value.trim();
     const resolved = url ? resolveStoreUrl(url) : "";
-    const bearerParam =
-      state.auth?.kind === "bearer" ? serializeBearerAuthParam(state.auth) : null;
-    const auth = resolved ? resolveStoreAuth(resolved, bearerParam) : undefined;
-    void loadViewer({ ...readViewerParams(), storeUrl: resolved, auth });
+    const authParam = state.auth ? serializeAuthParam(state.auth) ?? null : null;
+    const auth = resolved ? resolveStoreAuth(resolved, authParam) : undefined;
+    void loadViewer(freshViewerParamsForStore(resolved, auth));
   });
 
   el<HTMLSelectElement>("#variable-select").addEventListener("change", (event) => {
@@ -988,8 +1324,7 @@ function wireEvents(): void {
     refreshTimeIndices();
     const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
     if (timeAxis && state.timeIndices.length > 0) {
-      state.selection[timeAxis.name] =
-        state.timeIndices[Math.floor(state.timeIndices.length / 2)];
+      state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
     }
     void renderCurrentFrame();
   });
@@ -1027,24 +1362,31 @@ function wireEvents(): void {
   });
 
   window.addEventListener("resize", () => {
+    if (state.currentPlane && state.variable) {
+      void renderCurrentFrame({ quiet: true });
+      return;
+    }
     fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
   });
 }
 
 async function main(): Promise<void> {
+  subscribeChunkProgress(() => refreshLoadingStatus());
   mountLayout();
   initPanels();
+  wireChunkConfirmDialog();
   authDialogControls = wireAuthDialog({
     getStoreUrl: () =>
       el<HTMLInputElement>("#url-input").value.trim() || readViewerParams().storeUrl,
     getAuth: () => state.auth,
     onSave: (storeUrl, auth) => {
-      const resolved = resolveStoreUrl(storeUrl);
-      const nextUrl =
-        auth?.kind === "basic"
-          ? applyAuthToUrl(stripAuthFromUrl(resolved), auth)
-          : stripAuthFromUrl(resolved);
-      void loadViewer({ ...readViewerParams(), storeUrl: nextUrl, auth });
+      const resolved = stripAuthFromUrl(resolveStoreUrl(storeUrl));
+      const currentStore = state.dataset?.schema.url;
+      const params =
+        currentStore && sameStoreUrl(currentStore, resolved)
+          ? { ...readViewerParams(), storeUrl: resolved, auth }
+          : freshViewerParamsForStore(resolved, auth);
+      void loadViewer(params);
     },
   });
   wireEvents();
@@ -1053,6 +1395,31 @@ async function main(): Promise<void> {
     refreshHistogram();
   });
   wireCanvasHover();
+  const canvas = el<HTMLCanvasElement>("#canvas");
+  const canvasWrap = el<HTMLDivElement>("#canvas-wrap");
+  const canvasStack = document.querySelector<HTMLDivElement>(".canvas-stack");
+  if (!canvasStack) throw new Error("Missing .canvas-stack");
+  viewPan = wireViewPan(
+    canvasWrap,
+    canvasStack,
+    canvas,
+    () => !state.fillView,
+    () => {
+      const plane = state.currentPlane;
+      if (!plane) return { width: 0, height: 0 };
+      return {
+        width: plane.shape[plane.axes.x],
+        height: plane.shape[plane.axes.y],
+      };
+    },
+    () => ({
+      width: canvasWrap.clientWidth,
+      height: canvasWrap.clientHeight,
+    }),
+    () => state.viewOrigin,
+    commitViewOrigin,
+  );
+  viewPan.sync();
   const params = readViewerParams();
   if (params.storeUrl) {
     await loadViewer(params);

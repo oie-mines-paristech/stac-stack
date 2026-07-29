@@ -1,5 +1,6 @@
-import { coastlineLayout } from "../spatial.js";
+import { coastlineLayout, spatialCoordsMatchPlane } from "../spatial.js";
 import type { SpatialCoords } from "../hover.js";
+import type { ImagePlane } from "../render.js";
 
 const COASTLINE_HREF = `${import.meta.env.BASE_URL}coastlines.svg#positioner`;
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -9,10 +10,15 @@ export function updateCoastlineOverlay(
   canvas: HTMLCanvasElement,
   spatial: SpatialCoords | null,
   visible: boolean,
+  plane?: ImagePlane | null,
 ): void {
   if (!overlay) return;
 
-  if (!visible || !spatial?.xValues?.length || !spatial?.yValues?.length) {
+  const planeWidth = plane?.shape[plane.axes.x] ?? canvas.width;
+  const planeHeight = plane?.shape[plane.axes.y] ?? canvas.height;
+  const aligned = spatial && spatialCoordsMatchPlane(spatial, planeWidth, planeHeight);
+
+  if (!visible || !aligned || !spatial?.xValues?.length || !spatial?.yValues?.length) {
     overlay.setAttribute("hidden", "");
     overlay.style.display = "none";
     return;

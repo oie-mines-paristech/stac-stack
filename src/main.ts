@@ -20,11 +20,17 @@ import { canvasPixelCoords, formatHoverLine, type SpatialCoords } from "./hover.
 import { updateHistogram } from "./histogram.js";
 import {
   cancelPrefetch,
+  ChunkLoadCancelledError,
   loadPlaneWithCache,
   LruPlaneCache,
   prefetchDayPlanes,
   type FrameTimings,
+  type SpatialTilePick,
 } from "./plane_cache.js";
+import {
+  spatialChunkGrid,
+  tileIndexRanges,
+} from "./chunk_plan.js";
 import {
   autoscaleRangesFromPlane,
   countFiniteSamples,
@@ -36,6 +42,7 @@ import { defaultRgbBands, type ScaleRange } from "./scaling.js";
 import {
   openDataset,
   openVariableArray,
+  preloadVariableCoordinates,
   readCoordinateValues,
   type OpenDatasetResult,
 } from "./store.js";
@@ -48,13 +55,23 @@ import {
   timeIndicesSearchOrder,
   timeValuesToDates,
 } from "./time.js";
-import { shouldFlipYAxis, isLatLonVariable } from "./spatial.js";
+import { shouldFlipYAxis, canShowCoastlines } from "./spatial.js";
 import { CorsBlockedError } from "./proxy.js";
+import {
+  formatChunkProgressLine,
+  getChunkProgress,
+  subscribeChunkProgress,
+} from "./chunk_progress.js";
 import { updateCoastlineOverlay } from "./ui/coastline_overlay.js";
 import { updateColorLegend } from "./ui/color_legend.js";
 import { mountColormapPicker, type ColormapPickerHandle } from "./ui/colormap_picker.js";
 import { renderMetadataPanel, renderStatus, renderTimings } from "./ui/metadata.js";
 import { authDialogMarkup, wireAuthDialog } from "./ui/auth_dialog.js";
+import {
+  chunkConfirmDialogMarkup,
+  resetChunkLoadConfirmations,
+  wireChunkConfirmDialog,
+} from "./ui/chunk_confirm_dialog.js";
 import { dismissErrorToast, showErrorToast } from "./ui/toast.js";
 import { initPanels, wirePanels } from "./ui/panels.js";
 import {
@@ -88,6 +105,7 @@ interface AppState {
     needsSeed: boolean;
   };
   spatialCoords: SpatialCoords | null;
+  spatialTile: SpatialTilePick | null;
   currentPlane: ImagePlane | null;
   scaleRange: { min: number; max: number } | null;
   isPlaying: boolean;
@@ -107,6 +125,7 @@ const state: AppState = {
   autoscale: true,
   manualScale: { ranges: [], locked: false, needsSeed: false },
   spatialCoords: null,
+  spatialTile: null,
   currentPlane: null,
   scaleRange: null,
   isPlaying: false,
@@ -119,6 +138,25 @@ const PLAYBACK_INTERVAL_MS = 500;
 
 let suppressSliderEvent = false;
 const planeCache = new LruPlaneCache(128);
+let loadingStatusPrefix = "";
+
+function refreshLoadingStatus(): void {
+  if (!loadingStatusPrefix) return;
+  const status = el<HTMLParagraphElement>("#status");
+  renderStatus(
+    status,
+    formatChunkProgressLine(getChunkProgress(), loadingStatusPrefix),
+  );
+}
+
+function setLoadingStatus(prefix: string): void {
+  loadingStatusPrefix = prefix;
+  refreshLoadingStatus();
+}
+
+function clearLoadingStatus(): void {
+  loadingStatusPrefix = "";
+}
 
 function formatTimings(timings: FrameTimings): string {
   if (timings.cacheHit) {
@@ -169,19 +207,20 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
 
 function syncCoastlineOverlay(canvas: HTMLCanvasElement): void {
   const overlay = document.querySelector<SVGSVGElement>("#coastline-overlay");
-  const latLon = state.variable ? isLatLonVariable(state.variable) : false;
+  const show = state.variable ? canShowCoastlines(state.variable) : false;
   updateCoastlineOverlay(
     overlay,
     canvas,
-    state.spatialCoords,
-    latLon && state.showCoastlines,
+    effectiveSpatialCoords(),
+    show && state.showCoastlines,
+    state.currentPlane,
   );
 }
 
 function updateCoastlineControlVisibility(): void {
   const row = document.querySelector<HTMLElement>("#coastline-control");
   if (!row) return;
-  const visible = state.variable ? isLatLonVariable(state.variable) : false;
+  const visible = state.variable ? canShowCoastlines(state.variable) : false;
   row.hidden = !visible;
   if (!visible) {
     const checkbox = document.querySelector<HTMLInputElement>("#show-coastlines");
@@ -207,13 +246,55 @@ function toggleFillView(): void {
   pushViewerUrl();
 }
 
+function effectiveSpatialCoords(): SpatialCoords | null {
+  if (!state.spatialCoords || !state.spatialTile || !state.variable) {
+    return state.spatialCoords;
+  }
+  const grid = spatialChunkGrid(state.variable);
+  if (!grid) return state.spatialCoords;
+  const ranges = tileIndexRanges(grid, state.spatialTile.yChunk, state.spatialTile.xChunk);
+  const { xValues, yValues, ...rest } = state.spatialCoords;
+  return {
+    ...rest,
+    xValues: xValues ? xValues.slice(ranges.x[0], ranges.x[1]) : null,
+    yValues: yValues ? yValues.slice(ranges.y[0], ranges.y[1]) : null,
+  };
+}
+
+function planeLoadOptions() {
+  return {
+    spatialTile: state.spatialTile,
+    setSpatialTile: (tile: SpatialTilePick | null) => {
+      state.spatialTile = tile;
+    },
+  };
+}
+
+function spatialTileStatusHtml(): string {
+  if (!state.spatialTile || !state.variable) return "";
+  const grid = spatialChunkGrid(state.variable);
+  if (!grid) return "";
+  const { yChunk, xChunk } = state.spatialTile;
+  return (
+    `Showing spatial tile ${yChunk + 1}/${grid.yChunks} × ${xChunk + 1}/${grid.xChunks}. ` +
+    `<button type="button" id="change-spatial-area" class="link-button">Change area…</button>`
+  );
+}
+
+async function changeSpatialArea(): Promise<void> {
+  if (!state.spatialTile) return;
+  state.spatialTile = null;
+  clearFrameCache();
+  await renderCurrentFrame();
+}
+
 function clearFrameCache(): void {
   planeCache.clear();
   cancelPrefetch();
 }
 
 function schedulePrefetch(): void {
-  if (!state.dataset || !state.variable) return;
+  if (!state.dataset || !state.variable || state.spatialTile) return;
   const timeAxis = axisByRole(state.variable, "time");
   if (!timeAxis || state.timeIndices.length === 0) return;
 
@@ -233,6 +314,7 @@ function schedulePrefetch(): void {
       timeIndices,
       cache: planeCache,
       generation,
+      spatialTile: state.spatialTile,
       isCurrentGeneration: () => generation === state.renderGeneration,
     }),
   );
@@ -296,7 +378,7 @@ function renderOptions(variable: ImageVariable): RenderOptions {
     rgbBands: state.rgbBands,
     autoscale: state.autoscale,
     attributes: variable.attributes,
-    flipY: state.spatialCoords?.flipY ?? false,
+    flipY: effectiveSpatialCoords()?.flipY ?? false,
     colormap: state.colormap,
     manualRanges: state.autoscale ? undefined : state.manualScale.ranges,
   };
@@ -311,7 +393,7 @@ function seedManualScaleFromCurrentFrame(): void {
   if (!state.variable || !state.currentPlane) return;
   state.manualScale.ranges = autoscaleRangesFromPlane(
     state.currentPlane,
-    state.spatialCoords?.flipY ?? false,
+    effectiveSpatialCoords()?.flipY ?? false,
     state.variable.attributes,
   );
   state.manualScale.needsSeed = false;
@@ -695,12 +777,14 @@ async function selectVariable(path: string): Promise<void> {
   if (!variable) return;
   stopAnimation();
   clearFrameCache();
+  state.spatialTile = null;
   state.variable = variable;
   state.selection = defaultSelection(variable);
   state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
   buildOtherDimControls(variable);
   buildColorControls(variable);
   updateCoastlineControlVisibility();
+  await preloadVariableCoordinates(state.dataset.root, variable);
   await Promise.all([
     loadTimeCoordinate(state.dataset, variable),
     loadSpatialCoords(state.dataset, variable),
@@ -716,13 +800,19 @@ async function loadPlaneWithFiniteFallback(
   selection: Record<string, number>,
   mode: "rgb" | "scalar",
 ): Promise<{ plane: ImagePlane; timings: FrameTimings; usedFallback: boolean }> {
+  if (!state.dataset) {
+    throw new Error("Dataset not loaded");
+  }
+  const schema = state.dataset.schema;
   const timeAxis = axisByRole(variable, "time");
   let { plane, timings } = await loadPlaneWithCache(
     planeCache,
     arr,
     variable,
+    schema,
     selection,
     mode,
+    planeLoadOptions(),
   );
   if (countFiniteSamples(plane) > 0 || !timeAxis || state.timeIndices.length === 0) {
     return { plane, timings, usedFallback: false };
@@ -735,7 +825,15 @@ async function loadPlaneWithFiniteFallback(
 
   for (const timeIndex of candidates) {
     const trySelection = { ...selection, [timeAxis.name]: timeIndex };
-    const result = await loadPlaneWithCache(planeCache, arr, variable, trySelection, mode);
+    const result = await loadPlaneWithCache(
+      planeCache,
+      arr,
+      variable,
+      schema,
+      trySelection,
+      mode,
+      planeLoadOptions(),
+    );
     if (countFiniteSamples(result.plane) > 0) {
       state.selection[timeAxis.name] = timeIndex;
       syncTimeSlider();
@@ -751,7 +849,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
   const generation = ++state.renderGeneration;
   const status = el<HTMLParagraphElement>("#status");
   const timingsEl = el<HTMLParagraphElement>("#timings");
-  if (!options?.quiet) renderStatus(status, "Loading…");
+  if (!options?.quiet) setLoadingStatus("Loading…");
 
   try {
     const arr = await openVariableArray(state.dataset.root, state.variable);
@@ -780,7 +878,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     if (!state.autoscale && state.manualScale.needsSeed && !state.manualScale.locked) {
       state.manualScale.ranges = autoscaleRangesFromPlane(
         plane,
-        state.spatialCoords?.flipY ?? false,
+        effectiveSpatialCoords()?.flipY ?? false,
         state.variable.attributes,
       );
       state.manualScale.needsSeed = false;
@@ -801,7 +899,20 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     fitCanvasDisplay(canvas);
     refreshHistogram();
     syncTimeSlider();
-    renderStatus(status, "");
+    clearLoadingStatus();
+    const tileStatus = spatialTileStatusHtml();
+    if (tileStatus) {
+      status.innerHTML = tileStatus;
+      status.querySelector<HTMLButtonElement>("#change-spatial-area")?.addEventListener(
+        "click",
+        () => {
+          void changeSpatialArea();
+        },
+        { once: true },
+      );
+    } else {
+      renderStatus(status, "");
+    }
     if (countFiniteSamples(plane) > 0 && !usedFallback) {
       dismissErrorToast();
     }
@@ -811,6 +922,12 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     return timings;
   } catch (error) {
     if (generation !== state.renderGeneration) return null;
+    clearLoadingStatus();
+    if (error instanceof ChunkLoadCancelledError) {
+      renderStatus(status, "");
+      renderTimings(timingsEl, "");
+      return null;
+    }
     renderTimings(timingsEl, "");
     reportError(error);
     return null;
@@ -881,6 +998,7 @@ function mountLayout(): void {
         </div>
       </header>
       ${authDialogMarkup()}
+      ${chunkConfirmDialogMarkup()}
       <div id="error-toast" class="error-toast" role="alert" hidden></div>
       <div class="body" id="body-grid">
         <aside class="panel-left sidebar" id="panel-left">
@@ -989,6 +1107,8 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
   el<HTMLInputElement>("#url-input").value = toDisplayStoreUrl(params.storeUrl, params.auth);
   authDialogControls?.updateIndicator();
   renderStatus(el<HTMLParagraphElement>("#status"), "Opening store…");
+  resetChunkLoadConfirmations();
+  state.spatialTile = null;
   try {
     state.dataset = await openDataset(params.storeUrl, params.auth);
     buildVariableSelect(state.dataset.schema);
@@ -1025,7 +1145,7 @@ function wireCanvasHover(): void {
       state.currentPlane,
       pixel.x,
       pixel.y,
-      state.spatialCoords,
+      effectiveSpatialCoords(),
       bandAxis?.coordinate?.labels,
       variableDataUnit(),
     );
@@ -1102,8 +1222,10 @@ function wireEvents(): void {
 }
 
 async function main(): Promise<void> {
+  subscribeChunkProgress(() => refreshLoadingStatus());
   mountLayout();
   initPanels();
+  wireChunkConfirmDialog();
   authDialogControls = wireAuthDialog({
     getStoreUrl: () =>
       el<HTMLInputElement>("#url-input").value.trim() || readViewerParams().storeUrl,

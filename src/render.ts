@@ -1,5 +1,7 @@
 import * as zarr from "zarrita";
-import { chunkValue, materializeChunk, resolvePlaneAxes } from "./chunk_utils.js";
+import { loadFullPlane, type SpatialTileSelection } from "./array_load.js";
+import { spatialChunkGrid } from "./chunk_plan.js";
+import { chunkValue, resolvePlaneAxes } from "./chunk_utils.js";
 import { DEFAULT_COLORMAP, getColormapLut } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
 import {
@@ -59,26 +61,18 @@ export async function loadImagePlane(
   variable: ImageVariable,
   indices: number[],
   mode: "rgb" | "scalar" = "scalar",
+  spatialTile?: { yChunk: number; xChunk: number },
 ): Promise<ImagePlane> {
-  const selection = variable.axes.map((axis, dim) => {
-    if (axis.role === "x" || axis.role === "y") {
-      return zarr.slice(null);
+  let tileSelection: SpatialTileSelection | undefined;
+  if (spatialTile) {
+    const grid = spatialChunkGrid(variable);
+    if (grid) {
+      tileSelection = { ...spatialTile, grid };
     }
-    if (axis.role === "band" && mode === "rgb") {
-      return zarr.slice(null);
-    }
-    return indices[dim] ?? 0;
-  });
-
-  const chunk = await zarr.get(arr, selection);
-  const shape = [...chunk.shape];
-  const logical = materializeChunk(
-    chunk.data as ArrayLike<number>,
-    shape,
-    [...chunk.stride],
-  );
-  const axes = resolvePlaneAxes(variable, shape, mode === "rgb");
-  return { data: logical, shape, axes };
+  }
+  const loaded = await loadFullPlane(arr, variable, indices, mode, tileSelection);
+  const axes = resolvePlaneAxes(variable, loaded.shape, mode === "rgb");
+  return { data: loaded.data, shape: loaded.shape, axes };
 }
 
 export function collectPlaneBandSamples(plane: ImagePlane, flipY: boolean): number[][] {

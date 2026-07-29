@@ -87,6 +87,31 @@ The proxy path encodes scheme, host, and path dynamically — no hardcoded upstr
 
 When dedicated coordinate arrays are missing, the viewer falls back to `dimension_names` heuristics (`time`, `band`, `latitude`, `longitude`, `lat`, `lon`, `y`, `x`, …).
 
+## Chunk access pattern
+
+A **full spatial frame** (one time step, full latitude/longitude extent) reads one Zarr chunk per grid tile along each axis. The number of HTTP chunk requests is the product of chunk counts along time (fixed index), Y, and X — not the total array size.
+
+Example (Earth Data Hub–style): shape `[306816, 4096, 8193]`, `chunk_shape` `[24, 512, 512]` → **136 chunks** per frame (`1 × 8 × 17` spatial tiles; longitude needs 17 tiles because 8193 is not a multiple of 512). Logical decode size is ~128 MiB per frame (float32); on the wire you fetch compressed chunk files (Blosc/Zstd).
+
+**Prefetch** for a UTC day loads the **union** of chunk keys across all time steps in that day. If the time chunk covers 24 hourly steps (chunk time size ≥ 24), a full day still needs ~136 unique chunk files — not 24×136. Already-fetched chunks are served from the shared **byte cache** (`zarrita.withByteCaching`), so frames after the first load reuse network data.
+
+Before a heavy load, the viewer estimates **image chunk count**, **on-wire volume** (full Zarr chunk files, including e.g. 24 time steps per spatial chunk on EDH-style stores), and **decoded frame size**. When thresholds are exceeded (50 chunks or 50 MiB):
+
+- **Multi-tile spatial chunking** (e.g. EDH `8×17` tiles): a **spatial tile picker** opens — select one cell, then **Load a single area** (~1 HTTP chunk). Full-frame **Continue** is not offered (would fetch ~GB on the wire and crash the browser).
+- **Single spatial tile** (heavy due to time/band/coords, not spatial tiling): classic **Continue** / **Dismiss** dialog — full frame load is allowed with warning.
+
+The chosen spatial tile stays active for the session (time steps change without re-opening the dialog). Use **Change area…** in the status bar to pick another tile. Background prefetch is disabled while a tile is active.
+
+Example classic warning:
+
+*Requested 136 chunks (~1.3 GB on wire) for a 128 MB frame: This dataset doesn't seem optimized for image preview. Are you sure you want to continue?*
+
+**Coordinate arrays** (time, lat, lon, …) are loaded in full at variable selection (with multi-chunk fallback). **Image planes** validate assembled shape and fall back to tile-by-tile reads if needed.
+
+During fetch, `#status` shows progress (`Loading… 37/136 chunks · …`). HTTP chunk requests are limited to **4 concurrent** fetches globally. Background prefetch does not reset the progress counter.
+
+**Coastlines** require a rectilinear lat/lon grid. They are hidden for non-rectilinear grids (e.g. HEALPix / `GRIB_gridType: healpix`) and when coordinate length does not match the image size.
+
 ## License
 
 MIT — Copyright (c) Raphaël Jolivet - OIE - Mines Paris - PSL

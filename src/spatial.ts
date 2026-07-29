@@ -37,6 +37,32 @@ export function isLatLonVariable(variable: {
   return LON_NAMES.has(x.name.toLowerCase()) && LAT_NAMES.has(y.name.toLowerCase());
 }
 
+export function isRectilinearGrid(variable: {
+  attributes: Record<string, unknown>;
+}): boolean {
+  const gridType = variable.attributes.GRIB_gridType;
+  if (typeof gridType === "string" && gridType.toLowerCase() === "healpix") {
+    return false;
+  }
+  return true;
+}
+
+export function canShowCoastlines(variable: {
+  axes: Array<{ name: string; role: string }>;
+  attributes: Record<string, unknown>;
+}): boolean {
+  return isLatLonVariable(variable) && isRectilinearGrid(variable);
+}
+
+export function spatialCoordsMatchPlane(
+  spatial: { xValues: number[] | null; yValues: number[] | null },
+  planeWidth: number,
+  planeHeight: number,
+): boolean {
+  if (!spatial.xValues?.length || !spatial.yValues?.length) return false;
+  return spatial.xValues.length === planeWidth && spatial.yValues.length === planeHeight;
+}
+
 export interface CoastlineLayout {
   viewBox: string;
   /** Shift applied after the positioner transform (0–360° grids need +180). */

@@ -1,8 +1,11 @@
 import {
+  canShowCoastlines,
   coastlineLayout,
   displayRow,
   isLatLonVariable,
+  isRectilinearGrid,
   shouldFlipYAxis,
+  spatialCoordsMatchPlane,
 } from "./spatial.js";
 
 function assert(condition: boolean, message: string): void {
@@ -77,5 +80,49 @@ assert(lon180.shiftX === 0, "-180..180 grid needs no shift");
 
 const southUp = coastlineLayout({ xValues: [0, 360], yValues: [-90, 90], flipY: false });
 assert(southUp.flipY, "south-at-top latitude: overlay flip");
+
+const regional = coastlineLayout({
+  xValues: [-5, 0, 5],
+  yValues: [41, 46, 51],
+  flipY: false,
+});
+assert(regional.viewBox.includes("175 "), "regional lon mapped into coastline SVG space");
+assert(regional.viewBox.includes("10"), "regional width ~10 degrees");
+
+assert(
+  spatialCoordsMatchPlane({ xValues: [0, 1, 2], yValues: [10, 11] }, 3, 2),
+  "coords match plane dimensions",
+);
+assert(
+  !spatialCoordsMatchPlane({ xValues: [0, 1], yValues: [10, 11] }, 3, 2),
+  "coords mismatch detected",
+);
+
+assert(
+  !canShowCoastlines({
+    axes: [
+      { name: "longitude", role: "x" },
+      { name: "latitude", role: "y" },
+    ],
+    attributes: { GRIB_gridType: "healpix" },
+  }),
+  "HEALPix hides coastlines",
+);
+
+assert(
+  canShowCoastlines({
+    axes: [
+      { name: "longitude", role: "x" },
+      { name: "latitude", role: "y" },
+    ],
+    attributes: {},
+  }),
+  "rectilinear lat/lon allows coastlines",
+);
+
+assert(
+  isRectilinearGrid({ attributes: { GRIB_gridType: "healpix" } }) === false,
+  "healpix not rectilinear",
+);
 
 console.log("spatial.test.ts: ok");

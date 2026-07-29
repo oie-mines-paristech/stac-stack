@@ -71,7 +71,7 @@ export async function updateCoastlineOverlay(
         };
       })();
 
-  const warpedPaths = await warpCoastlinePaths(mapper);
+  const warpedPaths = await warpCoastlinePaths(mapper, spatial.xValues);
 
   overlay.removeAttribute("hidden");
   overlay.style.display = "block";

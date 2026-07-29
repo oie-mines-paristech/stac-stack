@@ -1,10 +1,23 @@
 import type { SpatialChunkGrid } from "./chunk_plan.js";
-import { geoToAxisIndex, normalizeLongitude, type GeoPixelMapper } from "./spatial.js";
+import {
+  geoToAxisIndex,
+  longitudeSpan,
+  normalizeLongitude,
+  unwrapLongitude,
+  type GeoPixelMapper,
+} from "./spatial.js";
 
 const COASTLINES_URL = `${import.meta.env?.BASE_URL ?? "/"}coastlines.svg`;
+const MAX_JUMP_FRACTION = 0.4;
+const GLOBAL_LON_SPAN = 350;
 
 export interface WarpedPath {
   d: string;
+}
+
+export interface WarpPathOptions {
+  xValues?: number[];
+  maxJumpFraction?: number;
 }
 
 type PathCommand =
@@ -145,19 +158,83 @@ function formatCoord(value: number): string {
   return Object.is(rounded, -0) ? "0" : String(rounded);
 }
 
+function lonLatToPixel(
+  lon: number,
+  lat: number,
+  mapper: GeoPixelMapper,
+  xValues: number[] | undefined,
+  prevLon: number | undefined,
+  prevIdx: number | undefined,
+): { px: number; py: number; idx: number | undefined } {
+  const py = mapper.latToPixel(lat);
+
+  if (!xValues || xValues.length <= 1) {
+    return { px: mapper.lonToPixel(lon), py, idx: undefined };
+  }
+
+  const n = xValues.length;
+  const globalGrid = longitudeSpan(xValues) >= GLOBAL_LON_SPAN;
+  const normalized = normalizeLongitude(lon, xValues);
+  let idx = geoToAxisIndex(xValues, normalized);
+
+  if (globalGrid && prevLon !== undefined && prevIdx !== undefined) {
+    const unwrapped = unwrapLongitude(lon, prevLon);
+    let rawIdx = geoToAxisIndex(xValues, normalizeLongitude(unwrapped, xValues));
+    while (rawIdx - prevIdx > n / 2) rawIdx -= n;
+    while (rawIdx - prevIdx < -n / 2) rawIdx += n;
+    idx = rawIdx;
+  }
+
+  const px = (idx * (mapper.width - 1)) / (n - 1);
+  return { px, py, idx };
+}
+
 /** Warp a path from lon/lat to pixel (or chunk) coordinates. */
-export function warpPathD(d: string, mapper: GeoPixelMapper): string {
+export function warpPathD(
+  d: string,
+  mapper: GeoPixelMapper,
+  options?: WarpPathOptions,
+): string {
   const commands = parsePathD(d);
   const parts: string[] = [];
+  const maxJump = mapper.width * (options?.maxJumpFraction ?? MAX_JUMP_FRACTION);
+  const xValues = options?.xValues;
+
+  let prevLon: number | undefined;
+  let prevPx: number | undefined;
+  let prevIdx: number | undefined;
 
   for (const command of commands) {
     if (command.type === "Z") {
       parts.push("Z");
+      prevLon = undefined;
+      prevPx = undefined;
+      prevIdx = undefined;
       continue;
     }
-    const px = mapper.lonToPixel(command.x);
-    const py = mapper.latToPixel(command.y);
-    parts.push(`${command.type}${formatCoord(px)} ${formatCoord(py)}`);
+
+    const { px, py, idx } = lonLatToPixel(
+      command.x,
+      command.y,
+      mapper,
+      xValues,
+      prevLon,
+      prevIdx,
+    );
+
+    let cmdType = command.type;
+    if (
+      command.type === "L" &&
+      prevPx !== undefined &&
+      Math.abs(px - prevPx) > maxJump
+    ) {
+      cmdType = "M";
+    }
+
+    parts.push(`${cmdType}${formatCoord(px)} ${formatCoord(py)}`);
+    prevLon = command.x;
+    prevPx = px;
+    prevIdx = idx;
   }
 
   return parts.join("");
@@ -166,15 +243,18 @@ export function warpPathD(d: string, mapper: GeoPixelMapper): string {
 export function warpCoastlinePathDs(
   pathDs: string[],
   mapper: GeoPixelMapper,
+  xValues?: number[],
 ): WarpedPath[] {
-  return pathDs.map((d) => ({ d: warpPathD(d, mapper) }));
+  const options = xValues ? { xValues } : undefined;
+  return pathDs.map((d) => ({ d: warpPathD(d, mapper, options) }));
 }
 
 export async function warpCoastlinePaths(
   mapper: GeoPixelMapper,
+  xValues?: number[],
 ): Promise<WarpedPath[]> {
   const pathDs = await getCoastlinePathDs();
-  return warpCoastlinePathDs(pathDs, mapper);
+  return warpCoastlinePathDs(pathDs, mapper, xValues);
 }
 
 /** Map lon/lat to chunk-space; optional Y flip for north-up picker display. */
@@ -206,5 +286,5 @@ export async function warpCoastlinePathsToChunkSpace(
   northUp = false,
 ): Promise<WarpedPath[]> {
   const mapper = createChunkSpaceMapper(xValues, yValues, grid, northUp);
-  return warpCoastlinePaths(mapper);
+  return warpCoastlinePaths(mapper, xValues);
 }

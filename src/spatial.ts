@@ -111,6 +111,19 @@ export function normalizeLongitude(lon: number, xValues: number[]): number {
   return normalized;
 }
 
+/** Pick the longitude representative closest to prevLon (for dateline-crossing segments). */
+export function unwrapLongitude(lon: number, prevLon: number): number {
+  let adjusted = lon;
+  while (adjusted - prevLon > 180) adjusted -= 360;
+  while (adjusted - prevLon < -180) adjusted += 360;
+  return adjusted;
+}
+
+export function longitudeSpan(xValues: number[]): number {
+  if (xValues.length < 2) return 0;
+  return Math.abs(xValues[xValues.length - 1]! - xValues[0]!);
+}
+
 export interface GeoPixelMapper {
   width: number;
   height: number;

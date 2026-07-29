@@ -298,8 +298,33 @@ function seedManualScaleFromCurrentFrame(): void {
     state.spatialCoords?.flipY ?? false,
     state.variable.attributes,
   );
+  state.manualScale.needsSeed = false;
   state.manualScale.locked = true;
   buildScaleControls(state.variable);
+}
+
+function commitManualScaleFromInputs(
+  band: number,
+  minInput: HTMLInputElement,
+  maxInput: HTMLInputElement,
+): boolean {
+  const min = Number(minInput.value);
+  const max = Number(maxInput.value);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return false;
+  state.manualScale.ranges[band] = { min, max };
+  state.manualScale.needsSeed = false;
+  state.manualScale.locked = true;
+  pushViewerUrl();
+  void renderCurrentFrame();
+  return true;
+}
+
+function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return ((...args: Parameters<T>) => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  }) as T;
 }
 
 function buildScaleControls(variable: ImageVariable): void {
@@ -347,15 +372,13 @@ function buildScaleControls(variable: ImageVariable): void {
     maxInput.dataset.bound = "max";
     maxInput.value = formatScaleInput(range.max);
 
-    const onChange = () => {
-      const min = Number(minInput.value);
-      const max = Number(maxInput.value);
-      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return;
-      state.manualScale.ranges[band] = { min, max };
-      void renderCurrentFrame();
-    };
-    minInput.addEventListener("change", onChange);
-    maxInput.addEventListener("change", onChange);
+    const commit = () => commitManualScaleFromInputs(band, minInput, maxInput);
+    const commitDebounced = debounce(commit, 300);
+
+    minInput.addEventListener("change", commit);
+    maxInput.addEventListener("change", commit);
+    minInput.addEventListener("input", commitDebounced);
+    maxInput.addEventListener("input", commitDebounced);
 
     row.append(label, minInput, maxInput);
     container.appendChild(row);
@@ -654,7 +677,7 @@ async function selectVariable(path: string): Promise<void> {
   clearFrameCache();
   state.variable = variable;
   state.selection = defaultSelection(variable);
-  state.manualScale = { ranges: [], locked: !state.autoscale, needsSeed: !state.autoscale };
+  state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
   buildOtherDimControls(variable);
   buildColorControls(variable);
   updateCoastlineControlVisibility();
@@ -689,7 +712,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     state.currentPlane = plane;
     hideIdleState();
     const canvas = el<HTMLCanvasElement>("#canvas");
-    if (!state.autoscale && state.manualScale.needsSeed) {
+    if (!state.autoscale && state.manualScale.needsSeed && !state.manualScale.locked) {
       state.manualScale.ranges = autoscaleRangesFromPlane(
         plane,
         state.spatialCoords?.flipY ?? false,
@@ -988,6 +1011,7 @@ function wireEvents(): void {
     if (!checked) {
       state.manualScale.needsSeed = false;
       seedManualScaleFromCurrentFrame();
+      pushViewerUrl();
     } else {
       state.manualScale.locked = false;
       state.manualScale.needsSeed = false;

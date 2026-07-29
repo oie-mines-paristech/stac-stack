@@ -1,17 +1,49 @@
+import type { StoreAuth } from "./auth.js";
+import {
+  parseAuthFromUrl,
+  parseBearerAuthParam,
+  resolveStoreAuth,
+  serializeBearerAuthParam,
+} from "./auth.js";
+import { DEFAULT_COLORMAP, isColormapName } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
 import { axisByRole } from "./dimensions.js";
-import { defaultRgbBands, rgbBandsEqual } from "./scaling.js";
+import { defaultRgbBands, rgbBandsEqual, type ScaleRange } from "./scaling.js";
+import { parseScaleParam, serializeScaleParam } from "./scale_url.js";
 import { formatDate, formatTime } from "./time.js";
+import {
+  decodeViewerHash,
+  encodeViewerHash,
+  type ViewerStateJsonV1,
+  viewerParamsToJson,
+} from "./url_hash.js";
+
+export type { StoreAuth };
 
 export interface ViewerUrlParams {
   storeUrl: string;
+  auth?: StoreAuth;
   variable?: string;
   datetime?: string;
   rgb?: [number, number, number];
+  colormap?: string;
   autoscale?: boolean;
+  manualScale?: ScaleRange[];
   fillView?: boolean;
   dims: Record<string, number>;
 }
+
+const RESERVED_VIEWER_PARAMS = new Set([
+  "url",
+  "variable",
+  "datetime",
+  "rgb",
+  "cmap",
+  "autoscale",
+  "scale",
+  "zoom",
+  "auth",
+]);
 
 function normalizeTrailingSlash(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
@@ -44,6 +76,10 @@ export function toShareableStoreUrl(resolved: string): string {
 
   try {
     const url = new URL(trimmed);
+    if (url.username || url.password) {
+      const href = url.href;
+      return href.endsWith("/") ? href : `${href}/`;
+    }
     if (url.origin === window.location.origin) {
       const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
       return path;
@@ -55,8 +91,43 @@ export function toShareableStoreUrl(resolved: string): string {
   return normalizeTrailingSlash(trimmed);
 }
 
-export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
-  const params = new URLSearchParams(window.location.search);
+/** Store URL for the url-input field (hides Bearer token, keeps Basic userinfo). */
+export function toDisplayStoreUrl(resolved: string, auth?: StoreAuth): string {
+  if (auth?.kind === "bearer") {
+    try {
+      const url = new URL(resolved);
+      url.username = "";
+      url.password = "";
+      return toShareableStoreUrl(url.href);
+    } catch {
+      return toShareableStoreUrl(resolved);
+    }
+  }
+  return toShareableStoreUrl(resolved);
+}
+
+function hasLegacyViewerParams(params: URLSearchParams): boolean {
+  for (const key of RESERVED_VIEWER_PARAMS) {
+    if (params.has(key)) return true;
+  }
+  return false;
+}
+
+export function parseLegacySearchParams(
+  search: string,
+  defaultStoreUrl?: string,
+): { params: ViewerUrlParams; hadLegacy: boolean } {
+  const params = new URLSearchParams(search);
+  if (!hasLegacyViewerParams(params)) {
+    return {
+      params: {
+        storeUrl: defaultStoreUrl?.trim() ? resolveStoreUrl(defaultStoreUrl) : "",
+        dims: {},
+      },
+      hadLegacy: false,
+    };
+  }
+
   const rgbParam = params.get("rgb");
   let rgb: [number, number, number] | undefined;
   if (rgbParam) {
@@ -68,15 +139,16 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
 
   const dims: Record<string, number> = {};
   for (const [key, value] of params.entries()) {
-    if (key === "url" || key === "variable" || key === "datetime" || key === "rgb" || key === "autoscale" || key === "zoom") {
-      continue;
-    }
+    if (RESERVED_VIEWER_PARAMS.has(key)) continue;
     const index = Number(value);
     if (Number.isFinite(index)) dims[key] = index;
   }
 
   const autoscaleParam = params.get("autoscale");
+  const scaleParam = params.get("scale");
+  const cmapParam = params.get("cmap");
   const zoomParam = params.get("zoom");
+  const authParam = params.get("auth");
   const rawUrl = params.get("url");
   const storeUrl =
     rawUrl !== null
@@ -86,36 +158,87 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
       : defaultStoreUrl?.trim()
         ? resolveStoreUrl(defaultStoreUrl)
         : "";
+
+  const auth = storeUrl ? resolveStoreAuth(storeUrl, authParam) : undefined;
+
   return {
-    storeUrl,
-    variable: params.get("variable") ?? undefined,
-    datetime: params.get("datetime") ?? undefined,
-    rgb,
-    autoscale: autoscaleParam === "0" ? false : autoscaleParam === "1" ? true : undefined,
-    fillView: zoomParam === "fill" ? true : zoomParam === "1" ? true : undefined,
-    dims,
+    hadLegacy: true,
+    params: {
+      storeUrl,
+      auth,
+      variable: params.get("variable") ?? undefined,
+      datetime: params.get("datetime") ?? undefined,
+      rgb,
+      colormap: cmapParam && isColormapName(cmapParam) ? cmapParam : undefined,
+      autoscale: autoscaleParam === "0" ? false : autoscaleParam === "1" ? true : undefined,
+      manualScale: scaleParam ? parseScaleParam(scaleParam) : undefined,
+      fillView: zoomParam === "fill" ? true : zoomParam === "1" ? true : undefined,
+      dims,
+    },
+  };
+}
+
+function writeViewerHashFromParams(params: ViewerUrlParams): void {
+  const shareable: ViewerUrlParams = {
+    ...params,
+    storeUrl: params.storeUrl ? toShareableStoreUrl(params.storeUrl) : "",
+  };
+  const json = viewerParamsToJson(shareable);
+  replaceLocationHash(json);
+}
+
+function replaceLocationHash(json: ViewerStateJsonV1): void {
+  const compressed = encodeViewerHash(json);
+  window.history.replaceState({}, "", `${window.location.pathname}#${compressed}`);
+}
+
+export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
+  const legacy = parseLegacySearchParams(window.location.search, defaultStoreUrl);
+  if (legacy.hadLegacy) {
+    writeViewerHashFromParams(legacy.params);
+    return legacy.params;
+  }
+
+  const fromHash = decodeViewerHash(
+    window.location.hash,
+    resolveStoreUrl,
+    defaultStoreUrl,
+  );
+  if (fromHash) return fromHash;
+
+  return {
+    storeUrl: defaultStoreUrl?.trim() ? resolveStoreUrl(defaultStoreUrl) : "",
+    dims: {},
   };
 }
 
 export function writeViewerParams(input: {
   storeUrl: string;
+  auth?: StoreAuth;
   variable: ImageVariable;
   timeDates: Date[];
   selection: Record<string, number>;
   rgbBands: [number, number, number];
+  colormap: string;
   autoscale: boolean;
+  manualScale: ScaleRange[];
   fillView: boolean;
 }): void {
-  const params = new URLSearchParams();
-  params.set("url", toShareableStoreUrl(input.storeUrl));
-  params.set("variable", input.variable.path);
+  const json: ViewerStateJsonV1 = { v: 1 };
+  json.u = toShareableStoreUrl(input.storeUrl);
+  json.var = input.variable.path;
+
+  if (input.auth?.kind === "bearer") {
+    const serialized = serializeBearerAuthParam(input.auth);
+    if (serialized) json.auth = serialized;
+  }
 
   const timeAxis = axisByRole(input.variable, "time");
   if (timeAxis) {
     const timeIndex = input.selection[timeAxis.name];
     const date = input.timeDates[timeIndex];
     if (date) {
-      params.set("datetime", date.toISOString().replace(/\.\d{3}Z$/, "Z"));
+      json.dt = date.toISOString().replace(/\.\d{3}Z$/, "Z");
     }
   }
 
@@ -123,28 +246,36 @@ export function writeViewerParams(input: {
   if (bandAxis && bandAxis.size >= 3) {
     const defaults = defaultRgbBands(bandAxis.coordinate?.labels, bandAxis.size);
     if (!rgbBandsEqual(input.rgbBands, defaults)) {
-      params.set("rgb", input.rgbBands.join(","));
+      json.rgb = [...input.rgbBands];
     }
+  } else if (input.colormap !== DEFAULT_COLORMAP) {
+    json.cmap = input.colormap;
   }
 
   if (!input.autoscale) {
-    params.set("autoscale", "0");
+    json.as = 0;
+    if (input.manualScale.length > 0) {
+      json.scale = serializeScaleParam(input.manualScale);
+    }
   }
 
   if (input.fillView) {
-    params.set("zoom", "fill");
+    json.zoom = "fill";
   }
 
+  const dims: Record<string, number> = {};
   for (const axis of input.variable.axes) {
     if (["time", "x", "y", "band"].includes(axis.role)) continue;
     const value = input.selection[axis.name];
     if (value !== undefined && value !== 0) {
-      params.set(axis.name, String(value));
+      dims[axis.name] = value;
     }
   }
+  if (Object.keys(dims).length > 0) {
+    json.dims = dims;
+  }
 
-  const next = `${window.location.pathname}?${params.toString()}`;
-  window.history.replaceState({}, "", next);
+  replaceLocationHash(json);
 }
 
 export function resolveTimeIndexFromDatetime(
@@ -178,3 +309,6 @@ export function applyDatetimeToControls(
 export function formatDatetimeLabel(date: Date): string {
   return `${formatDate(date)} ${formatTime(date)} UTC`;
 }
+
+// Re-export auth helpers used by tests
+export { parseAuthFromUrl, parseBearerAuthParam, serializeBearerAuthParam };

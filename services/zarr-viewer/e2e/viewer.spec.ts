@@ -7,10 +7,12 @@ async function waitForFrameReady(page: import("@playwright/test").Page): Promise
   await page.waitForSelector("#canvas", { state: "attached" });
   await page.waitForFunction(() => {
     const status = document.querySelector("#status")?.textContent ?? "";
+    const toast = document.querySelector("#error-toast");
+    const hasError = toast instanceof HTMLElement && !toast.hidden && toast.textContent !== "";
     return (
+      !hasError &&
       !status.includes("Loading") &&
-      !status.includes("Opening") &&
-      !status.startsWith("Error:")
+      !status.includes("Opening")
     );
   }, { timeout: 90_000 });
 }
@@ -19,7 +21,7 @@ async function assertCanvasRendered(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await waitForFrameReady(page);
-  await expect(page.locator("#status")).not.toContainText("Error:");
+  await expect(page.locator("#error-toast")).toBeHidden();
 
   const metrics = await page.evaluate(() => {
     const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
@@ -53,7 +55,7 @@ test("default page shows idle prompt", async ({ page }) => {
   const errors = collectPageErrors(page);
   await page.goto("/");
   await expect(page.locator("#viewer-idle")).toBeVisible();
-  await expect(page.locator("#viewer-idle")).toContainText("Saisissez une Store URL");
+  await expect(page.locator("#viewer-idle")).toContainText("Enter a store URL");
   await expect(page.locator("#url-input")).toHaveValue("");
   await expect(page.locator("#url-input")).not.toHaveValue(/demos\.oie-lab\.net/);
   expect(errors).toEqual([]);
@@ -73,8 +75,17 @@ test("path-only url is accepted in query param", async ({ page }) => {
   const target = `/?url=${encodeURIComponent("/stac/data/fisheye/sophia.zarr/")}`;
   await page.goto(target);
   await expect(page.locator("#url-input")).toHaveValue("/stac/data/fisheye/sophia.zarr/");
-  await expect(page.locator("#status")).toContainText("Error:");
-  await expect(page.locator("#status")).not.toContainText("Invalid URL");
+  await expect(page.locator("#error-toast")).toBeVisible();
+  await expect(page.locator("#error-toast")).not.toContainText("Invalid URL");
+});
+
+test("legacy query param migrates to hash in the address bar", async ({ page }) => {
+  const target = `/?url=${encodeURIComponent(SOPHIA)}&variable=radiance`;
+  await page.goto(target);
+  await waitForFrameReady(page);
+  await expect(page).toHaveURL(/^[^?]*#/);
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page.locator("#variable-select")).toHaveValue("radiance");
 });
 
 test("shared url restores variable and datetime", async ({ page }) => {
@@ -86,6 +97,5 @@ test("shared url restores variable and datetime", async ({ page }) => {
   await expect(page.locator("#variable-select")).toHaveValue("overexposure_mask");
   await expect(page.locator("#rgb-bands")).toBeVisible();
   await expect(page.locator("#autoscale")).not.toBeChecked();
-  await expect(page).toHaveURL(/variable=overexposure_mask/);
-  await expect(page).toHaveURL(/datetime=2024-06-16T12%3A00%3A00Z/);
+  await expect(page).toHaveURL(/^[^?]*#/);
 });

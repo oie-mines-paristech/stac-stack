@@ -1,0 +1,79 @@
+import {
+  applyAuthToUrl,
+  createAuthFetch,
+  parseAuthFromUrl,
+  parseBearerAuthParam,
+  resolveStoreAuth,
+  serializeBearerAuthParam,
+  storeUrlForFetch,
+  stripAuthFromUrl,
+} from "./auth.js";
+
+function assert(condition: boolean, message: string): void {
+  if (!condition) throw new Error(message);
+}
+
+assert(
+  parseBearerAuthParam("bearer:abc-123")?.kind === "bearer" &&
+    (parseBearerAuthParam("bearer:abc-123") as { token: string }).token === "abc-123",
+  "parseBearerAuthParam",
+);
+
+assert(parseBearerAuthParam("basic:user") === undefined, "reject non-bearer auth param");
+
+assert(
+  serializeBearerAuthParam({ kind: "bearer", token: "tok" }) === "bearer:tok",
+  "serializeBearerAuthParam",
+);
+
+const basicUrl = applyAuthToUrl("https://example.com/store.zarr/", {
+  kind: "basic",
+  username: "alice",
+  password: "secret",
+});
+assert(basicUrl.includes("alice") && basicUrl.includes("secret"), "applyAuthToUrl embeds credentials");
+
+const parsedBasic = parseAuthFromUrl(new URL(basicUrl));
+assert(parsedBasic?.kind === "basic" && parsedBasic.username === "alice", "parseAuthFromUrl round-trip");
+
+const stripped = stripAuthFromUrl(basicUrl);
+assert(!stripped.includes("alice") && stripped.startsWith("https://"), "stripAuthFromUrl removes userinfo");
+
+assert(
+  storeUrlForFetch(basicUrl, { kind: "basic", username: "bob", password: "pw" }).includes("bob"),
+  "storeUrlForFetch applies basic auth",
+);
+
+assert(
+  storeUrlForFetch("https://host/data.zarr/", { kind: "bearer", token: "x" }) ===
+    "https://host/data.zarr/",
+  "storeUrlForFetch keeps bearer URL clean",
+);
+
+assert(
+  resolveStoreAuth("https://u:p@host/data.zarr/", null)?.kind === "basic",
+  "resolveStoreAuth from userinfo",
+);
+
+assert(
+  resolveStoreAuth("https://host/data.zarr/", "bearer:tok")?.kind === "bearer",
+  "resolveStoreAuth bearer param wins",
+);
+
+async function testBearerFetch(): Promise<void> {
+  let bearerHeader = "";
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = ((input, init) => {
+    const request = new Request(input, init);
+    bearerHeader = request.headers.get("Authorization") ?? "";
+    return Promise.resolve(new Response("ok"));
+  }) as typeof fetch;
+
+  await createAuthFetch({ kind: "bearer", token: "my-token" })("https://example.com/");
+  assert(bearerHeader === "Bearer my-token", "createAuthFetch sets Authorization header");
+  globalThis.fetch = previousFetch;
+}
+
+await testBearerFetch();
+
+console.log("auth.test.ts: ok");

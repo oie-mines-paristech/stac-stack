@@ -35,6 +35,7 @@ const TIME_UNITS = /\ssince\s/i;
 const SPATIAL_X_NAMES = new Set([
   "projection_x_coordinate",
   "longitude",
+  "lon",
   "x",
   "raw_x",
   "column",
@@ -42,6 +43,7 @@ const SPATIAL_X_NAMES = new Set([
 const SPATIAL_Y_NAMES = new Set([
   "projection_y_coordinate",
   "latitude",
+  "lat",
   "y",
   "raw_y",
   "row",
@@ -101,8 +103,8 @@ function classifyDimByName(name: string): AxisRole | null {
   const lower = name.toLowerCase();
   if (lower === "time" || lower === "t") return "time";
   if (BAND_NAMES.has(lower) || lower.startsWith("band")) return "band";
-  if (lower === "x" || lower.endsWith("_x") || lower === "raw_x") return "x";
-  if (lower === "y" || lower.endsWith("_y") || lower === "raw_y") return "y";
+  if (SPATIAL_X_NAMES.has(lower) || lower.endsWith("_x") || lower === "x") return "x";
+  if (SPATIAL_Y_NAMES.has(lower) || lower.endsWith("_y") || lower === "y") return "y";
   return null;
 }
 

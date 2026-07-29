@@ -1,11 +1,14 @@
 import { chunkValue } from "./chunk_utils.js";
+import { formatCoord, formatValue } from "./format.js";
 import type { ImagePlane } from "./render.js";
+import { dataRowFromCanvas } from "./spatial.js";
 
 export interface SpatialCoords {
   xName: string;
   yName: string;
   xValues: number[] | null;
   yValues: number[] | null;
+  flipY: boolean;
 }
 
 export function formatHoverLine(
@@ -14,12 +17,15 @@ export function formatHoverLine(
   pixelY: number,
   spatial: SpatialCoords | null,
   bandLabels: string[] | undefined,
+  unit?: string,
 ): string {
   const { shape, axes, data } = plane;
   const width = shape[axes.x];
   const height = shape[axes.y];
   const x = Math.max(0, Math.min(width - 1, pixelX));
-  const y = Math.max(0, Math.min(height - 1, pixelY));
+  const canvasY = Math.max(0, Math.min(height - 1, pixelY));
+  const flipY = spatial?.flipY ?? false;
+  const y = dataRowFromCanvas(canvasY, height, flipY);
 
   const parts: string[] = [`idx x:${x} y:${y}`];
   if (spatial?.xValues && x < spatial.xValues.length) {
@@ -36,23 +42,17 @@ export function formatHoverLine(
 
   if (axes.band < 0) {
     const value = chunkValue(data, stride, coords);
-    parts.push(`value:${formatCoord(value)}`);
+    parts.push(`value:${formatValue(value, unit)}`);
   } else {
     const bandCount = shape[axes.band];
     for (let band = 0; band < bandCount; band++) {
       coords[axes.band] = band;
       const label = bandLabels?.[band] ?? `band${band}`;
-      parts.push(`${label}:${formatCoord(chunkValue(data, stride, coords))}`);
+      parts.push(`${label}:${formatValue(chunkValue(data, stride, coords), unit)}`);
     }
   }
 
   return parts.join(" · ");
-}
-
-function formatCoord(value: number): string {
-  if (!Number.isFinite(value)) return "NaN";
-  if (Number.isInteger(value)) return String(value);
-  return value.toFixed(4).replace(/\.?0+$/, "");
 }
 
 function computeStrides(shape: number[]): number[] {

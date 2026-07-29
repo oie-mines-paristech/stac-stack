@@ -1,3 +1,4 @@
+import { formatValue } from "./format.js";
 import { chunkValue } from "./chunk_utils.js";
 import type { ImagePlane } from "./render.js";
 
@@ -9,6 +10,13 @@ export interface BandHistogramSeries {
   color: string;
   counts: number[];
   displayed: boolean;
+  min: number;
+  max: number;
+}
+
+export interface HistogramDomain {
+  min: number;
+  max: number;
 }
 
 function computeStrides(shape: number[]): number[] {
@@ -56,6 +64,7 @@ export function buildBandHistogramSeries(
   plane: ImagePlane,
   bandLabels: string[] | undefined,
   rgbBandIndices: number[] | null,
+  domain?: HistogramDomain | null,
 ): BandHistogramSeries[] {
   const { data, shape, axes } = plane;
   const stride = computeStrides(shape);
@@ -79,8 +88,12 @@ export function buildBandHistogramSeries(
     }
     if (values.length === 0) continue;
 
-    const min = finiteMin(values);
-    const max = finiteMax(values);
+    const rawMin = finiteMin(values);
+    const rawMax = finiteMax(values);
+    const displayed = rgbBandIndices ? rgbBandIndices.includes(band) : band === 0;
+    const useDomain = domain && displayed && series.length === 0 && bandCount === 1;
+    const min = useDomain ? domain.min : rawMin;
+    const max = useDomain ? domain.max : rawMax;
     const counts = new Array<number>(BIN_COUNT).fill(0);
     const span = max > min ? max - min : 1;
     for (const value of values) {
@@ -89,12 +102,13 @@ export function buildBandHistogramSeries(
     }
 
     const label = bandLabels?.[band] ?? (bandCount === 1 ? "value" : `band ${band}`);
-    const displayed = rgbBandIndices ? rgbBandIndices.includes(band) : band === 0;
     series.push({
       label,
       color: bandColor(label, band, displayed),
       counts,
       displayed,
+      min,
+      max,
     });
   }
 
@@ -104,6 +118,7 @@ export function buildBandHistogramSeries(
 export function renderBandHistogram(
   canvas: HTMLCanvasElement,
   series: BandHistogramSeries[],
+  unit?: string,
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -122,7 +137,7 @@ export function renderBandHistogram(
     return;
   }
 
-  const pad = { left: 8, right: 8, top: 8, bottom: 20 };
+  const pad = { left: 8, right: 8, top: 8, bottom: 30 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   let maxCount = 1;
@@ -152,9 +167,31 @@ export function renderBandHistogram(
     ctx.fill();
   }
 
+  const axisMin = Math.min(...series.map((item) => item.min));
+  const axisMax = Math.max(...series.map((item) => item.max));
+  const baselineY = pad.top + plotH;
+  ctx.strokeStyle = "#6b7280";
+  ctx.fillStyle = "#9aa4b2";
+  ctx.font = "10px system-ui, sans-serif";
+  ctx.textBaseline = "top";
+
+  ctx.beginPath();
+  ctx.moveTo(pad.left, baselineY);
+  ctx.lineTo(pad.left, baselineY + 4);
+  ctx.moveTo(pad.left + plotW, baselineY);
+  ctx.lineTo(pad.left + plotW, baselineY + 4);
+  ctx.stroke();
+
+  const minLabel = formatValue(axisMin, unit);
+  const maxLabel = formatValue(axisMax, unit);
+  ctx.fillText(minLabel, pad.left, baselineY + 6);
+  const maxWidth = ctx.measureText(maxLabel).width;
+  ctx.fillText(maxLabel, pad.left + plotW - maxWidth, baselineY + 6);
+
   ctx.font = "11px system-ui, sans-serif";
+  ctx.textBaseline = "alphabetic";
   let legendX = pad.left;
-  const legendY = height - 6;
+  const legendY = height - 4;
   for (const band of series) {
     ctx.fillStyle = band.color;
     ctx.fillRect(legendX, legendY - 9, 10, 10);
@@ -170,6 +207,8 @@ export function updateHistogram(
   plane: ImagePlane | null,
   bandLabels: string[] | undefined,
   rgbBandIndices: number[] | null,
+  domain?: HistogramDomain | null,
+  unit?: string,
 ): void {
   if (!plane) {
     const ctx = canvas.getContext("2d");
@@ -181,5 +220,9 @@ export function updateHistogram(
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     return;
   }
-  renderBandHistogram(canvas, buildBandHistogramSeries(plane, bandLabels, rgbBandIndices));
+  renderBandHistogram(
+    canvas,
+    buildBandHistogramSeries(plane, bandLabels, rgbBandIndices, domain),
+    unit,
+  );
 }

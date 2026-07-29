@@ -39,6 +39,23 @@ export function resolveScaleRange(
   return arrayMinMax(samples);
 }
 
+export interface ScaleRange {
+  min: number;
+  max: number;
+}
+
+export function resolveManualScaleRange(
+  manual: ScaleRange | undefined,
+  samples: number[],
+  cfMin: unknown,
+  cfMax: unknown,
+): [number, number] {
+  if (manual && Number.isFinite(manual.min) && Number.isFinite(manual.max) && manual.max > manual.min) {
+    return [manual.min, manual.max];
+  }
+  return resolveScaleRange(samples, false, cfMin, cfMax);
+}
+
 export function cfScaleBounds(attributes: Record<string, unknown>): {
   min?: number;
   max?: number;

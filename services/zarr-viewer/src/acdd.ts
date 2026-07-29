@@ -26,7 +26,6 @@ export const ACDD_GLOBAL_KEYS = new Set([
   "geospatial_vertical_min",
   "geospatial_vertical_positive",
   "geospatial_vertical_units",
-  "history",
   "id",
   "institution",
   "keywords",
@@ -69,6 +68,8 @@ export function partitionAttributes(attrs: Record<string, unknown>): {
   for (const [key, value] of Object.entries(attrs)) {
     if (isTechnicalAttribute(key)) {
       extra.push([key, value]);
+    } else if (key === "history") {
+      extra.push([key, value]);
     } else if (ACDD_GLOBAL_KEYS.has(key)) {
       primary.push([key, value]);
     } else {
@@ -78,6 +79,14 @@ export function partitionAttributes(attrs: Record<string, unknown>): {
   primary.sort(([a], [b]) => a.localeCompare(b));
   extra.sort(([a], [b]) => a.localeCompare(b));
   return { primary, extra };
+}
+
+export function variableDisplayName(attrs: Record<string, unknown>, path: string): string {
+  const longName = attrs.long_name;
+  if (typeof longName === "string" && longName.trim()) return longName.trim();
+  const standardName = attrs.standard_name;
+  if (typeof standardName === "string" && standardName.trim()) return standardName.trim();
+  return path;
 }
 
 export function variableDescription(attrs: Record<string, unknown>): string | undefined {
@@ -109,6 +118,7 @@ export function variablePrimaryAttributes(
       continue;
     }
     if (isTechnicalAttribute(key)) continue;
+    if (key === "history") continue;
     if (ACDD_GLOBAL_KEYS.has(key)) primary.push([key, value]);
   }
   return primary;

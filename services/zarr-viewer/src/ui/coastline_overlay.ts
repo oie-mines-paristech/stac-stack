@@ -1,7 +1,7 @@
 import { coastlineLayout } from "../spatial.js";
 import type { SpatialCoords } from "../hover.js";
 
-const COASTLINE_HREF = "/coastlines.svg#positioner";
+const COASTLINE_HREF = `${import.meta.env.BASE_URL}coastlines.svg#positioner`;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function updateCoastlineOverlay(

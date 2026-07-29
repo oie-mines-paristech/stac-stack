@@ -99,3 +99,32 @@ test("shared url restores variable and datetime", async ({ page }) => {
   await expect(page.locator("#autoscale")).not.toBeChecked();
   await expect(page).toHaveURL(/^[^?]*#/);
 });
+
+test("manual scale min/max is persisted in hash url", async ({ page }) => {
+  await page.goto(`/?url=${encodeURIComponent(SOPHIA)}`);
+  await waitForFrameReady(page);
+  const hashBefore = await page.evaluate(() => window.location.hash);
+
+  await page.locator("#autoscale").uncheck();
+  await expect(page.locator("#scale-controls")).toBeVisible();
+
+  const minInput = page.locator('.scale-input[data-bound="min"]').first();
+  const maxInput = page.locator('.scale-input[data-bound="max"]').first();
+  await minInput.fill("100");
+  await maxInput.fill("200");
+  await maxInput.blur();
+
+  await page.waitForFunction(
+    (before) => window.location.hash.length > 1 && window.location.hash !== before,
+    hashBefore,
+    { timeout: 15_000 },
+  );
+
+  const shareUrl = await page.evaluate(() => window.location.pathname + window.location.hash);
+  await page.goto(shareUrl);
+  await waitForFrameReady(page);
+
+  await expect(page.locator("#autoscale")).not.toBeChecked();
+  await expect(minInput).toHaveValue("100");
+  await expect(maxInput).toHaveValue("200");
+});

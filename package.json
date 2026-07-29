@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@oie-minesparis-psl/jpegxl-zarr": "^0.1.0",
+    "lz-string": "^1.5.0",
     "zarrita": "^0.7.3"
   },
   "devDependencies": {

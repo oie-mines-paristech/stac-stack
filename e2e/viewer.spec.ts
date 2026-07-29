@@ -79,6 +79,15 @@ test("path-only url is accepted in query param", async ({ page }) => {
   await expect(page.locator("#error-toast")).not.toContainText("Invalid URL");
 });
 
+test("legacy query param migrates to hash in the address bar", async ({ page }) => {
+  const target = `/?url=${encodeURIComponent(SOPHIA)}&variable=radiance`;
+  await page.goto(target);
+  await waitForFrameReady(page);
+  await expect(page).toHaveURL(/^[^?]*#/);
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page.locator("#variable-select")).toHaveValue("radiance");
+});
+
 test("shared url restores variable and datetime", async ({ page }) => {
   const target =
     `/?url=${encodeURIComponent(SOPHIA)}` +
@@ -88,6 +97,5 @@ test("shared url restores variable and datetime", async ({ page }) => {
   await expect(page.locator("#variable-select")).toHaveValue("overexposure_mask");
   await expect(page.locator("#rgb-bands")).toBeVisible();
   await expect(page.locator("#autoscale")).not.toBeChecked();
-  await expect(page).toHaveURL(/variable=overexposure_mask/);
-  await expect(page).toHaveURL(/datetime=2024-06-16T12%3A00%3A00Z/);
+  await expect(page).toHaveURL(/^[^?]*#/);
 });

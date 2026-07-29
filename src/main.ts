@@ -234,7 +234,7 @@ function el<T extends HTMLElement>(selector: string): T {
 }
 
 const IDLE_MESSAGE =
-  "Enter a store URL in the field above, or open the viewer with ?url=";
+  "Enter a store URL in the field above, or open the viewer with a shared link (#…).";
 
 function reportError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);

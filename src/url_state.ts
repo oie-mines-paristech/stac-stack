@@ -11,6 +11,12 @@ import { axisByRole } from "./dimensions.js";
 import { defaultRgbBands, rgbBandsEqual, type ScaleRange } from "./scaling.js";
 import { parseScaleParam, serializeScaleParam } from "./scale_url.js";
 import { formatDate, formatTime } from "./time.js";
+import {
+  decodeViewerHash,
+  encodeViewerHash,
+  type ViewerStateJsonV1,
+  viewerParamsToJson,
+} from "./url_hash.js";
 
 export type { StoreAuth };
 
@@ -100,8 +106,28 @@ export function toDisplayStoreUrl(resolved: string, auth?: StoreAuth): string {
   return toShareableStoreUrl(resolved);
 }
 
-export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
-  const params = new URLSearchParams(window.location.search);
+function hasLegacyViewerParams(params: URLSearchParams): boolean {
+  for (const key of RESERVED_VIEWER_PARAMS) {
+    if (params.has(key)) return true;
+  }
+  return false;
+}
+
+export function parseLegacySearchParams(
+  search: string,
+  defaultStoreUrl?: string,
+): { params: ViewerUrlParams; hadLegacy: boolean } {
+  const params = new URLSearchParams(search);
+  if (!hasLegacyViewerParams(params)) {
+    return {
+      params: {
+        storeUrl: defaultStoreUrl?.trim() ? resolveStoreUrl(defaultStoreUrl) : "",
+        dims: {},
+      },
+      hadLegacy: false,
+    };
+  }
+
   const rgbParam = params.get("rgb");
   let rgb: [number, number, number] | undefined;
   if (rgbParam) {
@@ -136,16 +162,53 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
   const auth = storeUrl ? resolveStoreAuth(storeUrl, authParam) : undefined;
 
   return {
-    storeUrl,
-    auth,
-    variable: params.get("variable") ?? undefined,
-    datetime: params.get("datetime") ?? undefined,
-    rgb,
-    colormap: cmapParam && isColormapName(cmapParam) ? cmapParam : undefined,
-    autoscale: autoscaleParam === "0" ? false : autoscaleParam === "1" ? true : undefined,
-    manualScale: scaleParam ? parseScaleParam(scaleParam) : undefined,
-    fillView: zoomParam === "fill" ? true : zoomParam === "1" ? true : undefined,
-    dims,
+    hadLegacy: true,
+    params: {
+      storeUrl,
+      auth,
+      variable: params.get("variable") ?? undefined,
+      datetime: params.get("datetime") ?? undefined,
+      rgb,
+      colormap: cmapParam && isColormapName(cmapParam) ? cmapParam : undefined,
+      autoscale: autoscaleParam === "0" ? false : autoscaleParam === "1" ? true : undefined,
+      manualScale: scaleParam ? parseScaleParam(scaleParam) : undefined,
+      fillView: zoomParam === "fill" ? true : zoomParam === "1" ? true : undefined,
+      dims,
+    },
+  };
+}
+
+function writeViewerHashFromParams(params: ViewerUrlParams): void {
+  const shareable: ViewerUrlParams = {
+    ...params,
+    storeUrl: params.storeUrl ? toShareableStoreUrl(params.storeUrl) : "",
+  };
+  const json = viewerParamsToJson(shareable);
+  replaceLocationHash(json);
+}
+
+function replaceLocationHash(json: ViewerStateJsonV1): void {
+  const compressed = encodeViewerHash(json);
+  window.history.replaceState({}, "", `${window.location.pathname}#${compressed}`);
+}
+
+export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
+  const legacy = parseLegacySearchParams(window.location.search, defaultStoreUrl);
+  if (legacy.hadLegacy) {
+    writeViewerHashFromParams(legacy.params);
+    return legacy.params;
+  }
+
+  const fromHash = decodeViewerHash(
+    window.location.hash,
+    resolveStoreUrl,
+    defaultStoreUrl,
+  );
+  if (fromHash) return fromHash;
+
+  return {
+    storeUrl: defaultStoreUrl?.trim() ? resolveStoreUrl(defaultStoreUrl) : "",
+    dims: {},
   };
 }
 
@@ -161,13 +224,13 @@ export function writeViewerParams(input: {
   manualScale: ScaleRange[];
   fillView: boolean;
 }): void {
-  const params = new URLSearchParams();
-  params.set("url", toShareableStoreUrl(input.storeUrl));
-  params.set("variable", input.variable.path);
+  const json: ViewerStateJsonV1 = { v: 1 };
+  json.u = toShareableStoreUrl(input.storeUrl);
+  json.var = input.variable.path;
 
   if (input.auth?.kind === "bearer") {
     const serialized = serializeBearerAuthParam(input.auth);
-    if (serialized) params.set("auth", serialized);
+    if (serialized) json.auth = serialized;
   }
 
   const timeAxis = axisByRole(input.variable, "time");
@@ -175,7 +238,7 @@ export function writeViewerParams(input: {
     const timeIndex = input.selection[timeAxis.name];
     const date = input.timeDates[timeIndex];
     if (date) {
-      params.set("datetime", date.toISOString().replace(/\.\d{3}Z$/, "Z"));
+      json.dt = date.toISOString().replace(/\.\d{3}Z$/, "Z");
     }
   }
 
@@ -183,33 +246,36 @@ export function writeViewerParams(input: {
   if (bandAxis && bandAxis.size >= 3) {
     const defaults = defaultRgbBands(bandAxis.coordinate?.labels, bandAxis.size);
     if (!rgbBandsEqual(input.rgbBands, defaults)) {
-      params.set("rgb", input.rgbBands.join(","));
+      json.rgb = [...input.rgbBands];
     }
   } else if (input.colormap !== DEFAULT_COLORMAP) {
-    params.set("cmap", input.colormap);
+    json.cmap = input.colormap;
   }
 
   if (!input.autoscale) {
-    params.set("autoscale", "0");
+    json.as = 0;
     if (input.manualScale.length > 0) {
-      params.set("scale", serializeScaleParam(input.manualScale));
+      json.scale = serializeScaleParam(input.manualScale);
     }
   }
 
   if (input.fillView) {
-    params.set("zoom", "fill");
+    json.zoom = "fill";
   }
 
+  const dims: Record<string, number> = {};
   for (const axis of input.variable.axes) {
     if (["time", "x", "y", "band"].includes(axis.role)) continue;
     const value = input.selection[axis.name];
     if (value !== undefined && value !== 0) {
-      params.set(axis.name, String(value));
+      dims[axis.name] = value;
     }
   }
+  if (Object.keys(dims).length > 0) {
+    json.dims = dims;
+  }
 
-  const next = `${window.location.pathname}?${params.toString()}`;
-  window.history.replaceState({}, "", next);
+  replaceLocationHash(json);
 }
 
 export function resolveTimeIndexFromDatetime(

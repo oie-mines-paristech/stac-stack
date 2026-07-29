@@ -1,5 +1,6 @@
 import {
   applyAuthToUrl,
+  basicAuthHeader,
   createAuthFetch,
   parseAuthFromUrl,
   parseBearerAuthParam,
@@ -40,8 +41,19 @@ const stripped = stripAuthFromUrl(basicUrl);
 assert(!stripped.includes("alice") && stripped.startsWith("https://"), "stripAuthFromUrl removes userinfo");
 
 assert(
-  storeUrlForFetch(basicUrl, { kind: "basic", username: "bob", password: "pw" }).includes("bob"),
-  "storeUrlForFetch applies basic auth",
+  !storeUrlForFetch(basicUrl, { kind: "basic", username: "bob", password: "pw" }).includes("bob"),
+  "storeUrlForFetch strips credentials from fetch URL",
+);
+
+assert(
+  storeUrlForFetch(basicUrl, { kind: "basic", username: "bob", password: "pw" }) ===
+    "https://example.com/store.zarr/",
+  "storeUrlForFetch returns clean URL",
+);
+
+assert(
+  basicAuthHeader("edh", "key_abc") === `Basic ${btoa("edh:key_abc")}`,
+  "basicAuthHeader",
 );
 
 assert(
@@ -70,10 +82,30 @@ async function testBearerFetch(): Promise<void> {
   }) as typeof fetch;
 
   await createAuthFetch({ kind: "bearer", token: "my-token" })("https://example.com/");
-  assert(bearerHeader === "Bearer my-token", "createAuthFetch sets Authorization header");
+  assert(bearerHeader === "Bearer my-token", "createAuthFetch sets Bearer Authorization header");
+  globalThis.fetch = previousFetch;
+}
+
+async function testBasicFetch(): Promise<void> {
+  let basicHeader = "";
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = ((input, init) => {
+    const request = new Request(input, init);
+    basicHeader = request.headers.get("Authorization") ?? "";
+    return Promise.resolve(new Response("ok"));
+  }) as typeof fetch;
+
+  await createAuthFetch({ kind: "basic", username: "edh", password: "secret-key" })(
+    "https://example.com/zarr.json",
+  );
+  assert(
+    basicHeader === basicAuthHeader("edh", "secret-key"),
+    "createAuthFetch sets Basic Authorization header",
+  );
   globalThis.fetch = previousFetch;
 }
 
 await testBearerFetch();
+await testBasicFetch();
 
 console.log("auth.test.ts: ok");

@@ -212,6 +212,24 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
   };
 }
 
+/** True when two store URLs resolve to the same absolute location. */
+export function sameStoreUrl(a: string, b: string): boolean {
+  if (!a.trim() || !b.trim()) return false;
+  return resolveStoreUrl(a) === resolveStoreUrl(b);
+}
+
+/** Params for loading a different store — omits hash-specific viewer state. */
+export function freshViewerParamsForStore(
+  storeUrl: string,
+  auth?: StoreAuth,
+): ViewerUrlParams {
+  return {
+    storeUrl: resolveStoreUrl(storeUrl),
+    auth,
+    dims: {},
+  };
+}
+
 export function writeViewerParams(input: {
   storeUrl: string;
   auth?: StoreAuth;

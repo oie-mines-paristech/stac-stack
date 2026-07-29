@@ -24,6 +24,14 @@ export interface ImagePlane {
   axes: ReturnType<typeof resolvePlaneAxes>;
 }
 
+export function countFiniteSamples(plane: ImagePlane): number {
+  let count = 0;
+  for (const value of plane.data) {
+    if (Number.isFinite(value)) count++;
+  }
+  return count;
+}
+
 export interface RenderOptions {
   mode: "rgb" | "scalar";
   rgbBands: [number, number, number];

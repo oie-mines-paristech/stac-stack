@@ -501,7 +501,8 @@ legend {
 
 #rgb-bands[hidden],
 #colormap-row[hidden],
-#scale-controls[hidden] {
+#scale-controls[hidden],
+#coastline-control[hidden] {
   display: none !important;
 }
 

@@ -1,7 +1,8 @@
 import * as zarr from "zarrita";
 import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
 import type { StoreAuth } from "./auth.js";
-import { createAuthFetch, storeUrlForFetch } from "./auth.js";
+import { resolveStoreAuth, storeUrlForFetch } from "./auth.js";
+import { createStoreFetch } from "./proxy.js";
 import {
   normalizeV2Consolidated,
   normalizeV3Consolidated,
@@ -36,22 +37,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function createFetchStore(url: string, auth?: StoreAuth): zarr.FetchStore {
-  const authFetch = createAuthFetch(auth);
-  return new zarr.FetchStore(url, {
-    fetch(request) {
-      if (auth?.kind === "bearer") {
-        request.headers.set("Authorization", `Bearer ${auth.token}`);
-      }
-      return authFetch(request);
-    },
-  });
+  return new zarr.FetchStore(url, { fetch: createStoreFetch(auth) });
 }
 
 async function loadConsolidatedForSchema(
   fetchUrl: string,
   auth?: StoreAuth,
 ): Promise<ConsolidatedLoadResult> {
-  const authFetch = createAuthFetch(auth);
+  const authFetch = createStoreFetch(auth);
 
   const zarrJsonResponse = await authFetch(new URL("zarr.json", fetchUrl));
   if (zarrJsonResponse.ok) {
@@ -89,10 +82,11 @@ export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDa
     throw new Error("Empty store URL");
   }
 
-  const fetchUrl = storeUrlForFetch(normalized, auth);
-  const { consolidated, rootAttributes } = await loadConsolidatedForSchema(fetchUrl, auth);
+  const effectiveAuth = auth ?? resolveStoreAuth(normalized, null);
+  const fetchUrl = storeUrlForFetch(normalized, effectiveAuth);
+  const { consolidated, rootAttributes } = await loadConsolidatedForSchema(fetchUrl, effectiveAuth);
 
-  const baseStore = createFetchStore(fetchUrl, auth);
+  const baseStore = createFetchStore(fetchUrl, effectiveAuth);
   const cachedStore = zarr.withByteCaching(baseStore, { cache: byteCache });
   const store = await zarr.withConsolidatedMetadata(cachedStore, { format: ["v3", "v2"] });
   const root = zarr.root(store);

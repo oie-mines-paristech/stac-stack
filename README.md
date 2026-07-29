@@ -45,7 +45,7 @@ Click the **key icon** next to the Store URL field to configure credentials.
 
 | Mode | Viewer URL encoding | HTTP |
 |------|---------------------|------|
-| **Basic** | `?url=https://user:pass@host/path/` | Credentials embedded in store URL |
+| **Basic** | `?url=https://user:pass@host/path/` | `Authorization: Basic …` header (URL userinfo for sharing only) |
 | **Bearer** | `?url=https://host/path/&auth=bearer:<token>` | `Authorization: Bearer <token>` header |
 
 The viewer URL in the address bar is updated automatically so a copied link reproduces the same access (including credentials).
@@ -58,7 +58,23 @@ Example Bearer URL:
 http://localhost:5173/?url=https://example.com/data.zarr/&auth=bearer:YOUR_TOKEN
 ```
 
-Cross-origin stores must expose appropriate **CORS** headers (including `Authorization` when using Bearer tokens).
+Cross-origin stores must expose appropriate **CORS** headers (including `Authorization` when using Bearer tokens). Same-origin stores (e.g. `/stac/data/...` on the same host) work with a **static deployment** (`npm run build` → serve `dist/`).
+
+When CORS blocks a remote store (e.g. Earth Data Hub), the viewer **retries via a same-origin proxy** only if `VITE_ZARR_PROXY` was set at build time. Otherwise it shows an explicit error: static deployment cannot reach that remote resource.
+
+| Deployment | Proxy client (`VITE_ZARR_PROXY`) | Proxy server |
+|------------|----------------------------------|--------------|
+| Static only (`npm run build`) | off (default) | none — remote stores need CORS on the upstream |
+| Dev (`npm run dev`) | `./proxy/` (automatic) | Vite middleware in [`vite.config.ts`](vite.config.ts) |
+| Docker Compose | `./proxy/` (Dockerfile) | [`nginx/default.conf`](nginx/default.conf) |
+
+Example proxied request (browser → nginx/Vite → upstream):
+
+```
+/stac/viewer/proxy/https/api.earthdatahub.destine.eu/climate-dt-2/.../zarr.json
+```
+
+The proxy path encodes scheme, host, and path dynamically — no hardcoded upstream domain. `Authorization` (Basic or Bearer) is forwarded to the remote server.
 
 ## CF axis tagging (recommended)
 

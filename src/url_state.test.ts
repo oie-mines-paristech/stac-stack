@@ -9,6 +9,8 @@ import {
   parseLegacySearchParams,
   readViewerParams,
   resolveStoreUrl,
+  freshViewerParamsForStore,
+  sameStoreUrl,
   serializeBearerAuthParam,
   toShareableStoreUrl,
   type ViewerUrlParams,
@@ -192,6 +194,26 @@ withLocation("https://example.com", "/", () => {
   });
   const decoded = jsonToViewerParams(roundTripJson, resolveStoreUrl);
   assert(decoded.variable === "rad", "jsonToViewerParams round-trip");
+});
+
+withLocation("https://example.com", "/", () => {
+  assert(
+    sameStoreUrl(
+      "https://example.com/data.zarr/",
+      "/data.zarr/",
+    ),
+    "sameStoreUrl matches path-only against origin",
+  );
+  assert(
+    !sameStoreUrl("https://example.com/a.zarr/", "https://example.com/b.zarr/"),
+    "sameStoreUrl rejects different stores",
+  );
+  const fresh = freshViewerParamsForStore("/data/sophia.zarr/");
+  assert(fresh.variable === undefined, "freshViewerParamsForStore omits variable");
+  assert(
+    fresh.storeUrl === "https://example.com/data/sophia.zarr/",
+    "freshViewerParamsForStore resolves store url",
+  );
 });
 
 console.log("url_state.test.ts: ok");

@@ -50,15 +50,30 @@ export function stripAuthFromUrl(url: string): string {
   }
 }
 
-/** Return a fetch function that injects Bearer Authorization when needed. */
+/** RFC 7617 Basic Authorization header (UTF-8 safe). */
+export function basicAuthHeader(username: string, password: string): string {
+  const credentials = `${username}:${password}`;
+  const bytes = new TextEncoder().encode(credentials);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return `Basic ${btoa(binary)}`;
+}
+
+/** Return a fetch function that injects Authorization when needed. */
 export function createAuthFetch(auth?: StoreAuth): typeof fetch {
-  if (!auth || auth.kind === "basic") {
+  if (!auth) {
     return fetch.bind(globalThis);
   }
   return (input, init) => {
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
-    headers.set("Authorization", `Bearer ${auth.token}`);
+    if (auth.kind === "bearer") {
+      headers.set("Authorization", `Bearer ${auth.token}`);
+    } else {
+      headers.set("Authorization", basicAuthHeader(auth.username, auth.password));
+    }
     return fetch(new Request(request, { headers }));
   };
 }
@@ -92,19 +107,7 @@ export function resolveStoreAuth(
   }
 }
 
-/** Store URL used for HTTP requests (userinfo for Basic, clean URL for Bearer). */
-export function storeUrlForFetch(resolvedUrl: string, auth?: StoreAuth): string {
-  const base = stripAuthFromUrl(resolvedUrl);
-  if (auth?.kind === "basic") {
-    return applyAuthToUrl(base, auth);
-  }
-  try {
-    const parsed = new URL(resolvedUrl);
-    if (parsed.username || parsed.password) {
-      return resolvedUrl.endsWith("/") ? resolvedUrl : `${resolvedUrl}/`;
-    }
-  } catch {
-    // fall through
-  }
-  return base;
+/** Store URL used for HTTP requests (never embeds credentials — use Authorization header). */
+export function storeUrlForFetch(resolvedUrl: string, _auth?: StoreAuth): string {
+  return stripAuthFromUrl(resolvedUrl);
 }

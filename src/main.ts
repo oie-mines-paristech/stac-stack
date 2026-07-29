@@ -27,6 +27,7 @@ import {
 } from "./plane_cache.js";
 import {
   autoscaleRangesFromPlane,
+  countFiniteSamples,
   renderImageToCanvas,
   type ImagePlane,
   type RenderOptions,
@@ -41,11 +42,14 @@ import {
 import {
   dateRangeFromDates,
   defaultDayFromDates,
+  defaultTimeIndexForDay,
   filterTimeIndicesByDay,
   formatTime,
+  timeIndicesSearchOrder,
   timeValuesToDates,
 } from "./time.js";
 import { shouldFlipYAxis, isLatLonVariable } from "./spatial.js";
+import { CorsBlockedError } from "./proxy.js";
 import { updateCoastlineOverlay } from "./ui/coastline_overlay.js";
 import { updateColorLegend } from "./ui/color_legend.js";
 import { mountColormapPicker, type ColormapPickerHandle } from "./ui/colormap_picker.js";
@@ -55,9 +59,11 @@ import { dismissErrorToast, showErrorToast } from "./ui/toast.js";
 import { initPanels, wirePanels } from "./ui/panels.js";
 import {
   applyDatetimeToControls,
+  freshViewerParamsForStore,
   readViewerParams,
   resolveStoreUrl,
   resolveTimeIndexFromDatetime,
+  sameStoreUrl,
   toDisplayStoreUrl,
   writeViewerParams,
   type ViewerUrlParams,
@@ -177,6 +183,11 @@ function updateCoastlineControlVisibility(): void {
   if (!row) return;
   const visible = state.variable ? isLatLonVariable(state.variable) : false;
   row.hidden = !visible;
+  if (!visible) {
+    const checkbox = document.querySelector<HTMLInputElement>("#show-coastlines");
+    if (checkbox) checkbox.checked = false;
+    state.showCoastlines = false;
+  }
 }
 
 function updateZoomButton(): void {
@@ -237,7 +248,12 @@ const IDLE_MESSAGE =
   "Enter a store URL in the field above, or open the viewer with a shared link (#…).";
 
 function reportError(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+  const message =
+    error instanceof CorsBlockedError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : String(error);
   showErrorToast(message);
   renderStatus(el<HTMLParagraphElement>("#status"), "");
 }
@@ -610,7 +626,7 @@ async function loadTimeCoordinate(dataset: OpenDatasetResult, variable: ImageVar
 
   refreshTimeIndices();
   if (state.timeIndices.length > 0) {
-    state.selection[timeAxis.name] = state.timeIndices.at(-1)!;
+    state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
     syncTimeSlider();
   }
 }
@@ -624,6 +640,10 @@ function applyViewerParams(params: ViewerUrlParams): void {
       state.manualScale.ranges = [];
       state.manualScale.needsSeed = false;
     }
+  } else if (!params.manualScale?.length) {
+    state.autoscale = true;
+    el<HTMLInputElement>("#autoscale").checked = true;
+    state.manualScale = { ranges: [], locked: false, needsSeed: false };
   }
 
   if (params.manualScale && params.manualScale.length > 0) {
@@ -690,6 +710,42 @@ async function selectVariable(path: string): Promise<void> {
   syncCoastlineOverlay(el<HTMLCanvasElement>("#canvas"));
 }
 
+async function loadPlaneWithFiniteFallback(
+  arr: Awaited<ReturnType<typeof openVariableArray>>,
+  variable: ImageVariable,
+  selection: Record<string, number>,
+  mode: "rgb" | "scalar",
+): Promise<{ plane: ImagePlane; timings: FrameTimings; usedFallback: boolean }> {
+  const timeAxis = axisByRole(variable, "time");
+  let { plane, timings } = await loadPlaneWithCache(
+    planeCache,
+    arr,
+    variable,
+    selection,
+    mode,
+  );
+  if (countFiniteSamples(plane) > 0 || !timeAxis || state.timeIndices.length === 0) {
+    return { plane, timings, usedFallback: false };
+  }
+
+  const currentTime = selection[timeAxis.name];
+  const candidates = timeIndicesSearchOrder(state.timeIndices).filter(
+    (index) => index !== currentTime,
+  );
+
+  for (const timeIndex of candidates) {
+    const trySelection = { ...selection, [timeAxis.name]: timeIndex };
+    const result = await loadPlaneWithCache(planeCache, arr, variable, trySelection, mode);
+    if (countFiniteSamples(result.plane) > 0) {
+      state.selection[timeAxis.name] = timeIndex;
+      syncTimeSlider();
+      return { plane: result.plane, timings: result.timings, usedFallback: true };
+    }
+  }
+
+  return { plane, timings, usedFallback: false };
+}
+
 async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameTimings | null> {
   if (!state.dataset || !state.variable) return null;
   const generation = ++state.renderGeneration;
@@ -700,14 +756,23 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
   try {
     const arr = await openVariableArray(state.dataset.root, state.variable);
     const options_ = renderOptions(state.variable);
-    const { plane, timings } = await loadPlaneWithCache(
-      planeCache,
+    const { plane, timings, usedFallback } = await loadPlaneWithFiniteFallback(
       arr,
       state.variable,
       state.selection,
       options_.mode,
     );
     if (generation !== state.renderGeneration) return null;
+
+    if (countFiniteSamples(plane) === 0) {
+      showErrorToast(
+        "Aucune valeur valide à cet instant — essayez un autre pas ou une autre date.",
+      );
+    } else if (usedFallback) {
+      showErrorToast(
+        "Aucune valeur valide à cet instant — affichage d'un pas voisin.",
+      );
+    }
 
     state.currentPlane = plane;
     hideIdleState();
@@ -737,7 +802,9 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     refreshHistogram();
     syncTimeSlider();
     renderStatus(status, "");
-    dismissErrorToast();
+    if (countFiniteSamples(plane) > 0 && !usedFallback) {
+      dismissErrorToast();
+    }
     renderTimings(timingsEl, formatTimings(timings));
     pushViewerUrl();
     schedulePrefetch();
@@ -926,8 +993,12 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
     state.dataset = await openDataset(params.storeUrl, params.auth);
     buildVariableSelect(state.dataset.schema);
 
+    const requested = params.variable;
+    const hasRequested =
+      requested !== undefined &&
+      state.dataset.schema.variables.some((item) => item.path === requested);
     const defaultVariable =
-      params.variable ??
+      (hasRequested ? requested : undefined) ??
       state.dataset.schema.variables.find((item) => item.path === "radiance")?.path ??
       state.dataset.schema.variables[0]?.path;
 
@@ -972,7 +1043,7 @@ function wireEvents(): void {
     const bearerParam =
       state.auth?.kind === "bearer" ? serializeBearerAuthParam(state.auth) : null;
     const auth = resolved ? resolveStoreAuth(resolved, bearerParam) : undefined;
-    void loadViewer({ ...readViewerParams(), storeUrl: resolved, auth });
+    void loadViewer(freshViewerParamsForStore(resolved, auth));
   });
 
   el<HTMLSelectElement>("#variable-select").addEventListener("change", (event) => {
@@ -988,8 +1059,7 @@ function wireEvents(): void {
     refreshTimeIndices();
     const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
     if (timeAxis && state.timeIndices.length > 0) {
-      state.selection[timeAxis.name] =
-        state.timeIndices[Math.floor(state.timeIndices.length / 2)];
+      state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
     }
     void renderCurrentFrame();
   });
@@ -1044,7 +1114,12 @@ async function main(): Promise<void> {
         auth?.kind === "basic"
           ? applyAuthToUrl(stripAuthFromUrl(resolved), auth)
           : stripAuthFromUrl(resolved);
-      void loadViewer({ ...readViewerParams(), storeUrl: nextUrl, auth });
+      const currentStore = state.dataset?.schema.url;
+      const params =
+        currentStore && sameStoreUrl(currentStore, nextUrl)
+          ? { ...readViewerParams(), storeUrl: nextUrl, auth }
+          : freshViewerParamsForStore(nextUrl, auth);
+      void loadViewer(params);
     },
   });
   wireEvents();

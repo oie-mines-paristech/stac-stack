@@ -110,7 +110,29 @@ export function filterTimeIndices(dates: Date[], filter: TimeIndexFilter): numbe
 
 export function defaultDayFromDates(dates: Date[]): string {
   if (dates.length === 0) return formatDate(new Date());
-  return formatDate(dates.at(-1)!);
+  return formatDate(dates[0]);
+}
+
+/** Default time index within a day's indices (middle step, aligned with date-picker). */
+export function defaultTimeIndexForDay(timeIndices: number[]): number {
+  if (timeIndices.length === 0) {
+    throw new Error("defaultTimeIndexForDay requires at least one index");
+  }
+  return timeIndices[Math.floor(timeIndices.length / 2)]!;
+}
+
+/** Search order from middle of day outward (for finding a frame with valid data). */
+export function timeIndicesSearchOrder(timeIndices: number[]): number[] {
+  if (timeIndices.length === 0) return [];
+  const mid = Math.floor(timeIndices.length / 2);
+  const order: number[] = [timeIndices[mid]!];
+  for (let offset = 1; offset < timeIndices.length; offset++) {
+    const before = mid - offset;
+    const after = mid + offset;
+    if (before >= 0) order.push(timeIndices[before]!);
+    if (after < timeIndices.length) order.push(timeIndices[after]!);
+  }
+  return order;
 }
 
 export function dateRangeFromDates(dates: Date[]): { min: string; max: string } {

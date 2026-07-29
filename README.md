@@ -110,7 +110,7 @@ Example classic warning:
 
 During fetch, `#status` shows progress (`Loading… 37/136 chunks · …`). HTTP chunk requests are limited to **4 concurrent** fetches globally. Background prefetch does not reset the progress counter.
 
-**Coastlines** require a rectilinear lat/lon grid. They are hidden for non-rectilinear grids (e.g. HEALPix / `GRIB_gridType: healpix`) and when coordinate length does not match the image size.
+**Coastlines** require a lat/lon variable with 1D coordinate arrays whose length matches the image width and height. Coastlines are warped from [`public/coastlines.svg`](public/coastlines.svg) via lon/lat lookup (works for regular and irregular 1D grids). The spatial chunk picker shows a coastlines mini-map when coordinates are available.
 
 ## License
 

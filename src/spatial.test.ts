@@ -1,9 +1,12 @@
 import {
   canShowCoastlines,
   coastlineLayout,
+  createGeoPixelMapper,
   displayRow,
+  geoToAxisIndex,
   isLatLonVariable,
   isRectilinearGrid,
+  normalizeLongitude,
   shouldFlipYAxis,
   spatialCoordsMatchPlane,
 } from "./spatial.js";
@@ -99,14 +102,14 @@ assert(
 );
 
 assert(
-  !canShowCoastlines({
+  canShowCoastlines({
     axes: [
       { name: "longitude", role: "x" },
       { name: "latitude", role: "y" },
     ],
     attributes: { GRIB_gridType: "healpix" },
   }),
-  "HEALPix hides coastlines",
+  "lat/lon with healpix metadata still allows coastlines",
 );
 
 assert(
@@ -123,6 +126,28 @@ assert(
 assert(
   isRectilinearGrid({ attributes: { GRIB_gridType: "healpix" } }) === false,
   "healpix not rectilinear",
+);
+
+const era5Lons = Array.from({ length: 1440 }, (_, i) => (i * 360) / 1439);
+const era5Lats = Array.from({ length: 721 }, (_, i) => 90 - (i * 180) / 720);
+const j = geoToAxisIndex(era5Lons, era5Lons[720]!);
+assert(Math.abs(j - 720) < 0.05, "geoToAxisIndex on uniform lon grid");
+const i = geoToAxisIndex(era5Lats, 0);
+assert(Math.abs(i - 360) < 0.05, "geoToAxisIndex on uniform lat grid");
+
+assert(
+  Math.abs(normalizeLongitude(-170, [0, 360]) - 190) < 0.001,
+  "normalizeLongitude wraps into 0-360",
+);
+
+const pixelMapper = createGeoPixelMapper(era5Lons, era5Lats, false, 1440, 721);
+assert(
+  Math.abs(pixelMapper.lonToPixel(era5Lons[100]!) - 100) < 0.05,
+  "lonToPixel on ERA5-like grid",
+);
+assert(
+  Math.abs(pixelMapper.latToPixel(0) - 360) < 0.05,
+  "latToPixel on ERA5-like grid",
 );
 
 console.log("spatial.test.ts: ok");

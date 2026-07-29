@@ -12,6 +12,7 @@ import {
 import { beginChunkLoad, endChunkLoad } from "./chunk_progress.js";
 import type { DatasetSchema, ImageVariable } from "./dimensions.js";
 import { axisByRole } from "./dimensions.js";
+import type { SpatialCoords } from "./hover.js";
 import { loadImagePlane, type ImagePlane } from "./render.js";
 import { getCachedCoordinateValues } from "./store.js";
 import {
@@ -30,6 +31,7 @@ export type { SpatialRegionPick };
 export interface LoadPlaneOptions {
   spatialRegion: SpatialRegionPick | null;
   setSpatialRegion: (region: SpatialRegionPick | null) => void;
+  spatialCoords?: SpatialCoords | null;
 }
 
 /** @deprecated use SpatialRegionPick */
@@ -126,13 +128,20 @@ async function resolveChunkLoadChoice(
   variable: ImageVariable,
   variablePath: string,
   spatialRegion: SpatialRegionPick | null,
+  spatialCoords?: SpatialCoords | null,
 ): Promise<{ spatialRegion: SpatialRegionPick | null }> {
   if (spatialRegion || !shouldWarnChunkPlan(loadPlan)) {
     return { spatialRegion };
   }
 
   const grid = spatialChunkGrid(variable);
-  const choice = await promptChunkLoadChoice(loadPlan, grid, variablePath, variable);
+  const choice = await promptChunkLoadChoice(
+    loadPlan,
+    grid,
+    variablePath,
+    variable,
+    spatialCoords,
+  );
 
   if (choice.action === "dismiss") {
     throw new ChunkLoadCancelledError();
@@ -256,6 +265,7 @@ export async function loadPlaneWithCache(
     variable,
     variable.path,
     spatialRegion,
+    options.spatialCoords,
   );
   if (resolved.spatialRegion !== spatialRegion) {
     spatialRegion = resolved.spatialRegion;

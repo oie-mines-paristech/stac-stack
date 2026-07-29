@@ -51,7 +51,94 @@ export function canShowCoastlines(variable: {
   axes: Array<{ name: string; role: string }>;
   attributes: Record<string, unknown>;
 }): boolean {
-  return isLatLonVariable(variable) && isRectilinearGrid(variable);
+  return isLatLonVariable(variable);
+}
+
+/** Map a geographic coordinate to a fractional index along a 1D axis (O(log n)). */
+export function geoToAxisIndex(values: number[], coord: number): number {
+  const n = values.length;
+  if (n === 0) return 0;
+  if (n === 1) return 0;
+
+  const increasing = values[0] <= values[n - 1];
+  const min = Math.min(values[0], values[n - 1]);
+  const max = Math.max(values[0], values[n - 1]);
+
+  if (increasing) {
+    if (coord <= min) return 0;
+    if (coord >= max) return n - 1;
+  } else {
+    if (coord >= max) return 0;
+    if (coord <= min) return n - 1;
+  }
+
+  let lo = 0;
+  let hi = n - 1;
+
+  if (increasing) {
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (values[mid] <= coord) lo = mid;
+      else hi = mid;
+    }
+    const delta = values[lo + 1] - values[lo];
+    if (delta === 0) return lo;
+    return lo + (coord - values[lo]) / delta;
+  }
+
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (values[mid] >= coord) lo = mid;
+    else hi = mid;
+  }
+  const delta = values[lo] - values[lo + 1];
+  if (delta === 0) return lo;
+  return lo + (values[lo] - coord) / delta;
+}
+
+/** Wrap longitude into the interval spanned by xValues (handles 0–360 vs −180–180). */
+export function normalizeLongitude(lon: number, xValues: number[]): number {
+  const n = xValues.length;
+  if (n < 2) return lon;
+  const lonMin = Math.min(xValues[0], xValues[n - 1]);
+  const lonMax = Math.max(xValues[0], xValues[n - 1]);
+  const span = lonMax - lonMin;
+  if (span < 350) return lon;
+
+  let normalized = lon;
+  while (normalized < lonMin) normalized += 360;
+  while (normalized > lonMax) normalized -= 360;
+  return normalized;
+}
+
+export interface GeoPixelMapper {
+  width: number;
+  height: number;
+  flipY: boolean;
+  lonToPixel(lon: number): number;
+  latToPixel(lat: number): number;
+}
+
+export function createGeoPixelMapper(
+  xValues: number[],
+  yValues: number[],
+  flipY: boolean,
+  width: number,
+  height: number,
+): GeoPixelMapper {
+  return {
+    width,
+    height,
+    flipY,
+    lonToPixel(lon: number): number {
+      const normalized = normalizeLongitude(lon, xValues);
+      return geoToAxisIndex(xValues, normalized);
+    },
+    latToPixel(lat: number): number {
+      const dataIdx = geoToAxisIndex(yValues, lat);
+      return flipY ? height - 1 - dataIdx : dataIdx;
+    },
+  };
 }
 
 export function spatialCoordsMatchPlane(

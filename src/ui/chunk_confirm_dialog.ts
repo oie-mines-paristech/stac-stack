@@ -3,6 +3,7 @@ import {
   chunkPlanConfirmMessage,
   formatRegionLoadEstimate,
   isSpatiallyMultiChunk,
+  normalizeRegion,
   planSpatialRegion,
   shouldWarnChunkPlan,
   WARN_CHUNK_COUNT,
@@ -11,7 +12,14 @@ import {
   type SpatialChunkGrid,
   type SpatialRegionPick,
 } from "../chunk_plan.js";
+import { warpCoastlinePathsToChunkSpace } from "../coastline_warp.js";
 import type { ImageVariable } from "../dimensions.js";
+import type { SpatialCoords } from "../hover.js";
+import { canShowCoastlines, spatialCoordsMatchPlane } from "../spatial.js";
+import { strokeWidthForViewBox } from "./svg_stroke.js";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const PICKER_COASTLINE_STROKE_PX = 1.25;
 
 const confirmedVariables = new Set<string>();
 let pendingResolve: ((choice: ChunkLoadChoice) => void) | null = null;
@@ -30,7 +38,10 @@ export function chunkConfirmDialogMarkup(): string {
         <p id="chunk-confirm-message"></p>
         <div id="chunk-picker-panel" hidden>
           <p class="chunk-picker-hint muted">Click a corner, move the mouse, then click the opposite corner. Click the same cell twice for a single chunk.</p>
-          <div id="chunk-picker-grid" class="chunk-picker-grid" role="grid" aria-label="Spatial chunk grid"></div>
+          <div class="chunk-picker-map-wrap">
+            <svg id="chunk-picker-coastlines" class="chunk-picker-coastlines" hidden aria-hidden="true"></svg>
+            <div id="chunk-picker-grid" class="chunk-picker-grid" role="grid" aria-label="Spatial chunk grid"></div>
+          </div>
           <p id="chunk-picker-estimate" class="chunk-picker-estimate" hidden></p>
         </div>
         <div class="auth-dialog-actions chunk-confirm-actions">
@@ -52,6 +63,7 @@ function getElements() {
   const messageEl = document.querySelector<HTMLParagraphElement>("#chunk-confirm-message");
   const pickerPanel = document.querySelector<HTMLDivElement>("#chunk-picker-panel");
   const pickerGrid = document.querySelector<HTMLDivElement>("#chunk-picker-grid");
+  const pickerCoastlines = document.querySelector<SVGSVGElement>("#chunk-picker-coastlines");
   const estimateEl = document.querySelector<HTMLParagraphElement>("#chunk-picker-estimate");
   const dismissButton = document.querySelector<HTMLButtonElement>("#chunk-confirm-dismiss");
   const continueButton = document.querySelector<HTMLButtonElement>("#chunk-confirm-continue");
@@ -61,6 +73,7 @@ function getElements() {
     !messageEl ||
     !pickerPanel ||
     !pickerGrid ||
+    !pickerCoastlines ||
     !estimateEl ||
     !dismissButton ||
     !continueButton ||
@@ -73,6 +86,7 @@ function getElements() {
     messageEl,
     pickerPanel,
     pickerGrid,
+    pickerCoastlines,
     estimateEl,
     dismissButton,
     continueButton,
@@ -197,33 +211,105 @@ function handleCellClick(y: number, x: number): void {
   commitRegion(regionFromCells(selectionAnchor.y, selectionAnchor.x, y, x));
 }
 
-function renderPickerGrid(grid: SpatialChunkGrid, variable: ImageVariable): void {
+function renderPickerGrid(
+  grid: SpatialChunkGrid,
+  variable: ImageVariable,
+  initialRegion?: SpatialRegionPick | null,
+  northUp = false,
+): void {
   const { pickerGrid } = getElements();
   pickerGrid.innerHTML = "";
   pickerGrid.style.gridTemplateColumns = `repeat(${grid.xChunks}, 1fr)`;
-  pickerGrid.style.aspectRatio = `${grid.xChunks} / ${grid.yChunks}`;
-  committedRegion = null;
   pickerVariable = variable;
   selectionAnchor = null;
-  updateEstimate(null);
+  committedRegion = initialRegion ? normalizeRegion(grid, initialRegion) : null;
+  updateEstimate(committedRegion);
 
-  for (let y = 0; y < grid.yChunks; y++) {
+  for (let displayY = 0; displayY < grid.yChunks; displayY++) {
+    const dataY = northUp ? grid.yChunks - 1 - displayY : displayY;
     for (let x = 0; x < grid.xChunks; x++) {
       const cell = document.createElement("button");
       cell.type = "button";
       cell.className = "chunk-picker-cell";
-      cell.dataset.y = String(y);
+      cell.dataset.y = String(dataY);
       cell.dataset.x = String(x);
-      cell.title = `Tile row ${y + 1}, column ${x + 1}`;
+      cell.title = `Tile row ${dataY + 1}, column ${x + 1}`;
       cell.setAttribute("role", "gridcell");
 
       cell.addEventListener("click", (event) => {
         event.preventDefault();
-        handleCellClick(y, x);
+        handleCellClick(dataY, x);
       });
 
       pickerGrid.appendChild(cell);
     }
+  }
+
+  if (committedRegion) {
+    applyRegionHighlight(pickerGrid, committedRegion, false);
+  }
+}
+
+async function renderPickerCoastlines(
+  grid: SpatialChunkGrid,
+  variable: ImageVariable,
+  spatial: SpatialCoords | null | undefined,
+): Promise<void> {
+  const { pickerCoastlines, pickerGrid } = getElements();
+  pickerCoastlines.replaceChildren();
+  pickerCoastlines.setAttribute("hidden", "");
+  pickerGrid.style.aspectRatio = `${grid.xChunks} / ${grid.yChunks}`;
+
+  if (
+    !spatial ||
+    !canShowCoastlines(variable) ||
+    !spatial.xValues?.length ||
+    !spatial.yValues?.length ||
+    !spatialCoordsMatchPlane(spatial, grid.xAxisSize, grid.yAxisSize)
+  ) {
+    return;
+  }
+
+  try {
+    const northUp = spatial.flipY;
+    const warpedPaths = await warpCoastlinePathsToChunkSpace(
+      spatial.xValues,
+      spatial.yValues,
+      grid,
+      northUp,
+    );
+    pickerCoastlines.removeAttribute("hidden");
+    pickerCoastlines.setAttribute("viewBox", `0 0 ${grid.xChunks} ${grid.yChunks}`);
+    pickerCoastlines.setAttribute("preserveAspectRatio", "none");
+
+    pickerCoastlines.replaceChildren(
+      ...warpedPaths.map((warped) => {
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", warped.d);
+        path.setAttribute("class", "country");
+        return path;
+      }),
+    );
+  } catch {
+    pickerCoastlines.setAttribute("hidden", "");
+  }
+}
+
+function applyPickerCoastlineStroke(grid: SpatialChunkGrid): void {
+  const { pickerCoastlines, pickerGrid } = getElements();
+  if (pickerCoastlines.hasAttribute("hidden")) return;
+
+  const displayWidth =
+    pickerCoastlines.getBoundingClientRect().width || pickerGrid.offsetWidth;
+  if (displayWidth <= 0) return;
+
+  const strokeW = strokeWidthForViewBox(
+    Math.max(grid.xChunks, grid.yChunks),
+    displayWidth,
+    PICKER_COASTLINE_STROKE_PX,
+  );
+  for (const path of pickerCoastlines.querySelectorAll("path")) {
+    path.setAttribute("stroke-width", String(strokeW));
   }
 }
 
@@ -275,6 +361,8 @@ export async function promptChunkLoadChoice(
   grid: SpatialChunkGrid | null,
   variablePath: string,
   variable?: ImageVariable,
+  spatial?: SpatialCoords | null,
+  initialRegion?: SpatialRegionPick | null,
 ): Promise<ChunkLoadChoice> {
   if (!shouldWarnChunkPlan(plan)) return { action: "proceed" };
   if (confirmedVariables.has(variablePath)) return { action: "full" };
@@ -294,7 +382,8 @@ export async function promptChunkLoadChoice(
     pickerPanel.hidden = false;
     continueButton.hidden = true;
     loadTileButton.hidden = false;
-    renderPickerGrid(grid, variable);
+    renderPickerGrid(grid, variable, initialRegion, spatial?.flipY ?? false);
+    await renderPickerCoastlines(grid, variable, spatial);
   } else {
     messageEl.textContent = chunkPlanConfirmMessage(plan);
     pickerPanel.hidden = true;
@@ -309,13 +398,21 @@ export async function promptChunkLoadChoice(
       resolve(choice);
     };
     dialog.showModal();
+    if (multiTile && grid) {
+      requestAnimationFrame(() => applyPickerCoastlineStroke(grid));
+    }
   });
 }
 
 function pickerGridClear(): void {
   const pickerGrid = document.querySelector<HTMLDivElement>("#chunk-picker-grid");
+  const pickerCoastlines = document.querySelector<SVGSVGElement>("#chunk-picker-coastlines");
   const estimateEl = document.querySelector<HTMLParagraphElement>("#chunk-picker-estimate");
   if (pickerGrid) pickerGrid.innerHTML = "";
+  if (pickerCoastlines) {
+    pickerCoastlines.replaceChildren();
+    pickerCoastlines.setAttribute("hidden", "");
+  }
   if (estimateEl) {
     estimateEl.hidden = true;
     estimateEl.textContent = "";

@@ -24,13 +24,16 @@ import {
   LruPlaneCache,
   prefetchDayPlanes,
   type FrameTimings,
+  type LoadPlaneOptions,
   type SpatialRegionPick,
 } from "./plane_cache.js";
 import {
   normalizeRegion,
+  planLoadOperation,
   planSpatialRegion,
   spatialChunkGrid,
   regionIndexRanges,
+  isSpatiallyMultiChunk,
 } from "./chunk_plan.js";
 import {
   autoscaleRangesFromPlane,
@@ -45,6 +48,7 @@ import {
   openVariableArray,
   preloadVariableCoordinates,
   readCoordinateValues,
+  getCachedCoordinateValues,
   type OpenDatasetResult,
 } from "./store.js";
 import {
@@ -64,12 +68,14 @@ import {
   subscribeChunkProgress,
 } from "./chunk_progress.js";
 import { updateCoastlineOverlay } from "./ui/coastline_overlay.js";
+import { wireCanvasPan, type CanvasPanController } from "./ui/canvas_pan.js";
 import { updateColorLegend } from "./ui/color_legend.js";
 import { mountColormapPicker, type ColormapPickerHandle } from "./ui/colormap_picker.js";
 import { renderMetadataPanel, renderStatus, renderTimings } from "./ui/metadata.js";
 import { authDialogMarkup, wireAuthDialog } from "./ui/auth_dialog.js";
 import {
   chunkConfirmDialogMarkup,
+  promptChunkLoadChoice,
   resetChunkLoadConfirmations,
   wireChunkConfirmDialog,
 } from "./ui/chunk_confirm_dialog.js";
@@ -139,6 +145,7 @@ const PLAYBACK_INTERVAL_MS = 500;
 
 let suppressSliderEvent = false;
 const planeCache = new LruPlaneCache(128);
+let canvasPan: CanvasPanController | null = null;
 let loadingStatusPrefix = "";
 
 function refreshLoadingStatus(): void {
@@ -204,18 +211,21 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
 
   updateZoomButton();
   syncCoastlineOverlay(canvas);
+  canvasPan?.sync();
 }
 
 function syncCoastlineOverlay(canvas: HTMLCanvasElement): void {
   const overlay = document.querySelector<SVGSVGElement>("#coastline-overlay");
   const show = state.variable ? canShowCoastlines(state.variable) : false;
-  updateCoastlineOverlay(
+  void updateCoastlineOverlay(
     overlay,
     canvas,
     effectiveSpatialCoords(),
     show && state.showCoastlines,
     state.currentPlane,
-  );
+  ).catch(() => {
+    // Coastline fetch/parse failure is non-fatal for the viewer.
+  });
 }
 
 function updateCoastlineControlVisibility(): void {
@@ -243,6 +253,7 @@ function updateZoomButton(): void {
 
 function toggleFillView(): void {
   state.fillView = !state.fillView;
+  if (state.fillView) canvasPan?.reset();
   fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
   pushViewerUrl();
 }
@@ -268,12 +279,13 @@ function effectiveSpatialCoords(): SpatialCoords | null {
   };
 }
 
-function planeLoadOptions() {
+function planeLoadOptions(): LoadPlaneOptions {
   return {
     spatialRegion: state.spatialRegion,
     setSpatialRegion: (region: SpatialRegionPick | null) => {
       state.spatialRegion = region;
     },
+    spatialCoords: state.spatialCoords,
   };
 }
 
@@ -291,8 +303,47 @@ function spatialRegionStatusHtml(): string {
 }
 
 async function changeSpatialArea(): Promise<void> {
-  if (!state.spatialRegion) return;
-  state.spatialRegion = null;
+  if (!state.spatialRegion || !state.variable || !state.dataset) return;
+  const grid = spatialChunkGrid(state.variable);
+  if (!grid || !isSpatiallyMultiChunk(grid)) return;
+
+  const variable = state.variable;
+  const previous = { ...state.spatialRegion };
+  const cachedCoordPaths = new Set<string>();
+  for (const axis of variable.axes) {
+    const path = axis.coordinate?.path;
+    if (path && getCachedCoordinateValues(path) !== undefined) {
+      cachedCoordPaths.add(path);
+    }
+  }
+  const plan = planLoadOperation({
+    variable,
+    selection: state.selection,
+    mode: displayMode(variable),
+    schema: state.dataset.schema,
+    cachedCoordPaths,
+  });
+
+  const choice = await promptChunkLoadChoice(
+    plan,
+    grid,
+    variable.path,
+    variable,
+    state.spatialCoords,
+    previous,
+  );
+
+  if (choice.action === "dismiss") return;
+  if (choice.action === "region") {
+    state.spatialRegion = normalizeRegion(grid, {
+      y0: choice.y0,
+      y1: choice.y1,
+      x0: choice.x0,
+      x1: choice.x1,
+    });
+  } else if (choice.action === "full") {
+    state.spatialRegion = null;
+  }
   clearFrameCache();
   await renderCurrentFrame();
 }
@@ -1274,6 +1325,12 @@ async function main(): Promise<void> {
     refreshHistogram();
   });
   wireCanvasHover();
+  const canvas = el<HTMLCanvasElement>("#canvas");
+  const canvasWrap = el<HTMLDivElement>("#canvas-wrap");
+  const canvasStack = document.querySelector<HTMLDivElement>(".canvas-stack");
+  if (!canvasStack) throw new Error("Missing .canvas-stack");
+  canvasPan = wireCanvasPan(canvasWrap, canvasStack, canvas, () => !state.fillView);
+  canvasPan.sync();
   const params = readViewerParams();
   if (params.storeUrl) {
     await loadViewer(params);

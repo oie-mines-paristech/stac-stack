@@ -250,6 +250,19 @@ body.panel-dragging {
   overflow: hidden;
 }
 
+.canvas-wrap--pannable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas-wrap--pannable.canvas-wrap--panning {
+  cursor: grabbing;
+}
+
+.canvas-wrap--pannable #canvas {
+  cursor: inherit;
+}
+
 .viewer-idle[hidden] {
   display: none !important;
 }
@@ -395,16 +408,42 @@ body.panel-dragging {
   max-width: 32rem;
 }
 
+.chunk-picker-map-wrap {
+  position: relative;
+  margin-top: 0.75rem;
+  width: 100%;
+}
+
+.chunk-picker-coastlines {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.chunk-picker-coastlines[hidden] {
+  display: none !important;
+}
+
+.chunk-picker-coastlines path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+}
+
 .chunk-picker-grid {
   display: grid;
   gap: 2px;
-  margin-top: 0.75rem;
   width: 100%;
   max-height: 14rem;
   background: #252b36;
   border: 1px solid #394150;
   border-radius: 6px;
   padding: 2px;
+  position: relative;
+  z-index: 1;
 }
 
 .chunk-picker-cell {
@@ -752,10 +791,10 @@ legend {
   transform-origin: top left;
 }
 
-.coastline-overlay use {
+.coastline-overlay path,
+.coastline-overlay .country {
   fill: none;
   stroke: rgba(255, 255, 255, 0.65);
-  stroke-width: 0.25;
 }
 
 .hover-bar {

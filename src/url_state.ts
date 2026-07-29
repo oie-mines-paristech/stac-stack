@@ -1,17 +1,43 @@
+import type { StoreAuth } from "./auth.js";
+import {
+  parseAuthFromUrl,
+  parseBearerAuthParam,
+  resolveStoreAuth,
+  serializeBearerAuthParam,
+} from "./auth.js";
+import { DEFAULT_COLORMAP, isColormapName } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
 import { axisByRole } from "./dimensions.js";
-import { defaultRgbBands, rgbBandsEqual } from "./scaling.js";
+import { defaultRgbBands, rgbBandsEqual, type ScaleRange } from "./scaling.js";
+import { parseScaleParam, serializeScaleParam } from "./scale_url.js";
 import { formatDate, formatTime } from "./time.js";
+
+export type { StoreAuth };
 
 export interface ViewerUrlParams {
   storeUrl: string;
+  auth?: StoreAuth;
   variable?: string;
   datetime?: string;
   rgb?: [number, number, number];
+  colormap?: string;
   autoscale?: boolean;
+  manualScale?: ScaleRange[];
   fillView?: boolean;
   dims: Record<string, number>;
 }
+
+const RESERVED_VIEWER_PARAMS = new Set([
+  "url",
+  "variable",
+  "datetime",
+  "rgb",
+  "cmap",
+  "autoscale",
+  "scale",
+  "zoom",
+  "auth",
+]);
 
 function normalizeTrailingSlash(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
@@ -44,6 +70,10 @@ export function toShareableStoreUrl(resolved: string): string {
 
   try {
     const url = new URL(trimmed);
+    if (url.username || url.password) {
+      const href = url.href;
+      return href.endsWith("/") ? href : `${href}/`;
+    }
     if (url.origin === window.location.origin) {
       const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
       return path;
@@ -53,6 +83,21 @@ export function toShareableStoreUrl(resolved: string): string {
   }
 
   return normalizeTrailingSlash(trimmed);
+}
+
+/** Store URL for the url-input field (hides Bearer token, keeps Basic userinfo). */
+export function toDisplayStoreUrl(resolved: string, auth?: StoreAuth): string {
+  if (auth?.kind === "bearer") {
+    try {
+      const url = new URL(resolved);
+      url.username = "";
+      url.password = "";
+      return toShareableStoreUrl(url.href);
+    } catch {
+      return toShareableStoreUrl(resolved);
+    }
+  }
+  return toShareableStoreUrl(resolved);
 }
 
 export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
@@ -68,15 +113,16 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
 
   const dims: Record<string, number> = {};
   for (const [key, value] of params.entries()) {
-    if (key === "url" || key === "variable" || key === "datetime" || key === "rgb" || key === "autoscale" || key === "zoom") {
-      continue;
-    }
+    if (RESERVED_VIEWER_PARAMS.has(key)) continue;
     const index = Number(value);
     if (Number.isFinite(index)) dims[key] = index;
   }
 
   const autoscaleParam = params.get("autoscale");
+  const scaleParam = params.get("scale");
+  const cmapParam = params.get("cmap");
   const zoomParam = params.get("zoom");
+  const authParam = params.get("auth");
   const rawUrl = params.get("url");
   const storeUrl =
     rawUrl !== null
@@ -86,12 +132,18 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
       : defaultStoreUrl?.trim()
         ? resolveStoreUrl(defaultStoreUrl)
         : "";
+
+  const auth = storeUrl ? resolveStoreAuth(storeUrl, authParam) : undefined;
+
   return {
     storeUrl,
+    auth,
     variable: params.get("variable") ?? undefined,
     datetime: params.get("datetime") ?? undefined,
     rgb,
+    colormap: cmapParam && isColormapName(cmapParam) ? cmapParam : undefined,
     autoscale: autoscaleParam === "0" ? false : autoscaleParam === "1" ? true : undefined,
+    manualScale: scaleParam ? parseScaleParam(scaleParam) : undefined,
     fillView: zoomParam === "fill" ? true : zoomParam === "1" ? true : undefined,
     dims,
   };
@@ -99,16 +151,24 @@ export function readViewerParams(defaultStoreUrl?: string): ViewerUrlParams {
 
 export function writeViewerParams(input: {
   storeUrl: string;
+  auth?: StoreAuth;
   variable: ImageVariable;
   timeDates: Date[];
   selection: Record<string, number>;
   rgbBands: [number, number, number];
+  colormap: string;
   autoscale: boolean;
+  manualScale: ScaleRange[];
   fillView: boolean;
 }): void {
   const params = new URLSearchParams();
   params.set("url", toShareableStoreUrl(input.storeUrl));
   params.set("variable", input.variable.path);
+
+  if (input.auth?.kind === "bearer") {
+    const serialized = serializeBearerAuthParam(input.auth);
+    if (serialized) params.set("auth", serialized);
+  }
 
   const timeAxis = axisByRole(input.variable, "time");
   if (timeAxis) {
@@ -125,10 +185,15 @@ export function writeViewerParams(input: {
     if (!rgbBandsEqual(input.rgbBands, defaults)) {
       params.set("rgb", input.rgbBands.join(","));
     }
+  } else if (input.colormap !== DEFAULT_COLORMAP) {
+    params.set("cmap", input.colormap);
   }
 
   if (!input.autoscale) {
     params.set("autoscale", "0");
+    if (input.manualScale.length > 0) {
+      params.set("scale", serializeScaleParam(input.manualScale));
+    }
   }
 
   if (input.fillView) {
@@ -178,3 +243,6 @@ export function applyDatetimeToControls(
 export function formatDatetimeLabel(date: Date): string {
   return `${formatDate(date)} ${formatTime(date)} UTC`;
 }
+
+// Re-export auth helpers used by tests
+export { parseAuthFromUrl, parseBearerAuthParam, serializeBearerAuthParam };

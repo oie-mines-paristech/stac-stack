@@ -7,10 +7,12 @@ async function waitForFrameReady(page: import("@playwright/test").Page): Promise
   await page.waitForSelector("#canvas", { state: "attached" });
   await page.waitForFunction(() => {
     const status = document.querySelector("#status")?.textContent ?? "";
+    const toast = document.querySelector("#error-toast");
+    const hasError = toast instanceof HTMLElement && !toast.hidden && toast.textContent !== "";
     return (
+      !hasError &&
       !status.includes("Loading") &&
-      !status.includes("Opening") &&
-      !status.startsWith("Error:")
+      !status.includes("Opening")
     );
   }, { timeout: 90_000 });
 }

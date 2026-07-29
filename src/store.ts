@@ -1,5 +1,12 @@
 import * as zarr from "zarrita";
 import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
+import type { StoreAuth } from "./auth.js";
+import { createAuthFetch, storeUrlForFetch } from "./auth.js";
+import {
+  normalizeV2Consolidated,
+  normalizeV3Consolidated,
+  type ConsolidatedLoadResult,
+} from "./consolidated.js";
 import { buildDatasetSchema, type DatasetSchema, type ImageVariable } from "./dimensions.js";
 import { resolveStoreUrl } from "./url_state.js";
 
@@ -28,12 +35,45 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-async function loadZarrJson(url: string): Promise<Record<string, unknown>> {
-  const response = await fetch(new URL("zarr.json", url));
-  if (!response.ok) {
-    throw new Error(`Failed to fetch zarr.json (${response.status})`);
+function createFetchStore(url: string, auth?: StoreAuth): zarr.FetchStore {
+  const authFetch = createAuthFetch(auth);
+  return new zarr.FetchStore(url, {
+    fetch(request) {
+      if (auth?.kind === "bearer") {
+        request.headers.set("Authorization", `Bearer ${auth.token}`);
+      }
+      return authFetch(request);
+    },
+  });
+}
+
+async function loadConsolidatedForSchema(
+  fetchUrl: string,
+  auth?: StoreAuth,
+): Promise<ConsolidatedLoadResult> {
+  const authFetch = createAuthFetch(auth);
+
+  const zarrJsonResponse = await authFetch(new URL("zarr.json", fetchUrl));
+  if (zarrJsonResponse.ok) {
+    const zarrJson = (await zarrJsonResponse.json()) as Record<string, unknown>;
+    const consolidatedRaw = asRecord(asRecord(zarrJson.consolidated_metadata).metadata);
+    if (Object.keys(consolidatedRaw).length > 0) {
+      return normalizeV3Consolidated(consolidatedRaw, asRecord(zarrJson.attributes));
+    }
   }
-  return (await response.json()) as Record<string, unknown>;
+
+  const zmetadataResponse = await authFetch(new URL(".zmetadata", fetchUrl));
+  if (!zmetadataResponse.ok) {
+    const status = zmetadataResponse.status === 401 || zarrJsonResponse.status === 401
+      ? " (authentication required?)"
+      : "";
+    throw new Error(
+      `Failed to load consolidated metadata (zarr.json: ${zarrJsonResponse.status}, .zmetadata: ${zmetadataResponse.status})${status}`,
+    );
+  }
+
+  const zmetadata = (await zmetadataResponse.json()) as Record<string, unknown>;
+  return normalizeV2Consolidated(zmetadata);
 }
 
 export function resetDatasetCaches(): void {
@@ -41,29 +81,22 @@ export function resetDatasetCaches(): void {
   arrayCache.clear();
 }
 
-export async function openDataset(url: string): Promise<OpenDatasetResult> {
+export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDatasetResult> {
   ensureCodec();
   resetDatasetCaches();
   const normalized = resolveStoreUrl(url);
   if (!normalized) {
     throw new Error("Empty store URL");
   }
-  const zarrJson = await loadZarrJson(normalized);
-  const rootAttributes = asRecord(zarrJson.attributes);
-  const consolidated = asRecord(zarrJson.consolidated_metadata).metadata;
-  if (!consolidated || typeof consolidated !== "object") {
-    throw new Error("Store has no inline consolidated metadata in zarr.json");
-  }
 
-  const baseStore = new zarr.FetchStore(normalized);
+  const fetchUrl = storeUrlForFetch(normalized, auth);
+  const { consolidated, rootAttributes } = await loadConsolidatedForSchema(fetchUrl, auth);
+
+  const baseStore = createFetchStore(fetchUrl, auth);
   const cachedStore = zarr.withByteCaching(baseStore, { cache: byteCache });
-  const store = await zarr.withConsolidatedMetadata(cachedStore);
+  const store = await zarr.withConsolidatedMetadata(cachedStore, { format: ["v3", "v2"] });
   const root = zarr.root(store);
-  const schema = buildDatasetSchema(
-    normalized,
-    consolidated as Record<string, unknown>,
-    rootAttributes,
-  );
+  const schema = buildDatasetSchema(fetchUrl, consolidated, rootAttributes);
   if (schema.variables.length === 0) {
     throw new Error("No image-like variables found in consolidated metadata");
   }
@@ -91,8 +124,11 @@ export async function readCoordinateValues(
   coordPath: string,
 ): Promise<unknown[]> {
   ensureCodec();
-  const arr = await zarr.open(root.resolve(coordPath), { kind: "array" });
-  const chunk = await arr.getChunk([0]);
+  const node = await zarr.open(root.resolve(coordPath), { kind: "array" });
+  if (!(node instanceof zarr.Array)) {
+    throw new Error(`Expected coordinate array at ${coordPath}`);
+  }
+  const chunk = await zarr.get(node, [zarr.slice(null)]);
   const data = chunk.data as ArrayLike<number | bigint | string>;
   return Array.from(data as ArrayLike<unknown>);
 }

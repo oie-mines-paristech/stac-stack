@@ -5,7 +5,7 @@ import { loadImagePlane, type ImagePlane } from "./render.js";
 
 export function planeCacheKey(
   variablePath: string,
-  mode: "rgb" | "gray",
+  mode: "rgb" | "scalar",
   selection: Record<string, number>,
   timeAxisName: string | null,
   timeIndex: number | null,
@@ -56,7 +56,7 @@ export class LruPlaneCache {
 export interface PrefetchContext {
   arr: zarr.Array<zarr.DataType>;
   variable: ImageVariable;
-  mode: "rgb" | "gray";
+  mode: "rgb" | "scalar";
   selection: Record<string, number>;
   timeAxisName: string;
   timeIndices: number[];
@@ -121,7 +121,7 @@ export async function loadPlaneWithCache(
   arr: zarr.Array<zarr.DataType>,
   variable: ImageVariable,
   selection: Record<string, number>,
-  mode: "rgb" | "gray",
+  mode: "rgb" | "scalar",
 ): Promise<{ plane: ImagePlane; timings: FrameTimings }> {
   const timeAxis = axisByRole(variable, "time");
   const timeIndex = timeAxis ? selection[timeAxis.name] ?? null : null;

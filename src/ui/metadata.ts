@@ -5,6 +5,8 @@ import {
   variablePrimaryAttributes,
   variableUnit,
 } from "../acdd.js";
+import type { StoreAuth } from "../auth.js";
+import { formatAuthLabel } from "../auth.js";
 import type { CoordinateMeta, DatasetSchema, ImageVariable } from "../dimensions.js";
 import { shardSummary } from "../store.js";
 
@@ -52,6 +54,7 @@ export function renderMetadataPanel(
   container: HTMLElement,
   schema: DatasetSchema,
   variable: ImageVariable,
+  auth?: StoreAuth,
 ): void {
   const storePrimary = partitionAttributes(schema.rootAttributes).primary;
   const storeExtra = partitionAttributes(schema.rootAttributes).extra;
@@ -76,10 +79,15 @@ export function renderMetadataPanel(
   const shard = shardSummary(variable);
   if (shard) technicalEntries.unshift(["zarr_shards (summary)", shard]);
 
+  const authLabel = formatAuthLabel(auth);
+
   const extraSections = [
     renderExtraBlock("Store", storeExtra),
     renderExtraBlock(`Variable: ${variable.path}`, technicalEntries.map(([k, v]) => [k, v] as [string, unknown])),
     renderCoordinateExtra(linkedCoords),
+    authLabel
+      ? `<section class="extra-block"><h4>Authentication</h4><p class="muted">${escapeHtml(authLabel)}</p></section>`
+      : "",
     `<section class="extra-block"><h4>Store URL</h4><p class="muted">${escapeHtml(schema.url)}</p></section>`,
   ].join("");
 

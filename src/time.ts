@@ -110,7 +110,7 @@ export function filterTimeIndices(dates: Date[], filter: TimeIndexFilter): numbe
 
 export function defaultDayFromDates(dates: Date[]): string {
   if (dates.length === 0) return formatDate(new Date());
-  return formatDate(dates[Math.floor(dates.length / 2)]);
+  return formatDate(dates.at(-1)!);
 }
 
 export function dateRangeFromDates(dates: Date[]): { min: string; max: string } {

@@ -7,10 +7,12 @@ async function waitForFrameReady(page: import("@playwright/test").Page): Promise
   await page.waitForSelector("#canvas", { state: "attached" });
   await page.waitForFunction(() => {
     const status = document.querySelector("#status")?.textContent ?? "";
+    const toast = document.querySelector("#error-toast");
+    const hasError = toast instanceof HTMLElement && !toast.hidden && toast.textContent !== "";
     return (
+      !hasError &&
       !status.includes("Loading") &&
-      !status.includes("Opening") &&
-      !status.startsWith("Error:")
+      !status.includes("Opening")
     );
   }, { timeout: 90_000 });
 }
@@ -19,7 +21,7 @@ async function assertCanvasRendered(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await waitForFrameReady(page);
-  await expect(page.locator("#status")).not.toContainText("Error:");
+  await expect(page.locator("#error-toast")).toBeHidden();
 
   const metrics = await page.evaluate(() => {
     const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
@@ -53,7 +55,7 @@ test("default page shows idle prompt", async ({ page }) => {
   const errors = collectPageErrors(page);
   await page.goto("/");
   await expect(page.locator("#viewer-idle")).toBeVisible();
-  await expect(page.locator("#viewer-idle")).toContainText("Saisissez une Store URL");
+  await expect(page.locator("#viewer-idle")).toContainText("Enter a store URL");
   await expect(page.locator("#url-input")).toHaveValue("");
   await expect(page.locator("#url-input")).not.toHaveValue(/demos\.oie-lab\.net/);
   expect(errors).toEqual([]);
@@ -73,8 +75,8 @@ test("path-only url is accepted in query param", async ({ page }) => {
   const target = `/?url=${encodeURIComponent("/stac/data/fisheye/sophia.zarr/")}`;
   await page.goto(target);
   await expect(page.locator("#url-input")).toHaveValue("/stac/data/fisheye/sophia.zarr/");
-  await expect(page.locator("#status")).toContainText("Error:");
-  await expect(page.locator("#status")).not.toContainText("Invalid URL");
+  await expect(page.locator("#error-toast")).toBeVisible();
+  await expect(page.locator("#error-toast")).not.toContainText("Invalid URL");
 });
 
 test("shared url restores variable and datetime", async ({ page }) => {

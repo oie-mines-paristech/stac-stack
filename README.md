@@ -97,10 +97,10 @@ Example (Earth Data Hub–style): shape `[306816, 4096, 8193]`, `chunk_shape` `[
 
 Before a heavy load, the viewer estimates **image chunk count**, **on-wire volume** (full Zarr chunk files, including e.g. 24 time steps per spatial chunk on EDH-style stores), and **decoded frame size**. When thresholds are exceeded (50 chunks or 50 MiB):
 
-- **Multi-tile spatial chunking** (e.g. EDH `8×17` tiles): a **spatial tile picker** opens — select one cell, then **Load a single area** (~1 HTTP chunk). Full-frame **Continue** is not offered (would fetch ~GB on the wire and crash the browser).
+- **Multi-tile spatial chunking** (e.g. EDH `8×17` tiles): a **spatial region picker** opens — click one cell or drag a rectangle, then **Load selected area**. An estimate (chunk count, decoded size, on-wire size) appears under the grid; it turns **orange with a warning** if the selection still exceeds recommended limits (50 chunks / 50 MiB). Full-frame **Continue** is not offered (would fetch ~GB on the wire and crash the browser).
 - **Single spatial tile** (heavy due to time/band/coords, not spatial tiling): classic **Continue** / **Dismiss** dialog — full frame load is allowed with warning.
 
-The chosen spatial tile stays active for the session (time steps change without re-opening the dialog). Use **Change area…** in the status bar to pick another tile. Background prefetch is disabled while a tile is active.
+The chosen spatial region stays active for the session (time steps change without re-opening the dialog; variable changes keep the same region when the grid is compatible). It is also persisted in the **URL hash** as `region: [y0, y1, x0, x1]`. Use **Change area…** in the status bar to pick another region. Background prefetch is disabled while a region is active.
 
 Example classic warning:
 

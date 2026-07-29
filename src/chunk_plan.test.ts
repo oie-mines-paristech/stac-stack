@@ -2,12 +2,15 @@ import {
   chunkPickerSpatialMessage,
   chunkPlanConfirmMessage,
   formatChunkEstimate,
+  formatRegionLoadEstimate,
   isSpatiallyMultiChunk,
   networkBytesPerImageChunk,
   planDayChunks,
   planLoadOperation,
   planPlaneChunks,
   planSingleSpatialTile,
+  planSpatialRegion,
+  regionIndexRanges,
   shouldWarnChunkPlan,
   spatialChunkGrid,
   tileIndexRanges,
@@ -146,8 +149,19 @@ const ranges = tileIndexRanges(grid!, 7, 16);
 assert(ranges.y[0] === 3584 && ranges.y[1] === 4096, "last y tile range");
 assert(ranges.x[0] === 8192 && ranges.x[1] === 8193, "last x tile range (partial)");
 
+const regionPlan = planSpatialRegion(edh, 0, 1, 0, 2);
+assert(regionPlan.imageChunks === 6, `2×3 region: 6 chunks, got ${regionPlan.imageChunks}`);
+
+const regionRanges = regionIndexRanges(grid!, 0, 1, 0, 2);
+assert(regionRanges.y[1] - regionRanges.y[0] === 1024, "region y pixel span");
+assert(regionRanges.x[1] - regionRanges.x[0] === 1536, "region x pixel span");
 assert(
-  chunkPickerSpatialMessage(loadPlan, grid!).includes("Select a single area"),
+  formatRegionLoadEstimate(regionPlan).includes("6 chunks"),
+  "formatRegionLoadEstimate",
+);
+
+assert(
+  chunkPickerSpatialMessage(loadPlan, grid!).includes("Select an area"),
   "spatial picker message",
 );
 

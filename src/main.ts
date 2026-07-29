@@ -24,11 +24,13 @@ import {
   LruPlaneCache,
   prefetchDayPlanes,
   type FrameTimings,
-  type SpatialTilePick,
+  type SpatialRegionPick,
 } from "./plane_cache.js";
 import {
+  normalizeRegion,
+  planSpatialRegion,
   spatialChunkGrid,
-  tileIndexRanges,
+  regionIndexRanges,
 } from "./chunk_plan.js";
 import {
   autoscaleRangesFromPlane,
@@ -104,7 +106,7 @@ interface AppState {
     needsSeed: boolean;
   };
   spatialCoords: SpatialCoords | null;
-  spatialTile: SpatialTilePick | null;
+  spatialRegion: SpatialRegionPick | null;
   currentPlane: ImagePlane | null;
   scaleRange: { min: number; max: number } | null;
   isPlaying: boolean;
@@ -124,7 +126,7 @@ const state: AppState = {
   autoscale: true,
   manualScale: { ranges: [], locked: false, needsSeed: false },
   spatialCoords: null,
-  spatialTile: null,
+  spatialRegion: null,
   currentPlane: null,
   scaleRange: null,
   isPlaying: false,
@@ -246,12 +248,18 @@ function toggleFillView(): void {
 }
 
 function effectiveSpatialCoords(): SpatialCoords | null {
-  if (!state.spatialCoords || !state.spatialTile || !state.variable) {
+  if (!state.spatialCoords || !state.spatialRegion || !state.variable) {
     return state.spatialCoords;
   }
   const grid = spatialChunkGrid(state.variable);
   if (!grid) return state.spatialCoords;
-  const ranges = tileIndexRanges(grid, state.spatialTile.yChunk, state.spatialTile.xChunk);
+  const ranges = regionIndexRanges(
+    grid,
+    state.spatialRegion.y0,
+    state.spatialRegion.y1,
+    state.spatialRegion.x0,
+    state.spatialRegion.x1,
+  );
   const { xValues, yValues, ...rest } = state.spatialCoords;
   return {
     ...rest,
@@ -262,42 +270,41 @@ function effectiveSpatialCoords(): SpatialCoords | null {
 
 function planeLoadOptions() {
   return {
-    spatialTile: state.spatialTile,
-    setSpatialTile: (tile: SpatialTilePick | null) => {
-      state.spatialTile = tile;
+    spatialRegion: state.spatialRegion,
+    setSpatialRegion: (region: SpatialRegionPick | null) => {
+      state.spatialRegion = region;
     },
   };
 }
 
-function spatialTileStatusHtml(): string {
-  if (!state.spatialTile || !state.variable) return "";
+function spatialRegionStatusHtml(): string {
+  if (!state.spatialRegion || !state.variable) return "";
   const grid = spatialChunkGrid(state.variable);
   if (!grid) return "";
-  const { yChunk, xChunk } = state.spatialTile;
+  const { y0, y1, x0, x1 } = state.spatialRegion;
+  const plan = planSpatialRegion(state.variable, y0, y1, x0, x1);
+  const chunkLabel = plan.imageChunks === 1 ? "1 chunk" : `${plan.imageChunks} chunks`;
   return (
-    `Showing spatial tile ${yChunk + 1}/${grid.yChunks} × ${xChunk + 1}/${grid.xChunks}. ` +
+    `Showing spatial region rows ${y0 + 1}–${y1 + 1} × cols ${x0 + 1}–${x1 + 1} (${chunkLabel}). ` +
     `<button type="button" id="change-spatial-area" class="link-button">Change area…</button>`
   );
 }
 
 async function changeSpatialArea(): Promise<void> {
-  if (!state.spatialTile) return;
-  state.spatialTile = null;
+  if (!state.spatialRegion) return;
+  state.spatialRegion = null;
   clearFrameCache();
   await renderCurrentFrame();
 }
 
-function retainSpatialTileForVariable(variable: ImageVariable): void {
-  if (!state.spatialTile) return;
+function retainSpatialRegionForVariable(variable: ImageVariable): void {
+  if (!state.spatialRegion) return;
   const grid = spatialChunkGrid(variable);
   if (!grid) {
-    state.spatialTile = null;
+    state.spatialRegion = null;
     return;
   }
-  state.spatialTile = {
-    yChunk: Math.min(state.spatialTile.yChunk, grid.yChunks - 1),
-    xChunk: Math.min(state.spatialTile.xChunk, grid.xChunks - 1),
-  };
+  state.spatialRegion = normalizeRegion(grid, state.spatialRegion);
 }
 
 function clearFrameCache(): void {
@@ -306,7 +313,7 @@ function clearFrameCache(): void {
 }
 
 function schedulePrefetch(): void {
-  if (!state.dataset || !state.variable || state.spatialTile) return;
+  if (!state.dataset || !state.variable || state.spatialRegion) return;
   const timeAxis = axisByRole(state.variable, "time");
   if (!timeAxis || state.timeIndices.length === 0) return;
 
@@ -326,7 +333,7 @@ function schedulePrefetch(): void {
       timeIndices,
       cache: planeCache,
       generation,
-      spatialTile: state.spatialTile,
+      spatialRegion: state.spatialRegion,
       isCurrentGeneration: () => generation === state.renderGeneration,
     }),
   );
@@ -508,6 +515,7 @@ function pushViewerUrl(): void {
     autoscale: state.autoscale,
     manualScale: state.autoscale ? [] : state.manualScale.ranges,
     fillView: state.fillView,
+    spatialRegion: state.spatialRegion,
   });
 }
 
@@ -762,6 +770,12 @@ function applyViewerParams(params: ViewerUrlParams): void {
     updateColormapPickerSelection();
   }
 
+  if (params.spatialRegion) {
+    state.spatialRegion = { ...params.spatialRegion };
+  } else {
+    state.spatialRegion = null;
+  }
+
   if (params.datetime && state.timeDates.length > 0 && state.variable) {
     const timeIndex = resolveTimeIndexFromDatetime(state.timeDates, params.datetime);
     const timeAxis = axisByRole(state.variable, "time");
@@ -790,7 +804,7 @@ async function selectVariable(path: string): Promise<void> {
   stopAnimation();
   clearFrameCache();
   state.variable = variable;
-  retainSpatialTileForVariable(variable);
+  retainSpatialRegionForVariable(variable);
   state.selection = defaultSelection(variable);
   state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
   buildOtherDimControls(variable);
@@ -912,7 +926,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     refreshHistogram();
     syncTimeSlider();
     clearLoadingStatus();
-    const tileStatus = spatialTileStatusHtml();
+    const tileStatus = spatialRegionStatusHtml();
     if (tileStatus) {
       status.innerHTML = tileStatus;
       status.querySelector<HTMLButtonElement>("#change-spatial-area")?.addEventListener(
@@ -1120,7 +1134,7 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
   authDialogControls?.updateIndicator();
   renderStatus(el<HTMLParagraphElement>("#status"), "Opening store…");
   resetChunkLoadConfirmations();
-  state.spatialTile = null;
+  state.spatialRegion = null;
   try {
     state.dataset = await openDataset(params.storeUrl, params.auth);
     buildVariableSelect(state.dataset.schema);
@@ -1137,6 +1151,9 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
     if (defaultVariable) {
       await selectVariable(defaultVariable);
       applyViewerParams(params);
+      if (state.variable && state.spatialRegion) {
+        retainSpatialRegionForVariable(state.variable);
+      }
       await renderCurrentFrame();
     }
   } catch (error) {

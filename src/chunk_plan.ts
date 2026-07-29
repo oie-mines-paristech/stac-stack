@@ -338,11 +338,70 @@ export function tileIndexRanges(
   yChunk: number,
   xChunk: number,
 ): { y: [number, number]; x: [number, number] } {
-  const y0 = yChunk * grid.yChunkSize;
-  const y1 = Math.min(y0 + grid.yChunkSize, grid.yAxisSize);
-  const x0 = xChunk * grid.xChunkSize;
-  const x1 = Math.min(x0 + grid.xChunkSize, grid.xAxisSize);
-  return { y: [y0, y1], x: [x0, x1] };
+  return regionIndexRanges(grid, yChunk, yChunk, xChunk, xChunk);
+}
+
+export interface SpatialRegionPick {
+  y0: number;
+  y1: number;
+  x0: number;
+  x1: number;
+}
+
+export function normalizeRegion(
+  grid: SpatialChunkGrid,
+  pick: SpatialRegionPick,
+): SpatialRegionPick {
+  const y0 = Math.max(0, Math.min(pick.y0, pick.y1, grid.yChunks - 1));
+  const y1 = Math.max(0, Math.min(Math.max(pick.y0, pick.y1), grid.yChunks - 1));
+  const x0 = Math.max(0, Math.min(pick.x0, pick.x1, grid.xChunks - 1));
+  const x1 = Math.max(0, Math.min(Math.max(pick.x0, pick.x1), grid.xChunks - 1));
+  return { y0, y1, x0, x1 };
+}
+
+export function regionIndexRanges(
+  grid: SpatialChunkGrid,
+  y0: number,
+  y1: number,
+  x0: number,
+  x1: number,
+): { y: [number, number]; x: [number, number] } {
+  const yStart = y0 * grid.yChunkSize;
+  const yEnd = Math.min(y1 * grid.yChunkSize + grid.yChunkSize, grid.yAxisSize);
+  const xStart = x0 * grid.xChunkSize;
+  const xEnd = Math.min(x1 * grid.xChunkSize + grid.xChunkSize, grid.xAxisSize);
+  return { y: [yStart, yEnd], x: [xStart, xEnd] };
+}
+
+export function planSpatialRegion(
+  variable: ImageVariable,
+  y0: number,
+  y1: number,
+  x0: number,
+  x1: number,
+): LoadOperationPlan {
+  const grid = spatialChunkGrid(variable);
+  if (!grid) {
+    throw new Error("Cannot plan spatial region without chunk grid metadata");
+  }
+  const region = normalizeRegion(grid, { y0, y1, x0, x1 });
+  const yCount = region.y1 - region.y0 + 1;
+  const xCount = region.x1 - region.x0 + 1;
+  const imageChunks = yCount * xCount;
+  const ranges = regionIndexRanges(grid, region.y0, region.y1, region.x0, region.x1);
+  const elements = (ranges.y[1] - ranges.y[0]) * (ranges.x[1] - ranges.x[0]);
+  const logicalBytes = elements * dtypeByteSize(variable.dtype);
+  const perChunk = networkBytesPerImageChunk(variable);
+  const networkBytes = imageChunks * perChunk;
+  return {
+    imageChunks,
+    coordChunks: 0,
+    chunkCount: imageChunks,
+    logicalBytes,
+    networkBytes,
+    imageNetworkBytes: networkBytes,
+    chunkShape: variable.chunkShape,
+  };
 }
 
 export function planSingleSpatialTile(
@@ -350,23 +409,15 @@ export function planSingleSpatialTile(
   yChunk: number,
   xChunk: number,
 ): LoadOperationPlan {
-  const grid = spatialChunkGrid(variable);
-  if (!grid) {
-    throw new Error("Cannot plan spatial tile without chunk grid metadata");
-  }
-  const ranges = tileIndexRanges(grid, yChunk, xChunk);
-  const tileElements = (ranges.y[1] - ranges.y[0]) * (ranges.x[1] - ranges.x[0]);
-  const logicalBytes = tileElements * dtypeByteSize(variable.dtype);
-  const networkBytes = networkBytesPerImageChunk(variable);
-  return {
-    imageChunks: 1,
-    coordChunks: 0,
-    chunkCount: 1,
-    logicalBytes,
-    networkBytes,
-    imageNetworkBytes: networkBytes,
-    chunkShape: variable.chunkShape,
-  };
+  return planSpatialRegion(variable, yChunk, yChunk, xChunk, xChunk);
+}
+
+export function formatRegionLoadEstimate(plan: LoadOperationPlan): string {
+  const wire =
+    plan.imageNetworkBytes >= 1024 ** 3
+      ? `${(plan.imageNetworkBytes / 1024 ** 3).toFixed(1)} GB`
+      : `${(plan.imageNetworkBytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${plan.imageChunks} chunks · ~${formatBytes(plan.logicalBytes)} decoded · ~${wire} on wire`;
 }
 
 export function chunkPickerSpatialMessage(plan: LoadOperationPlan, grid: SpatialChunkGrid): string {
@@ -378,6 +429,6 @@ export function chunkPickerSpatialMessage(plan: LoadOperationPlan, grid: Spatial
   return (
     `This dataset isn't optimized for image preview (${grid.yChunks}×${grid.xChunks} spatial tiles, ` +
     `full frame ~${plan.imageChunks} chunks / ~${wire} on wire / ${frameMb} MB decoded). ` +
-    `Select a single area to load.`
+    `Select an area to load (click or drag on the grid).`
   );
 }

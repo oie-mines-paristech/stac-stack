@@ -1,6 +1,6 @@
 import * as zarr from "zarrita";
-import { loadFullPlane, type SpatialTileSelection } from "./array_load.js";
-import { spatialChunkGrid } from "./chunk_plan.js";
+import { loadFullPlane, type SpatialRegionSelection } from "./array_load.js";
+import { spatialChunkGrid, type SpatialRegionPick } from "./chunk_plan.js";
 import { chunkValue, resolvePlaneAxes } from "./chunk_utils.js";
 import { DEFAULT_COLORMAP, getColormapLut } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
@@ -61,16 +61,16 @@ export async function loadImagePlane(
   variable: ImageVariable,
   indices: number[],
   mode: "rgb" | "scalar" = "scalar",
-  spatialTile?: { yChunk: number; xChunk: number },
+  spatialRegion?: SpatialRegionPick,
 ): Promise<ImagePlane> {
-  let tileSelection: SpatialTileSelection | undefined;
-  if (spatialTile) {
+  let regionSelection: SpatialRegionSelection | undefined;
+  if (spatialRegion) {
     const grid = spatialChunkGrid(variable);
     if (grid) {
-      tileSelection = { ...spatialTile, grid };
+      regionSelection = { ...spatialRegion, grid };
     }
   }
-  const loaded = await loadFullPlane(arr, variable, indices, mode, tileSelection);
+  const loaded = await loadFullPlane(arr, variable, indices, mode, regionSelection);
   const axes = resolvePlaneAxes(variable, loaded.shape, mode === "rgb");
   return { data: loaded.data, shape: loaded.shape, axes };
 }

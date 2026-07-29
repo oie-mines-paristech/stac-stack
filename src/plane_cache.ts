@@ -3,10 +3,11 @@ import {
   isSpatiallyMultiChunk,
   planLoadOperation,
   planPlaneChunks,
-  planSingleSpatialTile,
+  planSpatialRegion,
   spatialChunkGrid,
   shouldWarnChunkPlan,
   type LoadOperationPlan,
+  type SpatialRegionPick,
 } from "./chunk_plan.js";
 import { beginChunkLoad, endChunkLoad } from "./chunk_progress.js";
 import type { DatasetSchema, ImageVariable } from "./dimensions.js";
@@ -24,15 +25,15 @@ export class ChunkLoadCancelledError extends Error {
   }
 }
 
-export interface SpatialTilePick {
-  yChunk: number;
-  xChunk: number;
-}
+export type { SpatialRegionPick };
 
 export interface LoadPlaneOptions {
-  spatialTile: SpatialTilePick | null;
-  setSpatialTile: (tile: SpatialTilePick | null) => void;
+  spatialRegion: SpatialRegionPick | null;
+  setSpatialRegion: (region: SpatialRegionPick | null) => void;
 }
+
+/** @deprecated use SpatialRegionPick */
+export type SpatialTilePick = SpatialRegionPick;
 
 export function planeCacheKey(
   variablePath: string,
@@ -40,7 +41,7 @@ export function planeCacheKey(
   selection: Record<string, number>,
   timeAxisName: string | null,
   timeIndex: number | null,
-  spatialTile?: SpatialTilePick | null,
+  spatialRegion?: SpatialRegionPick | null,
 ): string {
   const parts = [variablePath, mode];
   for (const [name, value] of Object.entries(selection).sort(([a], [b]) => a.localeCompare(b))) {
@@ -50,8 +51,10 @@ export function planeCacheKey(
   if (timeAxisName !== null && timeIndex !== null) {
     parts.push(`${timeAxisName}=${timeIndex}`);
   }
-  if (spatialTile) {
-    parts.push(`tile=${spatialTile.yChunk},${spatialTile.xChunk}`);
+  if (spatialRegion) {
+    parts.push(
+      `region=${spatialRegion.y0}-${spatialRegion.y1},${spatialRegion.x0}-${spatialRegion.x1}`,
+    );
   }
   return parts.join("|");
 }
@@ -97,7 +100,7 @@ export interface PrefetchContext {
   timeIndices: number[];
   cache: LruPlaneCache;
   generation: number;
-  spatialTile: SpatialTilePick | null;
+  spatialRegion: SpatialRegionPick | null;
   isCurrentGeneration: () => boolean;
 }
 
@@ -122,33 +125,40 @@ async function resolveChunkLoadChoice(
   loadPlan: LoadOperationPlan,
   variable: ImageVariable,
   variablePath: string,
-  spatialTile: SpatialTilePick | null,
-): Promise<{ spatialTile: SpatialTilePick | null }> {
-  if (spatialTile || !shouldWarnChunkPlan(loadPlan)) {
-    return { spatialTile };
+  spatialRegion: SpatialRegionPick | null,
+): Promise<{ spatialRegion: SpatialRegionPick | null }> {
+  if (spatialRegion || !shouldWarnChunkPlan(loadPlan)) {
+    return { spatialRegion };
   }
 
   const grid = spatialChunkGrid(variable);
-  const choice = await promptChunkLoadChoice(loadPlan, grid, variablePath);
+  const choice = await promptChunkLoadChoice(loadPlan, grid, variablePath, variable);
 
   if (choice.action === "dismiss") {
     throw new ChunkLoadCancelledError();
   }
-  if (choice.action === "single") {
-    return { spatialTile: { yChunk: choice.yChunk, xChunk: choice.xChunk } };
+  if (choice.action === "region") {
+    return {
+      spatialRegion: {
+        y0: choice.y0,
+        y1: choice.y1,
+        x0: choice.x0,
+        x1: choice.x1,
+      },
+    };
   }
   if (choice.action === "full" || choice.action === "proceed") {
     if (grid && isSpatiallyMultiChunk(grid)) {
       throw new ChunkLoadCancelledError();
     }
-    return { spatialTile: null };
+    return { spatialRegion: null };
   }
 
   throw new ChunkLoadCancelledError();
 }
 
 export async function prefetchDayPlanes(ctx: PrefetchContext): Promise<void> {
-  if (ctx.spatialTile) return;
+  if (ctx.spatialRegion) return;
 
   const runId = ++prefetchGeneration;
   const concurrency = 4;
@@ -206,20 +216,20 @@ export async function loadPlaneWithCache(
 ): Promise<{ plane: ImagePlane; timings: FrameTimings }> {
   const timeAxis = axisByRole(variable, "time");
   const timeIndex = timeAxis ? selection[timeAxis.name] ?? null : null;
-  let spatialTile = options.spatialTile;
+  let spatialRegion = options.spatialRegion;
 
-  const cacheKey = (tile: SpatialTilePick | null) =>
+  const cacheKey = (region: SpatialRegionPick | null) =>
     planeCacheKey(
       variable.path,
       mode,
       selection,
       timeAxis?.name ?? null,
       timeIndex,
-      tile,
+      region,
     );
 
   const started = performance.now();
-  let key = cacheKey(spatialTile);
+  let key = cacheKey(spatialRegion);
   let cached = cache.get(key);
   if (cached) {
     return {
@@ -245,12 +255,12 @@ export async function loadPlaneWithCache(
     fullPlan,
     variable,
     variable.path,
-    spatialTile,
+    spatialRegion,
   );
-  if (resolved.spatialTile !== spatialTile) {
-    spatialTile = resolved.spatialTile;
-    options.setSpatialTile(spatialTile);
-    key = cacheKey(spatialTile);
+  if (resolved.spatialRegion !== spatialRegion) {
+    spatialRegion = resolved.spatialRegion;
+    options.setSpatialRegion(spatialRegion);
+    key = cacheKey(spatialRegion);
     cached = cache.get(key);
     if (cached) {
       return {
@@ -265,8 +275,14 @@ export async function loadPlaneWithCache(
     }
   }
 
-  const loadPlan = spatialTile
-    ? planSingleSpatialTile(variable, spatialTile.yChunk, spatialTile.xChunk)
+  const loadPlan = spatialRegion
+    ? planSpatialRegion(
+        variable,
+        spatialRegion.y0,
+        spatialRegion.y1,
+        spatialRegion.x0,
+        spatialRegion.x1,
+      )
     : fullPlan;
 
   beginChunkLoad({
@@ -279,7 +295,7 @@ export async function loadPlaneWithCache(
   const fetchStart = performance.now();
   try {
     const indices = variable.axes.map((axis) => selection[axis.name] ?? 0);
-    const plane = await loadImagePlane(arr, variable, indices, mode, spatialTile ?? undefined);
+    const plane = await loadImagePlane(arr, variable, indices, mode, spatialRegion ?? undefined);
     const fetchMs = performance.now() - fetchStart;
     cache.set(key, plane);
 

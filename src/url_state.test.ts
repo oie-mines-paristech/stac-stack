@@ -211,6 +211,26 @@ withLocation("https://example.com", "/", () => {
 });
 
 withLocation("https://example.com", "/", () => {
+  const original: ViewerUrlParams = {
+    storeUrl: "https://example.com/data.zarr/",
+    variable: "t2m",
+    dims: {},
+    spatialRegion: { y0: 1, y1: 2, x0: 3, x1: 5 },
+  };
+  const json = viewerParamsToJson(original);
+  assert(
+    json.region?.join(",") === "1,2,3,5",
+    "viewerParamsToJson serializes spatial region",
+  );
+  const compressed = encodeViewerHash(json);
+  globalThis.window.history.replaceState({}, "", `/#${compressed}`);
+  const params = readViewerParams();
+  assert(params.spatialRegion?.y0 === 1, "hash round-trip region y0");
+  assert(params.spatialRegion?.y1 === 2, "hash round-trip region y1");
+  assert(params.spatialRegion?.x1 === 5, "hash round-trip region x1");
+});
+
+withLocation("https://example.com", "/", () => {
   const legacy = parseLegacySearchParams("?variable=t2m", "");
   assert(legacy.hadLegacy, "parseLegacySearchParams detects reserved keys");
   assert(legacy.params.variable === "t2m", "parseLegacySearchParams extracts variable");

@@ -3,6 +3,7 @@ import { resolveStoreAuth, serializeAuthParam } from "./auth.js";
 import { isColormapName } from "./colormap.js";
 import { parseScaleParam } from "./scale_url.js";
 import type { ViewerUrlParams } from "./url_state.js";
+import type { SpatialRegionPick } from "./chunk_plan.js";
 
 export interface ViewerStateJsonV1 {
   v: 1;
@@ -16,6 +17,8 @@ export interface ViewerStateJsonV1 {
   scale?: string;
   zoom?: "fill";
   dims?: Record<string, number>;
+  /** Spatial chunk region [y0, y1, x0, x1] inclusive */
+  region?: [number, number, number, number];
 }
 
 export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
@@ -41,6 +44,10 @@ export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
   if (params.dims && Object.keys(params.dims).length > 0) {
     json.dims = params.dims;
   }
+  if (params.spatialRegion) {
+    const { y0, y1, x0, x1 } = params.spatialRegion;
+    json.region = [y0, y1, x0, x1];
+  }
 
   return json;
 }
@@ -62,6 +69,20 @@ export function jsonToViewerParams(
 
   const auth = storeUrl ? resolveStoreAuth(storeUrl, json.auth ?? null) : undefined;
 
+  let spatialRegion: SpatialRegionPick | undefined;
+  if (
+    json.region &&
+    json.region.length === 4 &&
+    json.region.every((value) => Number.isFinite(value) && value >= 0)
+  ) {
+    spatialRegion = {
+      y0: json.region[0],
+      y1: json.region[1],
+      x0: json.region[2],
+      x1: json.region[3],
+    };
+  }
+
   return {
     storeUrl,
     auth,
@@ -73,6 +94,7 @@ export function jsonToViewerParams(
     manualScale: json.scale ? parseScaleParam(json.scale) : undefined,
     fillView: json.zoom === "fill" ? true : undefined,
     dims: json.dims ?? {},
+    spatialRegion,
   };
 }
 

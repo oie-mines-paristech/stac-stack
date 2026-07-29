@@ -1,10 +1,11 @@
 import {
   buildZarrSelection,
+  chunkRangeForSlice,
   expectedPlaneShape,
   shapeProduct,
   shapesEqual,
 } from "./array_load.js";
-import { spatialChunkGrid, tileIndexRanges } from "./chunk_plan.js";
+import { regionIndexRanges, spatialChunkGrid, tileIndexRanges } from "./chunk_plan.js";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -36,7 +37,7 @@ assert(
 
 const grid = spatialChunkGrid(variable);
 assert(grid !== null, "spatial grid for EDH-like variable");
-const tileSelection = { yChunk: 2, xChunk: 3, grid: grid! };
+const tileSelection = { y0: 2, y1: 2, x0: 3, x1: 3, grid: grid! };
 const tileShape = expectedPlaneShape(variable, [100, 0, 0], "scalar", tileSelection);
 assert(
   shapesEqual(tileShape, [512, 512]),
@@ -60,5 +61,24 @@ assert(
     selection[2].stop === ranges.x[1],
   "x axis bounded slice",
 );
+
+const regionSelection = { y0: 0, y1: 1, x0: 0, x1: 2, grid: grid! };
+const regionShape = expectedPlaneShape(variable, [100, 0, 0], "scalar", regionSelection);
+assert(
+  shapesEqual(regionShape, [1024, 1536]),
+  `region plane shape [1024,1536], got [${regionShape.join(",")}]`,
+);
+const regionRanges = regionIndexRanges(grid!, 0, 1, 0, 2);
+const regionSel = buildZarrSelection(variable, [100, 0, 0], "scalar", regionSelection);
+assert(
+  typeof regionSel[1] === "object" &&
+    "start" in regionSel[1]! &&
+    regionSel[1].start === regionRanges.y[0] &&
+    regionSel[1].stop === regionRanges.y[1],
+  "region y slice",
+);
+
+const yChunkRange = chunkRangeForSlice(4096, 512, regionRanges.y[0], regionRanges.y[1]);
+assert(yChunkRange.first === 0 && yChunkRange.last === 1, "chunk range for y region");
 
 console.log("array_load.test.ts: ok");

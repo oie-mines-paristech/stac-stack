@@ -1,13 +1,18 @@
 import * as zarr from "zarrita";
 import { materializeChunk } from "./chunk_utils.js";
-import { tileIndexRanges, type SpatialChunkGrid } from "./chunk_plan.js";
+import { regionIndexRanges, type SpatialChunkGrid } from "./chunk_plan.js";
 import type { ImageVariable } from "./dimensions.js";
 
-export interface SpatialTileSelection {
-  yChunk: number;
-  xChunk: number;
+export interface SpatialRegionSelection {
+  y0: number;
+  y1: number;
+  x0: number;
+  x1: number;
   grid: SpatialChunkGrid;
 }
+
+/** @deprecated use SpatialRegionSelection */
+export type SpatialTileSelection = SpatialRegionSelection;
 
 export function shapeProduct(shape: number[]): number {
   return shape.reduce((acc, size) => acc * size, 1);
@@ -58,22 +63,50 @@ export async function loadFull1DArray(node: zarr.Array<zarr.DataType>): Promise<
 
 export type ZarrSelection = (number | ReturnType<typeof zarr.slice> | null)[];
 
+type ZarrSlice = ReturnType<typeof zarr.slice>;
+
+function sliceBounds(sel: ZarrSlice, axisSize: number): { start: number; stop: number } {
+  return {
+    start: sel.start ?? 0,
+    stop: sel.stop ?? axisSize,
+  };
+}
+
+/** Chunk index range covered by a bounded zarr slice on one axis. */
+export function chunkRangeForSlice(
+  axisSize: number,
+  chunkSize: number,
+  sliceStart: number,
+  sliceStop: number,
+): { first: number; last: number } {
+  const cs = Math.max(1, chunkSize);
+  const first = Math.floor(sliceStart / cs);
+  const last = Math.floor(Math.max(sliceStart, sliceStop - 1) / cs);
+  return { first, last: Math.min(last, Math.max(0, Math.ceil(axisSize / cs) - 1)) };
+}
+
 export function buildZarrSelection(
   variable: ImageVariable,
   indices: number[],
   mode: "rgb" | "scalar",
-  spatialTile?: SpatialTileSelection,
+  spatialRegion?: SpatialRegionSelection,
 ): ZarrSelection {
-  const tileRanges = spatialTile
-    ? tileIndexRanges(spatialTile.grid, spatialTile.yChunk, spatialTile.xChunk)
+  const regionRanges = spatialRegion
+    ? regionIndexRanges(
+        spatialRegion.grid,
+        spatialRegion.y0,
+        spatialRegion.y1,
+        spatialRegion.x0,
+        spatialRegion.x1,
+      )
     : null;
 
   return variable.axes.map((axis, dim) => {
-    if (tileRanges && axis.role === "y" && dim === spatialTile!.grid.yAxisIndex) {
-      return zarr.slice(tileRanges.y[0], tileRanges.y[1]);
+    if (regionRanges && axis.role === "y" && dim === spatialRegion!.grid.yAxisIndex) {
+      return zarr.slice(regionRanges.y[0], regionRanges.y[1]);
     }
-    if (tileRanges && axis.role === "x" && dim === spatialTile!.grid.xAxisIndex) {
-      return zarr.slice(tileRanges.x[0], tileRanges.x[1]);
+    if (regionRanges && axis.role === "x" && dim === spatialRegion!.grid.xAxisIndex) {
+      return zarr.slice(regionRanges.x[0], regionRanges.x[1]);
     }
     if (axis.role === "x" || axis.role === "y") {
       return zarr.slice(null);
@@ -89,16 +122,22 @@ export function expectedPlaneShape(
   variable: ImageVariable,
   _indices: number[],
   mode: "rgb" | "scalar",
-  spatialTile?: SpatialTileSelection,
+  spatialRegion?: SpatialRegionSelection,
 ): number[] {
-  const tileRanges = spatialTile
-    ? tileIndexRanges(spatialTile.grid, spatialTile.yChunk, spatialTile.xChunk)
+  const regionRanges = spatialRegion
+    ? regionIndexRanges(
+        spatialRegion.grid,
+        spatialRegion.y0,
+        spatialRegion.y1,
+        spatialRegion.x0,
+        spatialRegion.x1,
+      )
     : null;
   const shape: number[] = [];
   for (const axis of variable.axes) {
     if (axis.role === "x" || axis.role === "y") {
-      if (tileRanges) {
-        const range = axis.role === "y" ? tileRanges.y : tileRanges.x;
+      if (regionRanges) {
+        const range = axis.role === "y" ? regionRanges.y : regionRanges.x;
         shape.push(range[1] - range[0]);
       } else {
         shape.push(axis.size);
@@ -124,6 +163,7 @@ async function loadPlaneByTiles(
   indices: number[],
   mode: "rgb" | "scalar",
   expectedShape: number[],
+  spatialRegion?: SpatialRegionSelection,
 ): Promise<LoadedPlaneChunk> {
   const chunkShape = variable.chunkShape;
   if (!chunkShape || chunkShape.length !== variable.shape.length) {
@@ -131,7 +171,7 @@ async function loadPlaneByTiles(
   }
   const gridChunkShape = chunkShape;
 
-  const selection = buildZarrSelection(variable, indices, mode);
+  const selection = buildZarrSelection(variable, indices, mode, spatialRegion);
   const out = new Float64Array(shapeProduct(expectedShape));
   const outShape = [...expectedShape];
   const outStride = computeStrides(outShape);
@@ -144,11 +184,20 @@ async function loadPlaneByTiles(
     }
   }
 
-  const tileCounts = planeVarDims.map((dim) => {
-    const size = variable.shape[dim];
-    const cs = gridChunkShape[dim] ?? size;
-    return Math.max(1, Math.ceil(size / cs));
-  });
+  const tileStarts: number[] = [];
+  const tileCounts: number[] = [];
+  const regionStarts: number[] = [];
+
+  for (const dim of planeVarDims) {
+    const sel = selection[dim] as ZarrSlice;
+    const axisSize = variable.shape[dim];
+    const cs = gridChunkShape[dim] ?? axisSize;
+    const bounds = sliceBounds(sel, axisSize);
+    const range = chunkRangeForSlice(axisSize, cs, bounds.start, bounds.stop);
+    tileStarts.push(range.first);
+    tileCounts.push(range.last - range.first + 1);
+    regionStarts.push(bounds.start);
+  }
 
   async function walkPlaneDim(planeAxis: number, coords: number[]): Promise<void> {
     if (planeAxis === planeVarDims.length) {
@@ -175,7 +224,7 @@ async function loadPlaneByTiles(
       const offsets = coords.map((coord, planeIndex) => {
         const varDim = planeVarDims[planeIndex];
         const cs = gridChunkShape[varDim] ?? variable.shape[varDim];
-        return coord * cs;
+        return coord * cs - regionStarts[planeIndex];
       });
 
       const tileCoords = new Array<number>(tileShape.length).fill(0);
@@ -202,7 +251,7 @@ async function loadPlaneByTiles(
     }
 
     for (let c = 0; c < tileCounts[planeAxis]; c++) {
-      await walkPlaneDim(planeAxis + 1, [...coords, c]);
+      await walkPlaneDim(planeAxis + 1, [...coords, tileStarts[planeAxis] + c]);
     }
   }
 
@@ -216,10 +265,10 @@ export async function loadFullPlane(
   variable: ImageVariable,
   indices: number[],
   mode: "rgb" | "scalar" = "scalar",
-  spatialTile?: SpatialTileSelection,
+  spatialRegion?: SpatialRegionSelection,
 ): Promise<LoadedPlaneChunk> {
-  const expectedShape = expectedPlaneShape(variable, indices, mode, spatialTile);
-  const selection = buildZarrSelection(variable, indices, mode, spatialTile);
+  const expectedShape = expectedPlaneShape(variable, indices, mode, spatialRegion);
+  const selection = buildZarrSelection(variable, indices, mode, spatialRegion);
 
   const chunk = await zarr.get(arr, selection);
   const shape = [...chunk.shape];
@@ -232,11 +281,5 @@ export async function loadFullPlane(
     return { data: logical, shape, stride: [...chunk.stride] };
   }
 
-  if (spatialTile) {
-    throw new Error(
-      `Spatial tile load shape mismatch: expected [${expectedShape.join(", ")}], got [${shape.join(", ")}]`,
-    );
-  }
-
-  return loadPlaneByTiles(arr, variable, indices, mode, expectedShape);
+  return loadPlaneByTiles(arr, variable, indices, mode, expectedShape, spatialRegion);
 }

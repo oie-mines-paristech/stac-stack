@@ -426,6 +426,26 @@ body.panel-dragging {
   box-shadow: 0 0 0 1px #6ea8fe inset;
 }
 
+.chunk-picker-cell.in-preview {
+  background: #5b8fc9;
+  border-color: #9ec5fe;
+}
+
+.chunk-picker-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.chunk-picker-estimate {
+  margin: 0.65rem 0 0;
+  font-size: 0.9rem;
+  color: #adb5bd;
+}
+
+.chunk-picker-estimate-warn {
+  color: #fd9843;
+}
+
 .link-button {
   display: inline;
   padding: 0;

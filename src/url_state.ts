@@ -20,6 +20,8 @@ import {
   viewerParamsToJson,
 } from "./url_hash.js";
 
+import type { SpatialRegionPick } from "./chunk_plan.js";
+
 export type { StoreAuth };
 
 export interface ViewerUrlParams {
@@ -33,6 +35,7 @@ export interface ViewerUrlParams {
   manualScale?: ScaleRange[];
   fillView?: boolean;
   dims: Record<string, number>;
+  spatialRegion?: SpatialRegionPick;
 }
 
 const RESERVED_VIEWER_PARAMS = new Set([
@@ -230,6 +233,7 @@ export function writeViewerParams(input: {
   autoscale: boolean;
   manualScale: ScaleRange[];
   fillView: boolean;
+  spatialRegion?: SpatialRegionPick | null;
 }): void {
   const json: ViewerStateJsonV1 = { v: 1 };
   json.u = toShareableStoreUrl(input.storeUrl);
@@ -280,6 +284,11 @@ export function writeViewerParams(input: {
   }
   if (Object.keys(dims).length > 0) {
     json.dims = dims;
+  }
+
+  if (input.spatialRegion) {
+    const { y0, y1, x0, x1 } = input.spatialRegion;
+    json.region = [y0, y1, x0, x1];
   }
 
   replaceLocationHash(json);

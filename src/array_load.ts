@@ -1,5 +1,5 @@
 import * as zarr from "zarrita";
-import { materializeChunk } from "./chunk_utils.js";
+import { createPlaneBuffer, materializeChunk, type PlaneData } from "./chunk_utils.js";
 import { regionIndexRanges, type SpatialChunkGrid } from "./chunk_plan.js";
 import type { ImageVariable } from "./dimensions.js";
 
@@ -152,7 +152,7 @@ export function expectedPlaneShape(
 }
 
 export interface LoadedPlaneChunk {
-  data: Float64Array;
+  data: PlaneData;
   shape: number[];
   stride: number[];
 }
@@ -172,7 +172,7 @@ async function loadPlaneByTiles(
   const gridChunkShape = chunkShape;
 
   const selection = buildZarrSelection(variable, indices, mode, spatialRegion);
-  const out = new Float64Array(shapeProduct(expectedShape));
+  const out = createPlaneBuffer(shapeProduct(expectedShape), variable.dtype);
   const outShape = [...expectedShape];
   const outStride = computeStrides(outShape);
 
@@ -218,6 +218,7 @@ async function loadPlaneByTiles(
         tile.data as ArrayLike<number>,
         tileShape,
         [...tile.stride],
+        variable.dtype,
       );
       const tileStride = computeStrides(tileShape);
 
@@ -277,6 +278,7 @@ export async function loadFullPlane(
       chunk.data as ArrayLike<number>,
       shape,
       [...chunk.stride],
+      variable.dtype,
     );
     return { data: logical, shape, stride: [...chunk.stride] };
   }

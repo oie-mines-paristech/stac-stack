@@ -26,19 +26,22 @@ export async function updateCoastlineOverlay(
     return;
   }
 
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+
   const mapper = createGeoPixelMapper(
     spatial.xValues,
     spatial.yValues,
     spatial.flipY,
-    planeWidth,
-    planeHeight,
+    canvasWidth,
+    canvasHeight,
   );
 
   const warpedPaths = await warpCoastlinePaths(mapper);
 
   overlay.removeAttribute("hidden");
   overlay.style.display = "block";
-  overlay.setAttribute("viewBox", `0 0 ${planeWidth} ${planeHeight}`);
+  overlay.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
   overlay.setAttribute("preserveAspectRatio", "none");
   overlay.classList.remove("flip-y");
 
@@ -73,7 +76,7 @@ export async function updateCoastlineOverlay(
   }
 
   const strokeW = strokeWidthForViewBox(
-    Math.max(planeWidth, planeHeight),
+    Math.max(canvasWidth, canvasHeight),
     Math.max(displayWidth, displayHeight),
     COASTLINE_STROKE_PX,
   );

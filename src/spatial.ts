@@ -132,11 +132,15 @@ export function createGeoPixelMapper(
     flipY,
     lonToPixel(lon: number): number {
       const normalized = normalizeLongitude(lon, xValues);
-      return geoToAxisIndex(xValues, normalized);
+      const idx = geoToAxisIndex(xValues, normalized);
+      if (xValues.length <= 1) return 0;
+      return (idx * (width - 1)) / (xValues.length - 1);
     },
     latToPixel(lat: number): number {
-      const dataIdx = geoToAxisIndex(yValues, lat);
-      return flipY ? height - 1 - dataIdx : dataIdx;
+      const idx = geoToAxisIndex(yValues, lat);
+      const scaled =
+        yValues.length <= 1 ? 0 : (idx * (height - 1)) / (yValues.length - 1);
+      return flipY ? height - 1 - scaled : scaled;
     },
   };
 }

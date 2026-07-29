@@ -37,8 +37,11 @@ import {
 } from "./chunk_plan.js";
 import {
   autoscaleRangesFromPlane,
+  canvasToPlanePixel,
+  computeDisplaySize,
   countFiniteSamples,
   renderImageToCanvas,
+  type DisplayTransform,
   type ImagePlane,
   type RenderOptions,
 } from "./render.js";
@@ -114,6 +117,7 @@ interface AppState {
   spatialCoords: SpatialCoords | null;
   spatialRegion: SpatialRegionPick | null;
   currentPlane: ImagePlane | null;
+  displayTransform: DisplayTransform | null;
   scaleRange: { min: number; max: number } | null;
   isPlaying: boolean;
   renderGeneration: number;
@@ -134,6 +138,7 @@ const state: AppState = {
   spatialCoords: null,
   spatialRegion: null,
   currentPlane: null,
+  displayTransform: null,
   scaleRange: null,
   isPlaying: false,
   renderGeneration: 0,
@@ -214,6 +219,17 @@ function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
   canvasPan?.sync();
 }
 
+function renderDisplaySize(plane: ImagePlane): ReturnType<typeof computeDisplaySize> {
+  const wrap = el<HTMLDivElement>("#canvas-wrap");
+  return computeDisplaySize(
+    plane.shape[plane.axes.x],
+    plane.shape[plane.axes.y],
+    wrap.clientWidth,
+    wrap.clientHeight,
+    state.fillView,
+  );
+}
+
 function syncCoastlineOverlay(canvas: HTMLCanvasElement): void {
   const overlay = document.querySelector<SVGSVGElement>("#coastline-overlay");
   const show = state.variable ? canShowCoastlines(state.variable) : false;
@@ -254,8 +270,12 @@ function updateZoomButton(): void {
 function toggleFillView(): void {
   state.fillView = !state.fillView;
   if (state.fillView) canvasPan?.reset();
-  fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
   pushViewerUrl();
+  if (state.currentPlane && state.variable) {
+    void renderCurrentFrame();
+    return;
+  }
+  fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
 }
 
 function effectiveSpatialCoords(): SpatialCoords | null {
@@ -963,12 +983,15 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
       buildScaleControls(state.variable);
     }
     const renderStart = performance.now();
-    const { scaleMin, scaleMax } = renderImageToCanvas(
+    const displaySize = renderDisplaySize(plane);
+    const { scaleMin, scaleMax, displayTransform } = renderImageToCanvas(
       canvas,
       plane,
       renderOptions(state.variable),
+      displaySize,
     );
     timings.renderMs = performance.now() - renderStart;
+    state.displayTransform = displayTransform;
     state.scaleRange = { min: scaleMin, max: scaleMax };
     const mode = displayMode(state.variable);
     const unit = variableDataUnit();
@@ -1220,11 +1243,23 @@ function wireCanvasHover(): void {
     if (!state.currentPlane || !state.variable) return;
     const pixel = canvasPixelCoords(canvas, event.clientX, event.clientY);
     if (!pixel) return;
+    const transform = state.displayTransform ?? {
+      planeWidth: state.currentPlane.shape[state.currentPlane.axes.x],
+      planeHeight: state.currentPlane.shape[state.currentPlane.axes.y],
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+    };
+    const planePixel = canvasToPlanePixel(
+      pixel.x,
+      pixel.y,
+      transform,
+      effectiveSpatialCoords()?.flipY ?? false,
+    );
     const bandAxis = axisByRole(state.variable, "band");
     hoverBar.textContent = formatHoverLine(
       state.currentPlane,
-      pixel.x,
-      pixel.y,
+      planePixel.x,
+      planePixel.y,
       effectiveSpatialCoords(),
       bandAxis?.coordinate?.labels,
       variableDataUnit(),

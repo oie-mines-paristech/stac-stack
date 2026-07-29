@@ -12,6 +12,7 @@ import {
   freshViewerParamsForStore,
   sameStoreUrl,
   serializeBearerAuthParam,
+  toDisplayStoreUrl,
   toShareableStoreUrl,
   type ViewerUrlParams,
 } from "./url_state.js";
@@ -128,8 +129,12 @@ withLocation("https://example.com", "/", () => {
   const params = readViewerParams();
   assert(params.auth?.kind === "basic", "readViewerParams parses basic auth from url");
   assert(
-    toShareableStoreUrl("https://alice:secret@host/data.zarr/").includes("alice"),
-    "toShareableStoreUrl keeps basic credentials",
+    !toShareableStoreUrl("https://alice:secret@host/data.zarr/").includes("alice"),
+    "toShareableStoreUrl strips basic credentials",
+  );
+  assert(
+    !toDisplayStoreUrl(basicUrl, params.auth).includes("alice"),
+    "toDisplayStoreUrl strips basic credentials",
   );
 });
 
@@ -176,6 +181,33 @@ withLocation("https://example.com", "/", () => {
   assert(params.fillView === true, "hash round-trip zoom");
   assert(params.dims.level === 2, "hash round-trip dims");
   assert(params.auth?.kind === "bearer", "hash round-trip auth");
+});
+
+withLocation("https://example.com", "/", () => {
+  const original: ViewerUrlParams = {
+    storeUrl: "https://example.com/data.zarr/",
+    auth: { kind: "basic", username: "alice", password: "secret" },
+    variable: "t2m",
+    dims: {},
+  };
+  const json = viewerParamsToJson(original);
+  assert(json.auth === "basic:alice:secret", "viewerParamsToJson serializes basic auth");
+  const compressed = encodeViewerHash(json);
+  globalThis.window.history.replaceState({}, "", `/#${compressed}`);
+  const params = readViewerParams();
+  assert(params.auth?.kind === "basic", "hash round-trip basic auth kind");
+  assert(
+    (params.auth as { username: string }).username === "alice",
+    "hash round-trip basic username",
+  );
+  assert(
+    (params.auth as { password: string }).password === "secret",
+    "hash round-trip basic password",
+  );
+  assert(
+    !toDisplayStoreUrl(params.storeUrl, params.auth).includes("alice"),
+    "display url hides basic credentials after hash reload",
+  );
 });
 
 withLocation("https://example.com", "/", () => {

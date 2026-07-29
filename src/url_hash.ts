@@ -1,5 +1,5 @@
 import LZString from "lz-string";
-import { resolveStoreAuth } from "./auth.js";
+import { resolveStoreAuth, serializeAuthParam } from "./auth.js";
 import { isColormapName } from "./colormap.js";
 import { parseScaleParam } from "./scale_url.js";
 import type { ViewerUrlParams } from "./url_state.js";
@@ -24,8 +24,9 @@ export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
   if (params.storeUrl.trim()) {
     json.u = params.storeUrl;
   }
-  if (params.auth?.kind === "bearer") {
-    json.auth = `bearer:${params.auth.token}`;
+  if (params.auth) {
+    const serialized = serializeAuthParam(params.auth);
+    if (serialized) json.auth = serialized;
   }
   if (params.variable) json.var = params.variable;
   if (params.datetime) json.dt = params.datetime;

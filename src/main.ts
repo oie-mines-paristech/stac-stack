@@ -1,8 +1,7 @@
 import "./style.css";
 import {
-  applyAuthToUrl,
   resolveStoreAuth,
-  serializeBearerAuthParam,
+  serializeAuthParam,
   stripAuthFromUrl,
   type StoreAuth,
 } from "./auth.js";
@@ -286,6 +285,19 @@ async function changeSpatialArea(): Promise<void> {
   state.spatialTile = null;
   clearFrameCache();
   await renderCurrentFrame();
+}
+
+function retainSpatialTileForVariable(variable: ImageVariable): void {
+  if (!state.spatialTile) return;
+  const grid = spatialChunkGrid(variable);
+  if (!grid) {
+    state.spatialTile = null;
+    return;
+  }
+  state.spatialTile = {
+    yChunk: Math.min(state.spatialTile.yChunk, grid.yChunks - 1),
+    xChunk: Math.min(state.spatialTile.xChunk, grid.xChunks - 1),
+  };
 }
 
 function clearFrameCache(): void {
@@ -777,8 +789,8 @@ async function selectVariable(path: string): Promise<void> {
   if (!variable) return;
   stopAnimation();
   clearFrameCache();
-  state.spatialTile = null;
   state.variable = variable;
+  retainSpatialTileForVariable(variable);
   state.selection = defaultSelection(variable);
   state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
   buildOtherDimControls(variable);
@@ -1160,9 +1172,8 @@ function wireEvents(): void {
   el<HTMLInputElement>("#url-input").addEventListener("change", (event) => {
     const url = (event.target as HTMLInputElement).value.trim();
     const resolved = url ? resolveStoreUrl(url) : "";
-    const bearerParam =
-      state.auth?.kind === "bearer" ? serializeBearerAuthParam(state.auth) : null;
-    const auth = resolved ? resolveStoreAuth(resolved, bearerParam) : undefined;
+    const authParam = state.auth ? serializeAuthParam(state.auth) ?? null : null;
+    const auth = resolved ? resolveStoreAuth(resolved, authParam) : undefined;
     void loadViewer(freshViewerParamsForStore(resolved, auth));
   });
 
@@ -1231,16 +1242,12 @@ async function main(): Promise<void> {
       el<HTMLInputElement>("#url-input").value.trim() || readViewerParams().storeUrl,
     getAuth: () => state.auth,
     onSave: (storeUrl, auth) => {
-      const resolved = resolveStoreUrl(storeUrl);
-      const nextUrl =
-        auth?.kind === "basic"
-          ? applyAuthToUrl(stripAuthFromUrl(resolved), auth)
-          : stripAuthFromUrl(resolved);
+      const resolved = stripAuthFromUrl(resolveStoreUrl(storeUrl));
       const currentStore = state.dataset?.schema.url;
       const params =
-        currentStore && sameStoreUrl(currentStore, nextUrl)
-          ? { ...readViewerParams(), storeUrl: nextUrl, auth }
-          : freshViewerParamsForStore(nextUrl, auth);
+        currentStore && sameStoreUrl(currentStore, resolved)
+          ? { ...readViewerParams(), storeUrl: resolved, auth }
+          : freshViewerParamsForStore(resolved, auth);
       void loadViewer(params);
     },
   });

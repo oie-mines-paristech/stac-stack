@@ -27,6 +27,34 @@ export function serializeBearerAuthParam(auth: StoreAuth): string | undefined {
   return `bearer:${auth.token}`;
 }
 
+/** Parse `auth=basic:<username>:<password>` viewer hash/query param value. */
+export function parseBasicAuthParam(value: string): StoreAuth | undefined {
+  const match = value.match(/^basic:(.+):(.+)$/i);
+  if (!match) return undefined;
+  const username = decodeURIComponent(match[1]);
+  const password = decodeURIComponent(match[2]);
+  if (!username) return undefined;
+  return { kind: "basic", username, password };
+}
+
+/** Serialize Basic auth for the viewer hash/query param. */
+export function serializeBasicAuthParam(auth: StoreAuth): string | undefined {
+  if (auth.kind !== "basic") return undefined;
+  return `basic:${encodeURIComponent(auth.username)}:${encodeURIComponent(auth.password)}`;
+}
+
+/** Parse Bearer or Basic auth from a serialized viewer auth param. */
+export function parseAuthParam(value: string): StoreAuth | undefined {
+  return parseBearerAuthParam(value) ?? parseBasicAuthParam(value);
+}
+
+/** Serialize auth for the viewer hash/query param. */
+export function serializeAuthParam(auth: StoreAuth): string | undefined {
+  return auth.kind === "bearer"
+    ? serializeBearerAuthParam(auth)
+    : serializeBasicAuthParam(auth);
+}
+
 /** Embed Basic credentials into a store URL (Bearer uses a separate query param). */
 export function applyAuthToUrl(baseUrl: string, auth?: StoreAuth): string {
   if (!auth || auth.kind !== "basic") return baseUrl;
@@ -91,14 +119,14 @@ export function formatAuthLabel(auth?: StoreAuth): string | undefined {
   return "Bearer (configured)";
 }
 
-/** Resolve auth from viewer params: Bearer param takes precedence over URL userinfo. */
+/** Resolve auth from viewer params: hash/query auth param takes precedence over URL userinfo. */
 export function resolveStoreAuth(
   storeUrl: string,
-  bearerParam?: string | null,
+  authParam?: string | null,
 ): StoreAuth | undefined {
-  if (bearerParam) {
-    const bearer = parseBearerAuthParam(bearerParam);
-    if (bearer) return bearer;
+  if (authParam) {
+    const fromParam = parseAuthParam(authParam);
+    if (fromParam) return fromParam;
   }
   try {
     return parseAuthFromUrl(new URL(storeUrl));

@@ -3,7 +3,9 @@ import {
   parseAuthFromUrl,
   parseBearerAuthParam,
   resolveStoreAuth,
+  serializeAuthParam,
   serializeBearerAuthParam,
+  stripAuthFromUrl,
 } from "./auth.js";
 import { DEFAULT_COLORMAP, isColormapName } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
@@ -74,36 +76,23 @@ export function toShareableStoreUrl(resolved: string): string {
   const trimmed = resolved.trim();
   if (!trimmed) return "";
 
+  const stripped = stripAuthFromUrl(trimmed);
   try {
-    const url = new URL(trimmed);
-    if (url.username || url.password) {
-      const href = url.href;
-      return href.endsWith("/") ? href : `${href}/`;
-    }
+    const url = new URL(stripped);
     if (url.origin === window.location.origin) {
       const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
       return path;
     }
   } catch {
-    return normalizeTrailingSlash(trimmed);
+    return normalizeTrailingSlash(stripped);
   }
 
-  return normalizeTrailingSlash(trimmed);
+  return normalizeTrailingSlash(stripped);
 }
 
-/** Store URL for the url-input field (hides Bearer token, keeps Basic userinfo). */
-export function toDisplayStoreUrl(resolved: string, auth?: StoreAuth): string {
-  if (auth?.kind === "bearer") {
-    try {
-      const url = new URL(resolved);
-      url.username = "";
-      url.password = "";
-      return toShareableStoreUrl(url.href);
-    } catch {
-      return toShareableStoreUrl(resolved);
-    }
-  }
-  return toShareableStoreUrl(resolved);
+/** Store URL for the url-input field (never shows credentials). */
+export function toDisplayStoreUrl(resolved: string, _auth?: StoreAuth): string {
+  return toShareableStoreUrl(stripAuthFromUrl(resolved));
 }
 
 function hasLegacyViewerParams(params: URLSearchParams): boolean {
@@ -246,8 +235,8 @@ export function writeViewerParams(input: {
   json.u = toShareableStoreUrl(input.storeUrl);
   json.var = input.variable.path;
 
-  if (input.auth?.kind === "bearer") {
-    const serialized = serializeBearerAuthParam(input.auth);
+  if (input.auth) {
+    const serialized = serializeAuthParam(input.auth);
     if (serialized) json.auth = serialized;
   }
 

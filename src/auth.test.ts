@@ -3,8 +3,12 @@ import {
   basicAuthHeader,
   createAuthFetch,
   parseAuthFromUrl,
+  parseAuthParam,
+  parseBasicAuthParam,
   parseBearerAuthParam,
   resolveStoreAuth,
+  serializeAuthParam,
+  serializeBasicAuthParam,
   serializeBearerAuthParam,
   storeUrlForFetch,
   stripAuthFromUrl,
@@ -25,6 +29,30 @@ assert(parseBearerAuthParam("basic:user") === undefined, "reject non-bearer auth
 assert(
   serializeBearerAuthParam({ kind: "bearer", token: "tok" }) === "bearer:tok",
   "serializeBearerAuthParam",
+);
+
+assert(
+  parseBasicAuthParam("basic:alice:secret")?.kind === "basic" &&
+    (parseBasicAuthParam("basic:alice:secret") as { username: string }).username === "alice" &&
+    (parseBasicAuthParam("basic:alice:secret") as { password: string }).password === "secret",
+  "parseBasicAuthParam",
+);
+
+assert(
+  serializeBasicAuthParam({ kind: "basic", username: "alice", password: "p@ss:word" }) ===
+    "basic:alice:p%40ss%3Aword",
+  "serializeBasicAuthParam encodes special chars",
+);
+
+assert(
+  parseAuthParam("basic:alice:p%40ss%3Aword")?.kind === "basic" &&
+    (parseAuthParam("basic:alice:p%40ss%3Aword") as { password: string }).password === "p@ss:word",
+  "parseAuthParam round-trip basic",
+);
+
+assert(
+  serializeAuthParam({ kind: "basic", username: "bob", password: "pw" }) === "basic:bob:pw",
+  "serializeAuthParam basic",
 );
 
 const basicUrl = applyAuthToUrl("https://example.com/store.zarr/", {
@@ -70,6 +98,11 @@ assert(
 assert(
   resolveStoreAuth("https://host/data.zarr/", "bearer:tok")?.kind === "bearer",
   "resolveStoreAuth bearer param wins",
+);
+
+assert(
+  resolveStoreAuth("https://host/data.zarr/", "basic:alice:secret")?.kind === "basic",
+  "resolveStoreAuth basic param",
 );
 
 async function testBearerFetch(): Promise<void> {

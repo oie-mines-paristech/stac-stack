@@ -23,7 +23,7 @@ from geo_metadata import (
     union_extents,
 )
 from geotiff_metadata import bands_from_geotiff, geotiff_dataset_tags
-from mime import ZARR_EXTENSION_HREF, guess_mime_type, is_zarr_store, zarr_store_metadata
+from mime import ZARR_EXTENSION_HREF, assert_zarr_store, guess_mime_type, is_zarr_store, zarr_store_metadata
 from models import FolderMetadata, normalize_asset_entry
 from yaml_io import read_yaml
 
@@ -42,7 +42,7 @@ class BuildContext:
     def asset_href(self, rel_to_root: Path) -> str:
         base = self.root_href.rstrip("/") + "/"
         href = base + rel_to_root.as_posix().lstrip("/")
-        if rel_to_root.is_dir() and rel_to_root.name.lower().endswith(".zarr"):
+        if is_zarr_store(self.root_dir / rel_to_root):
             href = href.rstrip("/") + "/"
         return href
 
@@ -150,8 +150,8 @@ def build_tree(ctx: BuildContext, folder: Path) -> pystac.Catalog | pystac.Colle
 
     item_extents = []
     for entry in expand_patterns(folder, ctx.root_dir, meta.items or []):
-        if entry.path.is_dir() and not entry.path.name.lower().endswith(".zarr"):
-            continue
+        if entry.path.is_dir():
+            assert_zarr_store(entry.path)
         item = _build_item_for_asset(ctx, entry.path, entry.rel_to_root, rel_dir)
         coll.add_item(item)
         ex = extent_from_asset(entry.path)
@@ -324,7 +324,12 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
             if key not in item.properties or not item.properties.get(key):
                 item.properties[key] = value
 
-    key = asset_path.stem if not (asset_path.is_dir() and asset_path.name.lower().endswith(".zarr")) else asset_path.name[:-5]
+    if is_zarr_store(asset_path) and asset_path.name.lower().endswith(".zarr"):
+        key = asset_path.name[:-5]
+    elif is_zarr_store(asset_path):
+        key = asset_path.name
+    else:
+        key = asset_path.stem
     asset = pystac.Asset(
         href=ctx.asset_href(rel_asset),
         media_type=guess_mime_type(asset_path),

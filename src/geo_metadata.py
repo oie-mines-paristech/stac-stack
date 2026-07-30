@@ -15,6 +15,7 @@ import imagecodecs.zarr as zarr3codecs
 zarr3codecs.register_codecs()
 
 from acdd_metadata import bbox_from_acdd_attrs, datetime_range_from_acdd_attrs
+from mime import is_zarr_store
 
 
 @dataclass(frozen=True)
@@ -457,9 +458,8 @@ def bands_metadata_from_xarray(ds: xr.Dataset) -> dict[str, dict[str, Any]]:
 
 
 def read_xarray_global_attrs(path: Path) -> dict[str, Any] | None:
-    lower = path.name.lower()
     try:
-        if path.is_dir() and lower.endswith(".zarr"):
+        if is_zarr_store(path):
             ds = xr.open_zarr(path, consolidated=False)
             try:
                 return dict(ds.attrs)
@@ -478,9 +478,8 @@ def read_xarray_global_attrs(path: Path) -> dict[str, Any] | None:
 
 
 def bands_metadata_from_asset(path: Path) -> dict[str, dict[str, Any]] | None:
-    lower = path.name.lower()
     try:
-        if path.is_dir() and lower.endswith(".zarr"):
+        if is_zarr_store(path):
             ds = xr.open_zarr(path, consolidated=False)
             try:
                 try:
@@ -503,9 +502,8 @@ def bands_metadata_from_asset(path: Path) -> dict[str, dict[str, Any]] | None:
 
 
 def datacube_metadata_from_asset(path: Path) -> tuple[dict[str, Any], dict[str, Any]] | None:
-    lower = path.name.lower()
     try:
-        if path.is_dir() and lower.endswith(".zarr"):
+        if is_zarr_store(path):
             # Évite le warning "Failed to open Zarr store with consolidated metadata".
             ds = xr.open_zarr(path, consolidated=False)
             try:
@@ -530,8 +528,7 @@ def datacube_metadata_from_asset(path: Path) -> tuple[dict[str, Any], dict[str, 
 
 
 def extent_from_asset(path: Path) -> GeoExtent | None:
-    lower = path.name.lower()
-    if path.is_dir() and lower.endswith(".zarr"):
+    if is_zarr_store(path):
         return extent_from_zarr(path)
     ext = path.suffix.lower()
     if ext in {".tif", ".tiff", ".geotiff", ".gtiff"}:

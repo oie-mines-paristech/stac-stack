@@ -4,11 +4,37 @@ import json
 from pathlib import Path
 from typing import Any
 
+import xarray as xr
+
 ZARR_EXTENSION_HREF = "https://stac-extensions.github.io/zarr/v1.1.0/schema.json"
 
 
+def _has_zarr_markers(path: Path) -> bool:
+    return (
+        (path / "zarr.json").is_file()
+        or (path / ".zgroup").is_file()
+        or (path / ".zarray").is_file()
+    )
+
+
 def is_zarr_store(path: Path) -> bool:
-    return path.is_dir() and path.name.lower().endswith(".zarr")
+    if not path.is_dir():
+        return False
+    if path.name.lower().endswith(".zarr"):
+        return True
+    return _has_zarr_markers(path)
+
+
+def assert_zarr_store(path: Path) -> None:
+    if not path.is_dir():
+        raise ValueError(f"Expected a directory for Zarr store: {path}")
+    try:
+        ds = xr.open_zarr(path, consolidated=False)
+        ds.close()
+    except Exception as exc:
+        raise ValueError(
+            f"Explicit item {path} is a directory but cannot be opened as a Zarr store: {exc}"
+        ) from exc
 
 
 def zarr_store_metadata(path: Path) -> dict[str, Any]:

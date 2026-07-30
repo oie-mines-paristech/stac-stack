@@ -269,7 +269,7 @@ The presence of either:
 - `title` (optional): defaults to the folder name.
 - `description` (optional): defaults to `title`.
 - `children` (catalog only): list of relative directory paths and/or glob patterns.
-- `items` (collection only): list of relative file/directory paths and/or glob patterns. Zarr stores must end with `.zarr`.
+- `items` (collection only): list of relative file/directory paths and/or glob patterns. Directory items are treated as Zarr stores (the `.zarr` suffix is recommended but not required when Zarr markers such as `zarr.json` or `.zgroup` are present).
 - `assets` (optional): list of extra assets to attach to the Catalog/Collection.
   - as a **string**: `"asset1.pdf"` (role + name default to the filename stem)
   - as an **object**:
@@ -283,6 +283,8 @@ The presence of either:
 - Patterns are resolved with globbing relative to the folder that contains the `metadata.yml`.
 - If a pattern does not match anything, the generator also tries it as a direct relative path.
 - All resolved entries must stay under the input root folder.
+- Every declared `children` or `items` pattern must resolve to at least one path; unresolved patterns fail generation.
+- A declared directory item must be openable as a Zarr store; otherwise generation fails with an explicit error.
 
 ### Examples
 

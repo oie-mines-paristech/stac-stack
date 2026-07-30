@@ -187,6 +187,7 @@ def write_single_geotiff(path: Path) -> None:
 def build_datasets(input_root: Path) -> None:
     write_cube_netcdf(input_root / "netcdf" / "cube.nc")
     write_cube_zarr(input_root / "zarr" / "cube.zarr")
+    write_cube_zarr(input_root / "zarr-nosuffix" / "cube_store")
     write_acdd_netcdf(input_root / "acdd" / "acdd.nc")
     write_point_netcdf(input_root / "insitu" / "point.nc")
     write_scalar_latlon_zarr(input_root / "insitu" / "scalar_latlon.zarr")

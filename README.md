@@ -101,6 +101,24 @@ Les tests contrôlent notamment :
 - page browser et `config.js` (`catalogUrl` path-absolute)
 - viewer Zarr (`/viewer/` ou `/stac/viewer/`) et proxy same-origin (`…/viewer/proxy/https/…`)
 
+## Git subtrees
+
+Services under `services/` are git subtrees with standalone upstream repos (see [`subtrees.yaml`](subtrees.yaml)). **Standalone repos are the source of truth** for service code (e.g. develop in `stac-generator.git`, then pull into this monorepo).
+
+```bash
+./scripts/sync-subtree.sh status [name]   # tree + git link; exit 0 if all in sync
+./scripts/sync-subtree.sh pull <name>     # daily workflow: fetch upstream into monorepo
+./scripts/sync-subtree.sh push <name>     # exception: monorepo-only changes (export + reconcile)
+```
+
+`git subtree push` fails on this monorepo (recursion depth on deep history). `push` exports directory contents to the upstream repo, then runs `git subtree pull` in the monorepo to keep git history linked.
+
+Typical workflow for `stac-generator`:
+
+1. Commit and push in the standalone clone (`~/stac-generator`).
+2. `./scripts/sync-subtree.sh pull stac-generator` in this repo.
+3. `./scripts/sync-subtree.sh status stac-generator` should report `state=in sync`.
+
 ---
 
 This is a [Spatio-Temporal Asset Catalog (STAC)](https://github.com/radiantearth/stac-spec) browser for static catalogs.

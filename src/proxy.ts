@@ -10,6 +10,9 @@ export class CorsBlockedError extends Error {
   }
 }
 
+/** Origins that required the proxy after a CORS failure this session. */
+const proxyRequiredOrigins = new Set<string>();
+
 /** Relative or absolute path prefix for the same-origin Zarr HTTP proxy (opt-in). */
 export function zarrProxyPrefix(): string | null {
   if (typeof window === "undefined") return null;
@@ -28,6 +31,29 @@ export function isCrossOriginUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function requestOrigin(url: string): string | null {
+  try {
+    return new URL(url, window.location.href).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember that direct cross-origin fetches to this origin fail CORS for this session. */
+export function markProxyRequired(url: string): void {
+  const origin = requestOrigin(url);
+  if (origin) proxyRequiredOrigins.add(origin);
+}
+
+export function resetProxySession(): void {
+  proxyRequiredOrigins.clear();
+}
+
+export function proxyRequiredForUrl(url: string): boolean {
+  const origin = requestOrigin(url);
+  return origin !== null && proxyRequiredOrigins.has(origin);
 }
 
 export function isLikelyCorsError(error: unknown, url: string): boolean {
@@ -57,6 +83,9 @@ export function fetchWithCorsFallback(
 ): typeof fetch {
   return async (input, init) => {
     const request = new Request(input, init);
+    if (proxyPrefix && proxyRequiredForUrl(request.url)) {
+      return fetchFn(new Request(toProxyUrl(request.url, proxyPrefix), request));
+    }
     try {
       return await fetchFn(request);
     } catch (error) {
@@ -66,6 +95,7 @@ export function fetchWithCorsFallback(
       if (!proxyPrefix) {
         throw new CorsBlockedError();
       }
+      markProxyRequired(request.url);
       const proxied = toProxyUrl(request.url, proxyPrefix);
       return fetchFn(new Request(proxied, request));
     }

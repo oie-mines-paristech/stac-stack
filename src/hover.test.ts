@@ -27,4 +27,16 @@ assert(!line.includes("idx"), "no pixel index in hover line");
 assert(!line.includes("longitude"), "no full longitude label");
 assert(!line.includes("value:"), "no full value label");
 
+const gridSpatial: SpatialCoords = {
+  xName: "x",
+  yName: "y",
+  xValues: [100, 200],
+  yValues: [10, 20],
+  flipY: false,
+};
+const gridLine = formatHoverLine(plane, 1, 0, gridSpatial, undefined, "K");
+assert(gridLine.includes("x:1"), "non-lat-lon uses x index");
+assert(gridLine.includes("y:0"), "non-lat-lon uses y index");
+assert(!gridLine.includes("200"), "non-lat-lon skips coordinate values");
+
 console.log("hover.test.ts: ok");

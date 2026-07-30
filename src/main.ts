@@ -82,7 +82,7 @@ import {
   wireChunkConfirmDialog,
 } from "./ui/chunk_confirm_dialog.js";
 import { dismissErrorToast, showErrorToast } from "./ui/toast.js";
-import { initPanels, setFullTabMode, wirePanels } from "./ui/panels.js";
+import { initPanels, initResponsivePanelMode, setFullTabMode, wirePanels } from "./ui/panels.js";
 import {
   applyDatetimeToControls,
   freshViewerParamsForStore,
@@ -457,6 +457,12 @@ function reportError(error: unknown): void {
   renderStatus(el<HTMLParagraphElement>("#status"), "");
 }
 
+function updateHoverBarIdle(): void {
+  const hoverBar = document.querySelector<HTMLParagraphElement>("#hover-bar");
+  if (!hoverBar) return;
+  hoverBar.textContent = state.variable?.path ?? "";
+}
+
 function showIdleState(): void {
   dismissErrorToast();
   state.dataset = null;
@@ -466,6 +472,8 @@ function showIdleState(): void {
   el<HTMLParagraphElement>("#timings").textContent = "";
   updateDatasetLabel("");
   updateTimeControlsVisibility();
+  const hoverBar = document.querySelector<HTMLParagraphElement>("#hover-bar");
+  if (hoverBar) hoverBar.textContent = "";
 }
 
 function hideIdleState(): void {
@@ -998,6 +1006,7 @@ async function selectVariable(path: string): Promise<void> {
   ]);
   renderMetadataPanel(el<HTMLElement>("#metadata"), state.dataset.schema, variable, state.auth);
   syncCoastlineOverlay(el<HTMLCanvasElement>("#canvas"));
+  updateHoverBarIdle();
 }
 
 async function loadPlaneWithFiniteFallback(
@@ -1132,6 +1141,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     renderTimings(timingsEl, formatTimings(timings));
     pushViewerUrl();
     schedulePrefetch();
+    updateHoverBarIdle();
     return timings;
   } catch (error) {
     if (generation !== state.renderGeneration) return null;
@@ -1244,12 +1254,16 @@ function mountLayout(): void {
           <button type="button" id="dock-right" class="dock-toggle" hidden title="Show metadata panel">◀</button>
           <div class="stage-inner">
             <div class="image-view">
+              <aside id="color-legend" class="color-legend" hidden>
+                <span id="legend-min" class="color-legend-end"></span>
+                <canvas id="color-legend-bar"></canvas>
+                <span id="legend-max" class="color-legend-end"></span>
+              </aside>
               <div id="canvas-wrap" class="canvas-wrap">
                 <div id="viewer-idle" class="viewer-idle">
                   <p>${IDLE_MESSAGE}</p>
                 </div>
                 <div class="canvas-tools">
-                  <button type="button" id="btn-layout" class="canvas-tool" aria-label="Full tab view">⤢</button>
                   <button type="button" id="btn-zoom" class="canvas-tool" aria-label="Zoom image to fill view">⛶</button>
                 </div>
                 <div class="canvas-stack">
@@ -1257,14 +1271,6 @@ function mountLayout(): void {
                   <svg id="coastline-overlay" class="coastline-overlay" hidden preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
               </div>
-              <aside id="color-legend" class="color-legend" hidden>
-                <canvas id="color-legend-bar"></canvas>
-                <div class="color-legend-ticks">
-                  <span id="legend-max"></span>
-                  <span id="legend-mid"></span>
-                  <span id="legend-min"></span>
-                </div>
-              </aside>
             </div>
             <div class="playback-bar">
               <div id="playback-controls" class="playback-controls" hidden>
@@ -1280,6 +1286,7 @@ function mountLayout(): void {
                 </div>
               </div>
               <p id="hover-bar" class="hover-bar">&nbsp;</p>
+              <button type="button" id="btn-layout" class="status-bar-btn" aria-label="Full tab view">⤢</button>
             </div>
           </div>
         </main>
@@ -1383,7 +1390,7 @@ function wireCanvasHover(): void {
   });
 
   canvas.addEventListener("mouseleave", () => {
-    hoverBar.innerHTML = "&nbsp;";
+    updateHoverBarIdle();
   });
 }
 
@@ -1449,6 +1456,10 @@ async function main(): Promise<void> {
   subscribeChunkProgress(() => refreshLoadingStatus());
   mountLayout();
   initPanels();
+  initResponsivePanelMode();
+  if (window.matchMedia("(max-width: 960px)").matches) {
+    state.fullTabMode = true;
+  }
   updateLayoutButton();
   wireChunkConfirmDialog();
   connectDialogControls = wireConnectDialog({

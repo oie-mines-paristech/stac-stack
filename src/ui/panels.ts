@@ -100,6 +100,14 @@ export function isFullTabMode(): boolean {
   return fullTabActive;
 }
 
+/** On narrow viewports, start with side panels hidden (same as full-tab mode). */
+export function initResponsivePanelMode(): void {
+  if (!window.matchMedia("(max-width: 960px)").matches) return;
+  fullTabActive = true;
+  layoutBeforeFullTab = { ...currentLayout };
+  applyLayout(currentLayout);
+}
+
 export function wirePanels(onResize?: () => void): void {
   applyLayout(currentLayout);
 

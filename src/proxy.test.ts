@@ -3,6 +3,7 @@ import {
   fetchWithCorsFallback,
   isLikelyCorsError,
   parseProxyRequestPath,
+  resetProxySession,
   toProxyUrl,
   upstreamUrlFromProxyPath,
   zarrProxyPrefix,
@@ -80,7 +81,34 @@ async function testFetchWithCorsFallback(): Promise<void> {
   assert(callCount === 1, "no proxy retry when prefix is null");
 }
 
+async function testPersistentProxyForOrigin(): Promise<void> {
+  resetProxySession();
+  let callCount = 0;
+  const urls: string[] = [];
+  const innerFetch = (async (input: RequestInfo | URL) => {
+    callCount++;
+    urls.push(input instanceof Request ? input.url : String(input));
+    if (urls.at(-1)?.includes("/proxy/")) {
+      return new Response("ok");
+    }
+    throw new TypeError("Failed to fetch");
+  }) as typeof fetch;
+
+  const fetch = fetchWithCorsFallback(innerFetch, "./proxy/");
+  const chunkUrl = "https://api.earthdatahub.destine.eu/store.zarr/c/0/0/0";
+
+  await fetch(chunkUrl);
+  assert(callCount === 2, "first cross-origin fetch tries direct then proxy");
+
+  callCount = 0;
+  urls.length = 0;
+  await fetch(chunkUrl);
+  assert(callCount === 1, "subsequent fetches skip direct attempt");
+  assert(urls[0]?.includes("/proxy/https/api.earthdatahub.destine.eu/"), "uses remembered proxy");
+}
+
 await testFetchWithCorsFallback();
+await testPersistentProxyForOrigin();
 
 globalThis.window = previousWindow;
 

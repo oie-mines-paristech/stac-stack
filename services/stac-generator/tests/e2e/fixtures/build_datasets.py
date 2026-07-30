@@ -129,6 +129,11 @@ def write_scalar_latlon_zarr(path: Path) -> None:
                 np.float64(3.5),
                 {"standard_name": "longitude", "long_name": "instrument longitude", "units": "degrees_east"},
             ),
+            "altitude": (
+                [],
+                np.float64(176.0),
+                {"standard_name": "altitude", "long_name": "instrument elevation above mean sea level", "units": "m"},
+            ),
         },
         coords={"time": times},
     )

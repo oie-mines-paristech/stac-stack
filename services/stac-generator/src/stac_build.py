@@ -264,11 +264,17 @@ def _item_id_from_rel(rel_to_root: Path) -> str:
 def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, rel_collection_dir: Path) -> pystac.Item:
     ex = extent_from_asset(asset_path)
     bbox = ex.bbox_wgs84 if ex is not None and ex.bbox_wgs84 is not None else [-180.0, -90.0, 180.0, 90.0]
+    elevation_m = ex.elevation_m if ex is not None else None
     geom: dict[str, Any]
     if _is_point_bbox(bbox):
-        # In-situ: géométrie point + bbox élargie
-        geom = {"type": "Point", "coordinates": [bbox[0], bbox[1]]}
+        # In-situ: point geometry (+ optional elevation) and expanded horizontal bbox
+        coordinates: list[float] = [bbox[0], bbox[1]]
+        if elevation_m is not None:
+            coordinates.append(elevation_m)
+        geom = {"type": "Point", "coordinates": coordinates}
         bbox = _expand_point_bbox(bbox, buffer_m=POINT_BBOX_BUFFER_METERS)
+        if elevation_m is not None:
+            bbox = [bbox[0], bbox[1], elevation_m, bbox[2], bbox[3], elevation_m]
     else:
         geom = _bbox_to_geom(bbox)
     props: dict[str, Any] = {}

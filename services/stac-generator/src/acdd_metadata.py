@@ -73,6 +73,17 @@ def bbox_from_acdd_attrs(attrs: dict[str, Any]) -> list[float] | None:
     return [minx, miny, maxx, maxy]
 
 
+def elevation_from_acdd_attrs(attrs: dict[str, Any]) -> float | None:
+    """Single elevation in meters from ACDD vertical extent (in-situ point)."""
+    vmin = _as_float(attrs.get("geospatial_vertical_min"))
+    vmax = _as_float(attrs.get("geospatial_vertical_max"))
+    if vmin is None and vmax is None:
+        return None
+    if vmin is not None and vmax is not None:
+        return vmin if vmin == vmax else (vmin + vmax) / 2.0
+    return vmin if vmin is not None else vmax
+
+
 def datetime_range_from_acdd_attrs(attrs: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
     start = _parse_iso_datetime(attrs.get("time_coverage_start"))
     end = _parse_iso_datetime(attrs.get("time_coverage_end"))

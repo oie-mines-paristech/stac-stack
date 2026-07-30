@@ -71,16 +71,17 @@ Applies to NetCDF/Zarr global attributes (`ds.attrs`).
 | --- | --- |
 | Coord `time` or `standard_name=time` + `units`/`calendar` | `datetime` or `start_datetime`/`end_datetime` |
 | Coords or scalar data vars `lon`/`longitude`/`x` + `lat`/`latitude`/`y` | `bbox`, `geometry` |
-| `standard_name` = `longitude`, `projection_x_coordinate`, `latitude`, `projection_y_coordinate` (coords or scalar data vars) | `bbox` |
+| Scalar `altitude`/`height`/`elevation` or ACDD `geospatial_vertical_min`/`max` | `geometry` Z (m), `bbox` 3D when point |
+| `standard_name` = `longitude`, `projection_x_coordinate`, `latitude`, `projection_y_coordinate`, `altitude`, `height` (coords or scalar data vars) | `bbox`, optional elevation |
 | `ds.rio.crs` + `ds.rio.bounds()` | `bbox`, `geometry` (reprojected to WGS84) |
-| Degenerate bbox (point) | `geometry` Point, expanded bbox ±100 m |
+| Degenerate bbox (point) | `geometry` Point, expanded bbox ±100 m (horizontal only) |
 | No temporal info | `datetime=1970-01-01`, `stac_generator:datetime_unknown=true` |
 | No spatial extent | `bbox=[-180,-90,180,90]` |
 | Relative path | `id` |
 | Path + `--root-href` | `assets.<key>.href` |
 | File extension | `assets.<key>.type` |
 | Filename | `assets.<key>.title`, role `data` |
-| All `data_vars` + dimensions | Datacube extension, `cube:dimensions`, `cube:variables` |
+| All `data_vars` + dimensions (excluding scalar geospatial metadata vars) | Datacube extension, `cube:dimensions`, `cube:variables` |
 
 ### NetCDF / Zarr — dimension level (`cube:dimensions`)
 

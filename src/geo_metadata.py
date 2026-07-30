@@ -14,13 +14,14 @@ import imagecodecs.zarr as zarr3codecs
 
 zarr3codecs.register_codecs()
 
-from acdd_metadata import bbox_from_acdd_attrs, datetime_range_from_acdd_attrs
+from acdd_metadata import bbox_from_acdd_attrs, datetime_range_from_acdd_attrs, elevation_from_acdd_attrs
 from mime import is_zarr_store
 
 
 @dataclass(frozen=True)
 class GeoExtent:
     bbox_wgs84: list[float] | None = None  # [minx, miny, maxx, maxy]
+    elevation_m: float | None = None  # optional WGS84 elevation in meters (in-situ / 3D)
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
 
@@ -156,6 +157,41 @@ def _guess_time_coord(ds: xr.Dataset) -> xr.DataArray | None:
     return None
 
 
+_GEOSPATIAL_METADATA_NAMES = frozenset(
+    {"lat", "lon", "latitude", "longitude", "x", "y", "z", "altitude", "height", "elevation"}
+)
+_GEOSPATIAL_METADATA_STANDARD_NAMES = frozenset(
+    {
+        "latitude",
+        "longitude",
+        "altitude",
+        "height",
+        "projection_x_coordinate",
+        "projection_y_coordinate",
+        "projection_z_coordinate",
+    }
+)
+
+
+def is_geospatial_metadata_var(name: str, da: xr.DataArray) -> bool:
+    """Scalar lat/lon/altitude-style variables used for location, not as data products."""
+    if da.size != 1:
+        return False
+    if name.lower() in _GEOSPATIAL_METADATA_NAMES:
+        return True
+    std = str(da.attrs.get("standard_name", "")).lower()
+    return std in _GEOSPATIAL_METADATA_STANDARD_NAMES
+
+
+def _scalar_array_value(da: xr.DataArray) -> float | None:
+    if da.size != 1:
+        return None
+    try:
+        return float(da.values)
+    except Exception:
+        return None
+
+
 def _find_lonlat_arrays(ds: xr.Dataset) -> tuple[xr.DataArray | None, xr.DataArray | None]:
     lon: xr.DataArray | None = None
     lat: xr.DataArray | None = None
@@ -198,6 +234,47 @@ def _find_lonlat_arrays(ds: xr.Dataset) -> tuple[xr.DataArray | None, xr.DataArr
                 lat = c
 
     return lon, lat
+
+
+def _find_altitude_array(ds: xr.Dataset) -> xr.DataArray | None:
+    alt: xr.DataArray | None = None
+
+    for cand in ("altitude", "height", "elevation", "z"):
+        if cand in ds.coords and ds.coords[cand].size == 1:
+            alt = ds.coords[cand]
+            break
+        if cand in ds.data_vars and ds[cand].size == 1:
+            alt = ds[cand]
+            break
+
+    if alt is None:
+        for _name, c in ds.coords.items():
+            if c.size != 1:
+                continue
+            std = str(c.attrs.get("standard_name", "")).lower()
+            if std in {"altitude", "height"}:
+                alt = c
+                break
+
+    if alt is None:
+        for _name, c in ds.data_vars.items():
+            if c.size != 1:
+                continue
+            std = str(c.attrs.get("standard_name", "")).lower()
+            if std in {"altitude", "height"}:
+                alt = c
+                break
+
+    return alt
+
+
+def _elevation_from_dataset(ds: xr.Dataset) -> float | None:
+    alt = _find_altitude_array(ds)
+    if alt is not None:
+        value = _scalar_array_value(alt)
+        if value is not None:
+            return value
+    return elevation_from_acdd_attrs(dict(ds.attrs))
 
 
 def _bbox_from_lonlat(ds: xr.Dataset) -> list[float] | None:
@@ -264,10 +341,17 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
     if end_dt is not None and not isinstance(end_dt, datetime):
         end_dt = None
 
-    if bbox is None and start_dt is None and end_dt is None:
+    elevation_m = _elevation_from_dataset(ds)
+
+    if bbox is None and start_dt is None and end_dt is None and elevation_m is None:
         return None
 
-    return GeoExtent(bbox_wgs84=bbox, start_datetime=start_dt, end_datetime=end_dt)
+    return GeoExtent(
+        bbox_wgs84=bbox,
+        elevation_m=elevation_m,
+        start_datetime=start_dt,
+        end_datetime=end_dt,
+    )
 
 
 def extent_from_netcdf(path: Path) -> GeoExtent | None:
@@ -351,6 +435,8 @@ def datacube_metadata_from_xarray(ds: xr.Dataset) -> tuple[dict[str, Any], dict[
 
     variables: dict[str, Any] = {}
     for var_name, da in ds.data_vars.items():
+        if is_geospatial_metadata_var(var_name, da):
+            continue
         v: dict[str, Any] = {"dimensions": list(da.dims)}
         unit = da.attrs.get("units") or da.attrs.get("unit")
         if unit is not None:
@@ -454,7 +540,11 @@ def band_metadata_from_dataarray(da: xr.DataArray) -> dict[str, Any]:
 
 
 def bands_metadata_from_xarray(ds: xr.Dataset) -> dict[str, dict[str, Any]]:
-    return {str(name): band_metadata_from_dataarray(da) for name, da in ds.data_vars.items()}
+    return {
+        str(name): band_metadata_from_dataarray(da)
+        for name, da in ds.data_vars.items()
+        if not is_geospatial_metadata_var(name, da)
+    }
 
 
 def read_xarray_global_attrs(path: Path) -> dict[str, Any] | None:

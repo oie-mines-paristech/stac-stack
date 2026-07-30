@@ -1,5 +1,0 @@
-id: oie-stac-catalog
-title: OIE Stac Catalog
-description: Mixed data
-children:
-    - "*/"

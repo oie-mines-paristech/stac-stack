@@ -3,8 +3,28 @@ set -euo pipefail
 
 INPUT_DIR="${INPUT_DIR:-/data/in}"
 OUTPUT_DIR="${OUTPUT_DIR:-/data/catalog}"
-ROOT_HREF="${ROOT_HREF:-/root}"
 WATCH_DEBOUNCE="${WATCH_DEBOUNCE:-10}"
+
+normalize_path_prefix() {
+  local p="${1:-/}"
+  case "$p" in
+    /*) ;;
+    *) p="/$p" ;;
+  esac
+  if [[ "$p" == "/" ]]; then
+    printf '%s' "/"
+    return
+  fi
+  case "$p" in
+    */) printf '%s' "$p" ;;
+    *) printf '%s' "${p}/" ;;
+  esac
+}
+
+PATH_PREFIX="$(normalize_path_prefix "${PATH_PREFIX:-/}")"
+if [[ -z "${ROOT_HREF:-}" ]]; then
+  ROOT_HREF="${PATH_PREFIX}data"
+fi
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -21,11 +41,21 @@ trap on_term INT TERM
 
 echo "[docker] INPUT_DIR=${INPUT_DIR}"
 echo "[docker] OUTPUT_DIR=${OUTPUT_DIR}"
+echo "[docker] PATH_PREFIX=${PATH_PREFIX}"
 echo "[docker] ROOT_HREF=${ROOT_HREF}"
 echo "[docker] WATCH_DEBOUNCE=${WATCH_DEBOUNCE}"
 
+echo "[docker] bootstrap generation (required on every startup)..."
+if ! uv run generate-stac \
+  --input "${INPUT_DIR}" \
+  --output "${OUTPUT_DIR}" \
+  --root-href "${ROOT_HREF}"; then
+  echo "[docker] bootstrap generation failed — fix input/catalog errors before starting the stack" >&2
+  exit 1
+fi
+
 while true; do
-  echo "[docker] starting generate-stac --watch (will restart on crash)"
+  echo "[docker] starting generate-stac --watch (incremental updates)"
 
   # Run in background so we can trap/forward signals.
   uv run generate-stac \
@@ -33,7 +63,8 @@ while true; do
     --output "${OUTPUT_DIR}" \
     --root-href "${ROOT_HREF}" \
     --watch \
-    --watch-debounce "${WATCH_DEBOUNCE}" &
+    --watch-debounce "${WATCH_DEBOUNCE}" \
+    --skip-initial &
   child_pid="$!"
 
   set +e
@@ -50,4 +81,3 @@ while true; do
   echo "[docker] generate-stac exited (code=${code}), restarting in 2s..."
   sleep 2
 done
-

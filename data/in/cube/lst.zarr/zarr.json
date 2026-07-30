@@ -1,8 +1,0 @@
-{
-  "attributes": {
-    "history": "Thu Sep 12 23:23:15 2024: ncap2 -s lst=float(lst) lst.nc lst-float.nc\nThu Sep 12 22:49:05 2024: ncatted -a long_name,lst,m,c,lst lst.nc",
-    "NCO": "netCDF Operators version 5.0.6 (Homepage = http://nco.sf.net, Code = http://github.com/nco/nco)"
-  },
-  "zarr_format": 3,
-  "node_type": "group"
-}

@@ -27,7 +27,7 @@ rebuild-viewer:
 	$(COMPOSE) up -d --force-recreate stac-browser
 
 up:
-	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE) up -d --build
+	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE) up
 
 down:
 	$(COMPOSE) down

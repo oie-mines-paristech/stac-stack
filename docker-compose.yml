@@ -10,10 +10,10 @@ services:
       PATH_PREFIX: ${PATH_PREFIX:-/}
       INPUT_DIR: /data
       OUTPUT_DIR: /catalog
-      WATCH_DEBOUNCE: "10"
+      WATCH_DEBOUNCE: "5"
     healthcheck:
       test: ["CMD-SHELL", "test -f /catalog/catalog.json && grep -qx OK /catalog/status.log"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 120s

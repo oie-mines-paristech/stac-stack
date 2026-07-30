@@ -108,6 +108,33 @@ def write_point_netcdf(path: Path) -> None:
     ds.to_netcdf(path, engine="netcdf4")
 
 
+def write_scalar_latlon_zarr(path: Path) -> None:
+    """Zarr with scalar latitude/longitude data vars (fixed-instrument pattern)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    times = xr.date_range("2021-06-01", periods=2, freq="D", use_cftime=True, calendar="gregorian")
+    ds = xr.Dataset(
+        {
+            "value": (
+                ["time"],
+                np.array([10.0, 11.0], dtype="float32"),
+                {"long_name": "Observed value", "units": "m"},
+            ),
+            "latitude": (
+                [],
+                np.float64(45.5),
+                {"standard_name": "latitude", "long_name": "instrument latitude", "units": "degrees_north"},
+            ),
+            "longitude": (
+                [],
+                np.float64(3.5),
+                {"standard_name": "longitude", "long_name": "instrument longitude", "units": "degrees_east"},
+            ),
+        },
+        coords={"time": times},
+    )
+    ds.to_zarr(path, mode="w")
+
+
 def write_rgb_geotiff(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     height, width = 4, 4
@@ -162,5 +189,6 @@ def build_datasets(input_root: Path) -> None:
     write_cube_zarr(input_root / "zarr" / "cube.zarr")
     write_acdd_netcdf(input_root / "acdd" / "acdd.nc")
     write_point_netcdf(input_root / "insitu" / "point.nc")
+    write_scalar_latlon_zarr(input_root / "insitu" / "scalar_latlon.zarr")
     write_rgb_geotiff(input_root / "geotiff" / "rgb.tif")
     write_single_geotiff(input_root / "geotiff" / "single.tif")

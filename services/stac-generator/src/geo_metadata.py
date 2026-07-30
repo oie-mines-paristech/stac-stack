@@ -155,9 +155,9 @@ def _guess_time_coord(ds: xr.Dataset) -> xr.DataArray | None:
     return None
 
 
-def _bbox_from_lonlat(ds: xr.Dataset) -> list[float] | None:
-    lon = None
-    lat = None
+def _find_lonlat_arrays(ds: xr.Dataset) -> tuple[xr.DataArray | None, xr.DataArray | None]:
+    lon: xr.DataArray | None = None
+    lat: xr.DataArray | None = None
 
     for cand in ("lon", "longitude", "x"):
         if cand in ds.coords:
@@ -169,14 +169,38 @@ def _bbox_from_lonlat(ds: xr.Dataset) -> list[float] | None:
             break
 
     if lon is None or lat is None:
-        # Heuristique via standard_name
-        for name, c in ds.coords.items():
+        for cand in ("lon", "longitude", "x"):
+            if cand in ds.data_vars and ds[cand].size == 1:
+                lon = ds[cand]
+                break
+        for cand in ("lat", "latitude", "y"):
+            if cand in ds.data_vars and ds[cand].size == 1:
+                lat = ds[cand]
+                break
+
+    if lon is None or lat is None:
+        for _name, c in ds.coords.items():
             std = str(c.attrs.get("standard_name", "")).lower()
             if std in {"longitude", "projection_x_coordinate"} and lon is None:
                 lon = c
             if std in {"latitude", "projection_y_coordinate"} and lat is None:
                 lat = c
 
+    if lon is None or lat is None:
+        for _name, c in ds.data_vars.items():
+            if c.size != 1:
+                continue
+            std = str(c.attrs.get("standard_name", "")).lower()
+            if std in {"longitude", "projection_x_coordinate"} and lon is None:
+                lon = c
+            if std in {"latitude", "projection_y_coordinate"} and lat is None:
+                lat = c
+
+    return lon, lat
+
+
+def _bbox_from_lonlat(ds: xr.Dataset) -> list[float] | None:
+    lon, lat = _find_lonlat_arrays(ds)
     if lon is None or lat is None:
         return None
 

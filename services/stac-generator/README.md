@@ -70,8 +70,8 @@ Applies to NetCDF/Zarr global attributes (`ds.attrs`).
 | Source metadata | STAC field |
 | --- | --- |
 | Coord `time` or `standard_name=time` + `units`/`calendar` | `datetime` or `start_datetime`/`end_datetime` |
-| Coords `lon`/`longitude`/`x` + `lat`/`latitude`/`y` | `bbox`, `geometry` |
-| `standard_name` = `longitude`, `projection_x_coordinate`, `latitude`, `projection_y_coordinate` | `bbox` |
+| Coords or scalar data vars `lon`/`longitude`/`x` + `lat`/`latitude`/`y` | `bbox`, `geometry` |
+| `standard_name` = `longitude`, `projection_x_coordinate`, `latitude`, `projection_y_coordinate` (coords or scalar data vars) | `bbox` |
 | `ds.rio.crs` + `ds.rio.bounds()` | `bbox`, `geometry` (reprojected to WGS84) |
 | Degenerate bbox (point) | `geometry` Point, expanded bbox ±100 m |
 | No temporal info | `datetime=1970-01-01`, `stac_generator:datetime_unknown=true` |

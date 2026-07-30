@@ -65,6 +65,55 @@ assert(warped.includes("Z"), "warpPathD keeps close");
 const pathDs = warpCoastlinePathDs(["M0 90L10 80Z"], mapper);
 assert(pathDs.length === 1 && pathDs[0].d.length > 0, "warpCoastlinePathDs");
 
+function maxLineHorizontalJump(d: string): number {
+  const re = /([ML])(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g;
+  let max = 0;
+  let prevPx: number | undefined;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(d)) !== null) {
+    const cmd = match[1];
+    const px = Number(match[2]);
+    if (cmd === "L" && prevPx !== undefined) {
+      max = Math.max(max, Math.abs(px - prevPx));
+    }
+    prevPx = px;
+  }
+  return max;
+}
+
+const ecmwfLons = Array.from({ length: 1440 }, (_, i) => -180 + (i * 360) / 1439);
+const ecmwfLats = Array.from({ length: 721 }, (_, i) => 90 - (i * 180) / 720);
+const ecmwfMapper = createGeoPixelMapper(ecmwfLons, ecmwfLats, false, 1440, 721);
+
+const datelineWarped = warpPathD("M179 0L-179 0", ecmwfMapper, {
+  xValues: ecmwfLons,
+});
+assert(
+  maxLineHorizontalJump(datelineWarped) < ecmwfMapper.width * 0.4,
+  "dateline warp avoids long horizontal segment on -180..180 grid",
+);
+
+const splitOnly = warpPathD("M179 0L-179 0", ecmwfMapper);
+assert(
+  maxLineHorizontalJump(splitOnly) < ecmwfMapper.width * 0.4,
+  "dateline warp splits without xValues",
+);
+
+const era5Mapper = createGeoPixelMapper(era5Lons, era5Lats, false, 1440, 721);
+const era5Dateline = warpPathD("M174 0L-178 0", era5Mapper, { xValues: era5Lons });
+assert(
+  era5Dateline.includes("L"),
+  "0..360 grid keeps connected segment across dateline",
+);
+assert(
+  maxLineHorizontalJump(era5Dateline) < 50,
+  "0..360 dateline segment stays within pixel threshold",
+);
+
+const regionalWarped = warpPathD("M0 90L10 80", mapper, { xValues: uniformLon });
+assert(regionalWarped.includes("L"), "regional segment stays connected");
+assert(maxLineHorizontalJump(regionalWarped) < 20, "regional segment has small pixel jump");
+
 const fixtureSvg = `
 <svg xmlns="http://www.w3.org/2000/svg">
   <g id="positioner">

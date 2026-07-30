@@ -65,4 +65,16 @@ const simple2d = buildDatasetSchema("https://example.com/simple.zarr/", {
 });
 assert(simple2d.variables.length === 1, "lat/lon short names recognized");
 
+const rowsColumns = buildDatasetSchema("https://example.com/frp.zarr/", {
+  flags: {
+    shape: [2400, 3000],
+    dimension_names: ["rows", "columns"],
+    data_type: "uint8",
+    node_type: "array",
+  },
+});
+assert(rowsColumns.variables.length === 1, "rows/columns recognized as image grid");
+assert(rowsColumns.variables[0].axes.find((a) => a.role === "y")?.name === "rows", "rows mapped to y");
+assert(rowsColumns.variables[0].axes.find((a) => a.role === "x")?.name === "columns", "columns mapped to x");
+
 console.log("dimensions.test.ts: ok");

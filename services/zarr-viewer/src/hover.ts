@@ -11,6 +11,19 @@ export interface SpatialCoords {
   flipY: boolean;
 }
 
+function abbreviateCoordName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower === "latitude") return "lat";
+  if (lower === "longitude") return "lon";
+  return name;
+}
+
+function isLatLonSpatial(spatial: SpatialCoords): boolean {
+  const lat = new Set(["latitude", "lat"]);
+  const lon = new Set(["longitude", "lon"]);
+  return lat.has(spatial.yName.toLowerCase()) && lon.has(spatial.xName.toLowerCase());
+}
+
 export function formatHoverLine(
   plane: ImagePlane,
   pixelX: number,
@@ -27,12 +40,17 @@ export function formatHoverLine(
   const flipY = spatial?.flipY ?? false;
   const y = dataRowFromCanvas(canvasY, height, flipY);
 
-  const parts: string[] = [`idx x:${x} y:${y}`];
-  if (spatial?.xValues && x < spatial.xValues.length) {
-    parts.push(`${spatial.xName}:${formatCoord(spatial.xValues[x])}`);
-  }
-  if (spatial?.yValues && y < spatial.yValues.length) {
-    parts.push(`${spatial.yName}:${formatCoord(spatial.yValues[y])}`);
+  const parts: string[] = [];
+  if (spatial && isLatLonSpatial(spatial)) {
+    if (spatial.xValues && x < spatial.xValues.length) {
+      parts.push(`${abbreviateCoordName(spatial.xName)}:${formatCoord(spatial.xValues[x])}`);
+    }
+    if (spatial.yValues && y < spatial.yValues.length) {
+      parts.push(`${abbreviateCoordName(spatial.yName)}:${formatCoord(spatial.yValues[y])}`);
+    }
+  } else {
+    parts.push(`x:${x}`);
+    parts.push(`y:${y}`);
   }
 
   const stride = computeStrides(shape);
@@ -42,7 +60,7 @@ export function formatHoverLine(
 
   if (axes.band < 0) {
     const value = chunkValue(data, stride, coords);
-    parts.push(`value:${formatValue(value, unit)}`);
+    parts.push(`val:${formatValue(value, unit)}`);
   } else {
     const bandCount = shape[axes.band];
     for (let band = 0; band < bandCount; band++) {

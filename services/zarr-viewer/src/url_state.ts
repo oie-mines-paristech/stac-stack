@@ -34,6 +34,7 @@ export interface ViewerUrlParams {
   autoscale?: boolean;
   manualScale?: ScaleRange[];
   fillView?: boolean;
+  fullTab?: boolean;
   dims: Record<string, number>;
   spatialRegion?: SpatialRegionPick;
 }
@@ -233,6 +234,7 @@ export function writeViewerParams(input: {
   autoscale: boolean;
   manualScale: ScaleRange[];
   fillView: boolean;
+  fullTab: boolean;
   spatialRegion?: SpatialRegionPick | null;
 }): void {
   const json: ViewerStateJsonV1 = { v: 1 };
@@ -272,6 +274,10 @@ export function writeViewerParams(input: {
 
   if (input.fillView) {
     json.zoom = "fill";
+  }
+
+  if (input.fullTab) {
+    json.ui = "full";
   }
 
   const dims: Record<string, number> = {};

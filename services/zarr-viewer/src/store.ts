@@ -54,18 +54,43 @@ function createFetchStore(url: string, auth?: StoreAuth): zarr.FetchStore {
   return new zarr.FetchStore(url, { fetch: createInstrumentedStoreFetch(auth) });
 }
 
-async function loadConsolidatedForSchema(
+export interface StoreConnection {
+  normalized: string;
+  fetchUrl: string;
+  effectiveAuth: StoreAuth | undefined;
+}
+
+export function resolveStoreConnection(url: string, auth?: StoreAuth): StoreConnection {
+  const normalized = resolveStoreUrl(url);
+  if (!normalized) {
+    throw new Error("Empty store URL");
+  }
+  const effectiveAuth = auth ?? resolveStoreAuth(normalized, null);
+  const fetchUrl = storeUrlForFetch(normalized, effectiveAuth);
+  return { normalized, fetchUrl, effectiveAuth };
+}
+
+export async function fetchConsolidatedMetadata(
   fetchUrl: string,
   auth?: StoreAuth,
+  options?: { fetch?: typeof fetch },
 ): Promise<ConsolidatedLoadResult> {
-  const authFetch = createInstrumentedStoreFetch(auth);
+  const authFetch = options?.fetch ?? createInstrumentedStoreFetch(auth);
 
   const zarrJsonResponse = await authFetch(new URL("zarr.json", fetchUrl));
   if (zarrJsonResponse.ok) {
-    const zarrJson = (await zarrJsonResponse.json()) as Record<string, unknown>;
-    const consolidatedRaw = asRecord(asRecord(zarrJson.consolidated_metadata).metadata);
-    if (Object.keys(consolidatedRaw).length > 0) {
-      return normalizeV3Consolidated(consolidatedRaw, asRecord(zarrJson.attributes));
+    let zarrJson: Record<string, unknown> | null = null;
+    try {
+      zarrJson = (await zarrJsonResponse.json()) as Record<string, unknown>;
+    } catch {
+      // Static hosts may return index.html (200) when zarr.json is missing.
+      zarrJson = null;
+    }
+    if (zarrJson) {
+      const consolidatedRaw = asRecord(asRecord(zarrJson.consolidated_metadata).metadata);
+      if (Object.keys(consolidatedRaw).length > 0) {
+        return normalizeV3Consolidated(consolidatedRaw, asRecord(zarrJson.attributes));
+      }
     }
   }
 
@@ -118,17 +143,11 @@ export async function preloadVariableCoordinates(
   );
 }
 
-export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDatasetResult> {
+export async function connectStore(url: string, auth?: StoreAuth): Promise<OpenDatasetResult> {
   ensureCodec();
   resetDatasetCaches();
-  const normalized = resolveStoreUrl(url);
-  if (!normalized) {
-    throw new Error("Empty store URL");
-  }
-
-  const effectiveAuth = auth ?? resolveStoreAuth(normalized, null);
-  const fetchUrl = storeUrlForFetch(normalized, effectiveAuth);
-  const { consolidated, rootAttributes } = await loadConsolidatedForSchema(fetchUrl, effectiveAuth);
+  const { fetchUrl, effectiveAuth } = resolveStoreConnection(url, auth);
+  const { consolidated, rootAttributes } = await fetchConsolidatedMetadata(fetchUrl, effectiveAuth);
 
   const baseStore = createFetchStore(fetchUrl, effectiveAuth);
   const cachedStore = zarr.withByteCaching(baseStore, {
@@ -141,6 +160,10 @@ export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDa
     throw new Error("No image-like variables found in consolidated metadata");
   }
   return { schema, store, root };
+}
+
+export async function openDataset(url: string, auth?: StoreAuth): Promise<OpenDatasetResult> {
+  return connectStore(url, auth);
 }
 
 export async function openVariableArray(

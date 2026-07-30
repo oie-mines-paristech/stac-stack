@@ -6,9 +6,11 @@ import {
   geoToAxisIndex,
   isLatLonVariable,
   isRectilinearGrid,
+  longitudeSpan,
   normalizeLongitude,
   shouldFlipYAxis,
   spatialCoordsMatchPlane,
+  unwrapLongitude,
 } from "./spatial.js";
 
 function assert(condition: boolean, message: string): void {
@@ -149,5 +151,9 @@ assert(
   Math.abs(pixelMapper.latToPixel(0) - 360) < 0.05,
   "latToPixel on ERA5-like grid",
 );
+
+assert(unwrapLongitude(-179, 179) === 181, "unwrapLongitude crosses dateline eastward");
+assert(unwrapLongitude(179, -179) === -181, "unwrapLongitude crosses dateline westward");
+assert(longitudeSpan(era5Lons) >= 350, "longitudeSpan detects global grid");
 
 console.log("spatial.test.ts: ok");

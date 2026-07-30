@@ -19,6 +19,7 @@ export interface ViewerStateJsonV1 {
   dims?: Record<string, number>;
   /** Spatial chunk region [y0, y1, x0, x1] inclusive */
   region?: [number, number, number, number];
+  ui?: "full";
 }
 
 export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
@@ -48,6 +49,7 @@ export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
     const { y0, y1, x0, x1 } = params.spatialRegion;
     json.region = [y0, y1, x0, x1];
   }
+  if (params.fullTab) json.ui = "full";
 
   return json;
 }
@@ -95,6 +97,7 @@ export function jsonToViewerParams(
     fillView: json.zoom === "fill" ? true : undefined,
     dims: json.dims ?? {},
     spatialRegion,
+    fullTab: json.ui === "full" ? true : undefined,
   };
 }
 

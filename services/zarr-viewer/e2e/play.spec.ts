@@ -1,53 +1,56 @@
 import { expect, test } from "@playwright/test";
+import {
+  attachTestDiagnostics,
+  createViewerMonitor,
+  fixtureUrl,
+  MINI_SOPHIA,
+  waitForViewerReady,
+} from "./helpers.js";
 
-const SOPHIA =
-  "https://demos.oie-lab.net/stac/data/fisheye/sophia.zarr/";
+test.afterEach(async ({}, testInfo) => {
+  const monitor = (testInfo as { _monitor?: ReturnType<typeof createViewerMonitor> })._monitor;
+  if (monitor) attachTestDiagnostics(testInfo, monitor);
+});
 
-async function waitForFrameReady(page: import("@playwright/test").Page): Promise<void> {
-  await page.waitForSelector("#canvas", { state: "attached" });
-  await page.waitForFunction(() => {
-    const status = document.querySelector("#status")?.textContent ?? "";
-    const toast = document.querySelector("#error-toast");
-    const hasError = toast instanceof HTMLElement && !toast.hidden && toast.textContent !== "";
-    return (
-      !hasError &&
-      !status.includes("Loading") &&
-      !status.includes("Opening")
-    );
-  }, { timeout: 90_000 });
-}
+test("play advances multiple frames", async ({ page }, testInfo) => {
+  const monitor = createViewerMonitor(page);
+  monitor.attach();
+  (testInfo as { _monitor?: typeof monitor })._monitor = monitor;
 
-async function readTimeLabel(page: import("@playwright/test").Page): Promise<string> {
-  return page.locator("#time-label").textContent().then((text) => text ?? "");
-}
+  await page.goto(fixtureUrl(MINI_SOPHIA, "variable=radiance"));
+  await waitForViewerReady(page, monitor);
+  await expect(page.locator("#playback-controls")).toBeVisible();
 
-test("play advances multiple frames", async ({ page }) => {
-  await page.goto(`/?url=${encodeURIComponent(SOPHIA)}&variable=radiance`);
-  await waitForFrameReady(page);
+  const before = (await page.locator("#time-label").textContent()) ?? "";
+  expect(before).toContain("UTC");
 
-  const before = await readTimeLabel(page);
   await page.locator("#btn-play-pause").click();
-  await expect(page.locator("#btn-play-pause")).toHaveAttribute("aria-label", "Pause");
+  await expect(page.locator("#btn-play-pause")).toHaveAttribute("aria-label", "Pause", {
+    timeout: 5_000,
+  });
 
   await page.waitForFunction(
     (initial) => {
       const label = document.querySelector("#time-label")?.textContent ?? "";
-      return label !== initial;
+      return label !== initial && label.includes("UTC");
     },
     before,
-    { timeout: 15_000 },
+    { timeout: 10_000 },
   );
 
-  const afterFirst = await readTimeLabel(page);
+  const afterFirst = (await page.locator("#time-label").textContent()) ?? "";
   expect(afterFirst).not.toBe(before);
 
-  await page.waitForTimeout(3000);
-  const afterWait = await readTimeLabel(page);
-  console.log("before:", before);
-  console.log("afterFirst:", afterFirst);
-  console.log("afterWait:", afterWait);
-  console.log("playing:", await page.locator("#btn-play-pause").getAttribute("aria-label"));
+  await page.waitForFunction(
+    (previous) => {
+      const label = document.querySelector("#time-label")?.textContent ?? "";
+      return label !== previous;
+    },
+    afterFirst,
+    { timeout: 10_000 },
+  );
 
-  expect(afterWait).not.toBe(afterFirst);
+  const afterSecond = (await page.locator("#time-label").textContent()) ?? "";
+  expect(afterSecond).not.toBe(afterFirst);
   await expect(page.locator("#btn-play-pause")).toHaveAttribute("aria-label", "Pause");
 });

@@ -45,6 +45,7 @@ const SPATIAL_X_NAMES = new Set([
   "x",
   "raw_x",
   "column",
+  "columns",
 ]);
 const SPATIAL_Y_NAMES = new Set([
   "projection_y_coordinate",
@@ -53,6 +54,7 @@ const SPATIAL_Y_NAMES = new Set([
   "y",
   "raw_y",
   "row",
+  "rows",
 ]);
 const BAND_NAMES = new Set(["band", "channel", "wavelength", "c"]);
 

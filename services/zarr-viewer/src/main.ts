@@ -1,7 +1,5 @@
 import "./style.css";
 import {
-  resolveStoreAuth,
-  serializeAuthParam,
   stripAuthFromUrl,
   type StoreAuth,
 } from "./auth.js";
@@ -47,7 +45,7 @@ import {
 import { renderPlaneToView } from "./render_pipeline.js";
 import { defaultRgbBands, type ScaleRange } from "./scaling.js";
 import {
-  openDataset,
+  connectStore,
   openVariableArray,
   preloadVariableCoordinates,
   readCoordinateValues,
@@ -59,7 +57,9 @@ import {
   defaultDayFromDates,
   defaultTimeIndexForDay,
   filterTimeIndicesByDay,
-  formatTime,
+  formatTimeHourUtc,
+  shiftUtcDate,
+  supportsIntraDayTimePlayback,
   timeIndicesSearchOrder,
   timeValuesToDates,
 } from "./time.js";
@@ -75,7 +75,7 @@ import { wireViewPan, type ViewPanController } from "./ui/canvas_pan.js";
 import { updateColorLegend } from "./ui/color_legend.js";
 import { mountColormapPicker, type ColormapPickerHandle } from "./ui/colormap_picker.js";
 import { renderMetadataPanel, renderStatus, renderTimings } from "./ui/metadata.js";
-import { authDialogMarkup, wireAuthDialog } from "./ui/auth_dialog.js";
+import { connectDialogMarkup, wireConnectDialog } from "./ui/connect_dialog.js";
 import {
   chunkConfirmDialogMarkup,
   promptChunkLoadChoice,
@@ -83,7 +83,7 @@ import {
   wireChunkConfirmDialog,
 } from "./ui/chunk_confirm_dialog.js";
 import { dismissErrorToast, showErrorToast } from "./ui/toast.js";
-import { initPanels, wirePanels } from "./ui/panels.js";
+import { initPanels, initResponsivePanelMode, setFullTabMode, wirePanels } from "./ui/panels.js";
 import {
   applyDatetimeToControls,
   freshViewerParamsForStore,
@@ -96,7 +96,7 @@ import {
   type ViewerUrlParams,
 } from "./url_state.js";
 
-let authDialogControls: { updateIndicator: () => void } | null = null;
+let connectDialogControls: { open: () => void } | null = null;
 let colormapPicker: ColormapPickerHandle | null = null;
 
 interface AppState {
@@ -123,6 +123,7 @@ interface AppState {
   isPlaying: boolean;
   renderGeneration: number;
   fillView: boolean;
+  fullTabMode: boolean;
   showCoastlines: boolean;
 }
 
@@ -145,6 +146,7 @@ const state: AppState = {
   isPlaying: false,
   renderGeneration: 0,
   fillView: false,
+  fullTabMode: false,
   showCoastlines: true,
 };
 
@@ -439,8 +441,11 @@ function el<T extends HTMLElement>(selector: string): T {
   return node as T;
 }
 
-const IDLE_MESSAGE =
-  "Enter a store URL in the field above, or open the viewer with a shared link (#…).";
+const IDLE_MESSAGE = "No dataset loaded.";
+
+interface LoadViewerOptions {
+  dataset?: OpenDatasetResult;
+}
 
 function reportError(error: unknown): void {
   const message =
@@ -453,18 +458,109 @@ function reportError(error: unknown): void {
   renderStatus(el<HTMLParagraphElement>("#status"), "");
 }
 
+function updateHoverBarIdle(): void {
+  const hoverBar = document.querySelector<HTMLParagraphElement>("#hover-bar");
+  if (!hoverBar) return;
+  hoverBar.textContent = state.variable?.path ?? "";
+}
+
 function showIdleState(): void {
   dismissErrorToast();
-  const urlInput = el<HTMLInputElement>("#url-input");
-  urlInput.value = "";
-  urlInput.removeAttribute("value");
+  state.dataset = null;
+  state.variable = null;
   el<HTMLDivElement>("#viewer-idle").hidden = false;
   renderStatus(el<HTMLParagraphElement>("#status"), IDLE_MESSAGE);
   el<HTMLParagraphElement>("#timings").textContent = "";
+  updateDatasetLabel("");
+  updateTimeControlsVisibility();
+  const hoverBar = document.querySelector<HTMLParagraphElement>("#hover-bar");
+  if (hoverBar) hoverBar.textContent = "";
 }
 
 function hideIdleState(): void {
   el<HTMLDivElement>("#viewer-idle").hidden = true;
+}
+
+function updateDatasetLabel(storeUrl: string, auth?: StoreAuth): void {
+  const label = document.querySelector<HTMLSpanElement>("#dataset-url");
+  if (!label) return;
+  const display = storeUrl.trim() ? toDisplayStoreUrl(storeUrl, auth) : "";
+  label.textContent = display || "—";
+  label.title = display;
+}
+
+function updateLayoutButton(): void {
+  const button = el<HTMLButtonElement>("#btn-layout");
+  button.classList.toggle("active", state.fullTabMode);
+  button.textContent = state.fullTabMode ? "☰" : "⤢";
+  button.title = state.fullTabMode ? "Show sidebars" : "Full tab view";
+  button.setAttribute(
+    "aria-label",
+    state.fullTabMode ? "Show sidebars" : "Full tab view",
+  );
+}
+
+function toggleFullTabMode(): void {
+  state.fullTabMode = !state.fullTabMode;
+  setFullTabMode(state.fullTabMode, () => {
+    fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
+    refreshHistogram();
+  });
+  updateLayoutButton();
+  pushViewerUrl();
+}
+
+function applyFullTabFromParams(fullTab?: boolean): void {
+  if (fullTab === undefined) return;
+  state.fullTabMode = fullTab;
+  setFullTabMode(fullTab, () => {
+    fitCanvasDisplay(el<HTMLCanvasElement>("#canvas"));
+    refreshHistogram();
+  });
+  updateLayoutButton();
+}
+
+function updateTimeControlsVisibility(): void {
+  const controls = document.querySelector<HTMLElement>("#playback-controls");
+  if (!controls) return;
+  const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
+  controls.hidden = !timeAxis;
+  updateTimeScrubberVisibility();
+}
+
+function updateTimeScrubberVisibility(): void {
+  const scrubber = document.querySelector<HTMLElement>(".time-scrubber");
+  if (!scrubber) return;
+  const show = state.timeDates.length > 0 && supportsIntraDayTimePlayback(state.timeDates);
+  scrubber.hidden = !show;
+  if (!show) stopAnimation();
+}
+
+function onDateChanged(): void {
+  stopAnimation();
+  clearFrameCache();
+  refreshTimeIndices();
+  const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
+  if (timeAxis && state.timeIndices.length > 0) {
+    state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
+  }
+  void renderCurrentFrame();
+}
+
+function openDatePicker(): void {
+  const datePicker = el<HTMLInputElement>("#date-picker");
+  if (typeof datePicker.showPicker === "function") {
+    datePicker.showPicker();
+    return;
+  }
+  datePicker.focus();
+}
+
+function shiftDate(days: number): void {
+  const datePicker = el<HTMLInputElement>("#date-picker");
+  if (!datePicker.value) return;
+  datePicker.value = shiftUtcDate(datePicker.value, days);
+  onDateChanged();
 }
 
 function defaultSelection(variable: ImageVariable): Record<string, number> {
@@ -609,6 +705,7 @@ function pushViewerUrl(): void {
     autoscale: state.autoscale,
     manualScale: state.autoscale ? [] : state.manualScale.ranges,
     fillView: state.fillView,
+    fullTab: state.fullTabMode,
     spatialRegion: state.spatialRegion,
   });
 }
@@ -631,9 +728,12 @@ function syncTimeSlider(): void {
     suppressSliderEvent = true;
     slider.value = "0";
     suppressSliderEvent = false;
-    label.textContent = "No time steps";
+    label.textContent = "";
+    updateTimeControlsVisibility();
     return;
   }
+
+  updateTimeControlsVisibility();
 
   slider.disabled = false;
   slider.min = "0";
@@ -646,7 +746,7 @@ function syncTimeSlider(): void {
   suppressSliderEvent = false;
 
   const date = state.timeDates[current] ?? new Date(0);
-  label.textContent = `${formatTime(date)} UTC · step ${position + 1}/${state.timeIndices.length} · idx ${current}`;
+  label.textContent = formatTimeHourUtc(date);
 }
 
 function setTimeSliderPosition(position: number): void {
@@ -804,11 +904,11 @@ async function loadTimeCoordinate(dataset: OpenDatasetResult, variable: ImageVar
   if (!timeAxis?.coordinate) {
     state.timeDates = [];
     state.timeIndices = [];
-    el<HTMLFieldSetElement>("#time-controls").hidden = true;
+    updateTimeControlsVisibility();
     return;
   }
 
-  el<HTMLFieldSetElement>("#time-controls").hidden = false;
+  updateTimeControlsVisibility();
   const attrs = timeAxis.coordinate.attributes;
   const units = typeof attrs.units === "string" ? attrs.units : "";
   const values = await readCoordinateValues(dataset.root, timeAxis.coordinate.path);
@@ -836,6 +936,7 @@ function applyViewerParams(params: ViewerUrlParams): void {
       state.manualScale.ranges = [];
       state.manualScale.needsSeed = false;
     }
+    if (state.variable) buildScaleControls(state.variable);
   } else if (!params.manualScale?.length) {
     state.autoscale = true;
     el<HTMLInputElement>("#autoscale").checked = true;
@@ -853,6 +954,8 @@ function applyViewerParams(params: ViewerUrlParams): void {
     state.fillView = params.fillView;
     updateZoomButton();
   }
+
+  applyFullTabFromParams(params.fullTab);
 
   if (params.rgb) {
     state.rgbBands = params.rgb;
@@ -898,6 +1001,8 @@ async function selectVariable(path: string): Promise<void> {
   stopAnimation();
   clearFrameCache();
   state.variable = variable;
+  el<HTMLSelectElement>("#variable-select").value = path;
+  updateTimeControlsVisibility();
   retainSpatialRegionForVariable(variable);
   state.selection = defaultSelection(variable);
   state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
@@ -910,8 +1015,8 @@ async function selectVariable(path: string): Promise<void> {
     loadSpatialCoords(state.dataset, variable),
   ]);
   renderMetadataPanel(el<HTMLElement>("#metadata"), state.dataset.schema, variable, state.auth);
-  el<HTMLSelectElement>("#variable-select").value = path;
   syncCoastlineOverlay(el<HTMLCanvasElement>("#canvas"));
+  updateHoverBarIdle();
 }
 
 async function loadPlaneWithFiniteFallback(
@@ -1046,6 +1151,7 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     renderTimings(timingsEl, formatTimings(timings));
     pushViewerUrl();
     schedulePrefetch();
+    updateHoverBarIdle();
     return timings;
   } catch (error) {
     if (generation !== state.renderGeneration) return null;
@@ -1108,23 +1214,7 @@ function mountLayout(): void {
   const app = el<HTMLDivElement>("#app");
   app.innerHTML = `
     <div class="layout">
-      <header>
-        <h1>Zarr Image Viewer</h1>
-        <div class="url-row url-control">
-          <button type="button" id="auth-btn" class="auth-btn" title="Authentication">🔑</button>
-          <input
-            id="url-input"
-            type="text"
-            name="zarr-store-url"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            placeholder="Store URL (https://… or /path/to/store.zarr/)"
-            value=""
-          />
-        </div>
-      </header>
-      ${authDialogMarkup()}
+      ${connectDialogMarkup()}
       ${chunkConfirmDialogMarkup()}
       <div id="error-toast" class="error-toast" role="alert" hidden></div>
       <div class="body" id="body-grid">
@@ -1133,22 +1223,15 @@ function mountLayout(): void {
             <button type="button" id="toggle-left" class="panel-toggle" title="Hide controls panel">◀</button>
           </div>
           <div class="panel-scroll">
+          <div class="dataset-row">
+            <span class="dataset-label">Dataset</span>
+            <span id="dataset-url" class="dataset-url muted" title="">—</span>
+            <button type="button" id="btn-dataset-change" title="Change dataset" aria-label="Change dataset">📂</button>
+          </div>
           <label class="control">
             Variable
             <select id="variable-select"></select>
           </label>
-          <fieldset id="time-controls">
-            <legend>Time</legend>
-            <label class="control">
-              Date (UTC)
-              <input id="date-picker" type="date" />
-            </label>
-            <div class="time-scrubber">
-              <button type="button" id="btn-play-pause" aria-label="Play">▶</button>
-              <input id="time-slider" type="range" min="0" max="0" value="0" />
-              <span id="time-label" class="time-label"></span>
-            </div>
-          </fieldset>
           <details class="sidebar-section" id="color-controls" open>
             <summary>Colors</summary>
             <div id="rgb-bands" class="rgb-row" hidden>
@@ -1181,26 +1264,40 @@ function mountLayout(): void {
           <button type="button" id="dock-right" class="dock-toggle" hidden title="Show metadata panel">◀</button>
           <div class="stage-inner">
             <div class="image-view">
+              <aside id="color-legend" class="color-legend" hidden>
+                <span id="legend-min" class="color-legend-end"></span>
+                <canvas id="color-legend-bar"></canvas>
+                <span id="legend-max" class="color-legend-end"></span>
+              </aside>
               <div id="canvas-wrap" class="canvas-wrap">
                 <div id="viewer-idle" class="viewer-idle">
                   <p>${IDLE_MESSAGE}</p>
                 </div>
-                <button type="button" id="btn-zoom" class="canvas-tool" aria-label="Zoom image to fill view">⛶</button>
+                <div class="canvas-tools">
+                  <button type="button" id="btn-zoom" class="canvas-tool" aria-label="Zoom image to fill view">⛶</button>
+                </div>
                 <div class="canvas-stack">
                   <canvas id="canvas"></canvas>
                   <svg id="coastline-overlay" class="coastline-overlay" hidden preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
               </div>
-              <aside id="color-legend" class="color-legend" hidden>
-                <canvas id="color-legend-bar"></canvas>
-                <div class="color-legend-ticks">
-                  <span id="legend-max"></span>
-                  <span id="legend-mid"></span>
-                  <span id="legend-min"></span>
-                </div>
-              </aside>
             </div>
-            <p id="hover-bar" class="hover-bar">&nbsp;</p>
+            <div class="playback-bar">
+              <div id="playback-controls" class="playback-controls" hidden>
+                <div class="date-nav">
+                  <button type="button" id="btn-date-prev" aria-label="Previous day">◀</button>
+                  <input id="date-picker" type="date" aria-label="Date (UTC)" />
+                  <button type="button" id="btn-date-next" aria-label="Next day">▶</button>
+                </div>
+                <div class="time-scrubber">
+                  <button type="button" id="btn-play-pause" aria-label="Play">▶</button>
+                  <input id="time-slider" type="range" min="0" max="0" value="0" />
+                  <span id="time-label" class="time-label"></span>
+                </div>
+              </div>
+              <p id="hover-bar" class="hover-bar">&nbsp;</p>
+              <button type="button" id="btn-layout" class="status-bar-btn" aria-label="Full tab view">⤢</button>
+            </div>
           </div>
         </main>
         <div class="splitter" id="splitter-right" aria-hidden="true"></div>
@@ -1221,7 +1318,7 @@ function mountLayout(): void {
   `;
 }
 
-async function loadViewer(params: ViewerUrlParams): Promise<void> {
+async function loadViewer(params: ViewerUrlParams, options?: LoadViewerOptions): Promise<void> {
   if (!params.storeUrl.trim()) {
     state.auth = undefined;
     showIdleState();
@@ -1231,13 +1328,12 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
   hideIdleState();
   stopAnimation();
   state.auth = params.auth;
-  el<HTMLInputElement>("#url-input").value = toDisplayStoreUrl(params.storeUrl, params.auth);
-  authDialogControls?.updateIndicator();
+  updateDatasetLabel(params.storeUrl, params.auth);
   renderStatus(el<HTMLParagraphElement>("#status"), "Opening store…");
   resetChunkLoadConfirmations();
   state.spatialRegion = null;
   try {
-    state.dataset = await openDataset(params.storeUrl, params.auth);
+    state.dataset = options?.dataset ?? (await connectStore(params.storeUrl, params.auth));
     buildVariableSelect(state.dataset.schema);
 
     const requested = params.variable;
@@ -1250,12 +1346,18 @@ async function loadViewer(params: ViewerUrlParams): Promise<void> {
       state.dataset.schema.variables[0]?.path;
 
     if (defaultVariable) {
-      await selectVariable(defaultVariable);
+      try {
+        await selectVariable(defaultVariable);
+      } catch (error) {
+        reportError(error);
+      }
       applyViewerParams(params);
       if (state.variable && state.spatialRegion) {
         retainSpatialRegionForVariable(state.variable);
       }
-      await renderCurrentFrame();
+      if (state.variable) {
+        await renderCurrentFrame();
+      }
     }
   } catch (error) {
     reportError(error);
@@ -1298,17 +1400,13 @@ function wireCanvasHover(): void {
   });
 
   canvas.addEventListener("mouseleave", () => {
-    hoverBar.innerHTML = "&nbsp;";
+    updateHoverBarIdle();
   });
 }
 
 function wireEvents(): void {
-  el<HTMLInputElement>("#url-input").addEventListener("change", (event) => {
-    const url = (event.target as HTMLInputElement).value.trim();
-    const resolved = url ? resolveStoreUrl(url) : "";
-    const authParam = state.auth ? serializeAuthParam(state.auth) ?? null : null;
-    const auth = resolved ? resolveStoreAuth(resolved, authParam) : undefined;
-    void loadViewer(freshViewerParamsForStore(resolved, auth));
+  el<HTMLButtonElement>("#btn-dataset-change").addEventListener("click", () => {
+    connectDialogControls?.open();
   });
 
   el<HTMLSelectElement>("#variable-select").addEventListener("change", (event) => {
@@ -1318,16 +1416,10 @@ function wireEvents(): void {
     })();
   });
 
-  el<HTMLInputElement>("#date-picker").addEventListener("change", () => {
-    stopAnimation();
-    clearFrameCache();
-    refreshTimeIndices();
-    const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
-    if (timeAxis && state.timeIndices.length > 0) {
-      state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
-    }
-    void renderCurrentFrame();
-  });
+  el<HTMLInputElement>("#date-picker").addEventListener("change", () => onDateChanged());
+  el<HTMLInputElement>("#date-picker").addEventListener("click", () => openDatePicker());
+  el<HTMLButtonElement>("#btn-date-prev").addEventListener("click", () => shiftDate(-1));
+  el<HTMLButtonElement>("#btn-date-next").addEventListener("click", () => shiftDate(1));
 
   el<HTMLInputElement>("#time-slider").addEventListener("input", (event) => {
     if (suppressSliderEvent) return;
@@ -1337,8 +1429,8 @@ function wireEvents(): void {
   });
 
   el<HTMLButtonElement>("#btn-play-pause").addEventListener("click", () => togglePlayback());
-
   el<HTMLButtonElement>("#btn-zoom").addEventListener("click", () => toggleFillView());
+  el<HTMLButtonElement>("#btn-layout").addEventListener("click", () => toggleFullTabMode());
 
   el<HTMLInputElement>("#autoscale").addEventListener("change", (event) => {
     const checked = (event.target as HTMLInputElement).checked;
@@ -1374,19 +1466,23 @@ async function main(): Promise<void> {
   subscribeChunkProgress(() => refreshLoadingStatus());
   mountLayout();
   initPanels();
+  initResponsivePanelMode();
+  if (window.matchMedia("(max-width: 960px)").matches) {
+    state.fullTabMode = true;
+  }
+  updateLayoutButton();
   wireChunkConfirmDialog();
-  authDialogControls = wireAuthDialog({
-    getStoreUrl: () =>
-      el<HTMLInputElement>("#url-input").value.trim() || readViewerParams().storeUrl,
+  connectDialogControls = wireConnectDialog({
+    getStoreUrl: () => state.dataset?.schema.url ?? readViewerParams().storeUrl,
     getAuth: () => state.auth,
-    onSave: (storeUrl, auth) => {
+    onConnect: async (storeUrl, auth, dataset) => {
       const resolved = stripAuthFromUrl(resolveStoreUrl(storeUrl));
       const currentStore = state.dataset?.schema.url;
       const params =
         currentStore && sameStoreUrl(currentStore, resolved)
           ? { ...readViewerParams(), storeUrl: resolved, auth }
           : freshViewerParamsForStore(resolved, auth);
-      void loadViewer(params);
+      await loadViewer(params, { dataset });
     },
   });
   wireEvents();
@@ -1425,6 +1521,7 @@ async function main(): Promise<void> {
     await loadViewer(params);
   } else {
     showIdleState();
+    connectDialogControls?.open();
   }
 }
 

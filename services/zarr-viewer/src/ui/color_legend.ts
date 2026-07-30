@@ -1,5 +1,5 @@
 import { sampleColormap } from "../colormap.js";
-import { formatValue } from "../format.js";
+import { formatSigFig, formatValue } from "../format.js";
 
 export function updateColorLegend(
   visible: boolean,
@@ -11,9 +11,8 @@ export function updateColorLegend(
   const container = document.querySelector<HTMLElement>("#color-legend");
   const bar = document.querySelector<HTMLCanvasElement>("#color-legend-bar");
   const maxLabel = document.querySelector<HTMLElement>("#legend-max");
-  const midLabel = document.querySelector<HTMLElement>("#legend-mid");
   const minLabel = document.querySelector<HTMLElement>("#legend-min");
-  if (!container || !bar || !maxLabel || !midLabel || !minLabel) return;
+  if (!container || !bar || !maxLabel || !minLabel) return;
 
   if (!visible || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     container.hidden = true;
@@ -21,18 +20,18 @@ export function updateColorLegend(
   }
 
   container.hidden = false;
-  const width = 24;
-  const height = Math.max(120, bar.clientHeight || 160);
+  const height = 14;
+  const width = Math.max(120, bar.clientWidth || 240);
   bar.width = width;
   bar.height = height;
   const ctx = bar.getContext("2d");
   if (!ctx) return;
 
   const image = ctx.createImageData(width, height);
-  for (let y = 0; y < height; y++) {
-    const t = 1 - y / (height - 1);
+  for (let x = 0; x < width; x++) {
+    const t = x / (width - 1);
     const [r, g, b] = sampleColormap(colormap, t);
-    for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
       const offset = (y * width + x) * 4;
       image.data[offset] = r;
       image.data[offset + 1] = g;
@@ -42,8 +41,6 @@ export function updateColorLegend(
   }
   ctx.putImageData(image, 0, 0);
 
-  const mid = (min + max) / 2;
+  minLabel.textContent = formatSigFig(min);
   maxLabel.textContent = formatValue(max, unit);
-  midLabel.textContent = formatValue(mid, unit);
-  minLabel.textContent = formatValue(min, unit);
 }

@@ -650,6 +650,10 @@ legend {
   flex: 0 0 auto;
 }
 
+.time-scrubber[hidden] {
+  display: none !important;
+}
+
 .playback-controls[hidden] {
   display: none !important;
 }

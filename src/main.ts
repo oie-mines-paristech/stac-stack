@@ -59,6 +59,7 @@ import {
   filterTimeIndicesByDay,
   formatTimeHourUtc,
   shiftUtcDate,
+  supportsIntraDayTimePlayback,
   timeIndicesSearchOrder,
   timeValuesToDates,
 } from "./time.js";
@@ -524,6 +525,15 @@ function updateTimeControlsVisibility(): void {
   if (!controls) return;
   const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
   controls.hidden = !timeAxis;
+  updateTimeScrubberVisibility();
+}
+
+function updateTimeScrubberVisibility(): void {
+  const scrubber = document.querySelector<HTMLElement>(".time-scrubber");
+  if (!scrubber) return;
+  const show = state.timeDates.length > 0 && supportsIntraDayTimePlayback(state.timeDates);
+  scrubber.hidden = !show;
+  if (!show) stopAnimation();
 }
 
 function onDateChanged(): void {

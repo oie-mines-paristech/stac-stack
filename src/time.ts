@@ -164,3 +164,20 @@ export function filterTimeIndicesByDay(dates: Date[], selectedDate: string): num
   }
   return indices;
 }
+
+const DAY_MS = 86_400_000;
+
+/** Infer cadence from the first increasing pair on the time axis. */
+export function inferTimeStepMs(dates: Date[]): number | null {
+  for (let index = 1; index < dates.length; index++) {
+    const diff = dates[index].getTime() - dates[index - 1]!.getTime();
+    if (diff > 0) return diff;
+  }
+  return null;
+}
+
+/** True when the axis is finer than daily (hourly, 15 min, etc.). */
+export function supportsIntraDayTimePlayback(dates: Date[]): boolean {
+  const stepMs = inferTimeStepMs(dates);
+  return stepMs !== null && stepMs < DAY_MS;
+}

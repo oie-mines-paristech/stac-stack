@@ -11,8 +11,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "smoke": "tsx scripts/smoke.ts",
-    "test:unit": "tsx src/url_state.test.ts && tsx src/auth.test.ts && tsx src/proxy.test.ts && tsx src/dimensions.test.ts && tsx src/spatial.test.ts && tsx src/svg_stroke.test.ts && tsx src/coastline_warp.test.ts && tsx src/canvas_pan.test.ts && tsx src/view_transform.test.ts && tsx src/render.test.ts && tsx src/acdd.test.ts && tsx src/store.test.ts && tsx src/format.test.ts && tsx src/scale_url.test.ts && tsx src/time.test.ts && tsx src/array_load.test.ts && tsx src/chunk_plan.test.ts && tsx src/chunk_progress.test.ts",
+    "test:unit": "tsx src/url_state.test.ts && tsx src/auth.test.ts && tsx src/proxy.test.ts && tsx src/dimensions.test.ts && tsx src/spatial.test.ts && tsx src/svg_stroke.test.ts && tsx src/coastline_warp.test.ts && tsx src/canvas_pan.test.ts && tsx src/view_transform.test.ts && tsx src/render.test.ts && tsx src/acdd.test.ts && tsx src/store.test.ts && tsx src/store_connect.test.ts && tsx src/hover.test.ts && tsx src/format.test.ts && tsx src/scale_url.test.ts && tsx src/time.test.ts && tsx src/array_load.test.ts && tsx src/chunk_plan.test.ts && tsx src/chunk_progress.test.ts",
     "bench:render": "tsx scripts/render_bench.ts",
+    "build:e2e-fixture": "tsx scripts/build-e2e-fixture.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 import { createAuthFetch, type StoreAuth } from "./auth.js";
 
 export const CORS_STATIC_DEPLOYMENT_MESSAGE =
-  "Accès bloqué par la politique CORS du navigateur. Ce viewer est déployé en statique et ne peut pas ouvrir cette ressource distante. Utilisez un store same-origin, un serveur qui expose les en-têtes CORS, ou un déploiement avec proxy HTTP (docker-compose).";
+  "Blocked by the browser CORS policy. This viewer is deployed as static files and cannot open this remote resource. Use a same-origin store, a server that exposes CORS headers, or a deployment with an HTTP proxy (docker-compose).";
 
 export class CorsBlockedError extends Error {
   constructor(message = CORS_STATIC_DEPLOYMENT_MESSAGE) {

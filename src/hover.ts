@@ -11,6 +11,13 @@ export interface SpatialCoords {
   flipY: boolean;
 }
 
+function abbreviateCoordName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower === "latitude") return "lat";
+  if (lower === "longitude") return "lon";
+  return name;
+}
+
 export function formatHoverLine(
   plane: ImagePlane,
   pixelX: number,
@@ -27,12 +34,12 @@ export function formatHoverLine(
   const flipY = spatial?.flipY ?? false;
   const y = dataRowFromCanvas(canvasY, height, flipY);
 
-  const parts: string[] = [`idx x:${x} y:${y}`];
+  const parts: string[] = [];
   if (spatial?.xValues && x < spatial.xValues.length) {
-    parts.push(`${spatial.xName}:${formatCoord(spatial.xValues[x])}`);
+    parts.push(`${abbreviateCoordName(spatial.xName)}:${formatCoord(spatial.xValues[x])}`);
   }
   if (spatial?.yValues && y < spatial.yValues.length) {
-    parts.push(`${spatial.yName}:${formatCoord(spatial.yValues[y])}`);
+    parts.push(`${abbreviateCoordName(spatial.yName)}:${formatCoord(spatial.yValues[y])}`);
   }
 
   const stride = computeStrides(shape);
@@ -42,7 +49,7 @@ export function formatHoverLine(
 
   if (axes.band < 0) {
     const value = chunkValue(data, stride, coords);
-    parts.push(`value:${formatValue(value, unit)}`);
+    parts.push(`val:${formatValue(value, unit)}`);
   } else {
     const bandCount = shape[axes.band];
     for (let band = 0; band < bandCount; band++) {

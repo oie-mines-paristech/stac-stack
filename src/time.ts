@@ -65,8 +65,20 @@ export function formatTime(date: Date): string {
   return date.toISOString().slice(11, 19);
 }
 
+export function formatTimeHourUtc(date: Date): string {
+  return `${date.getUTCHours()}H UTC`;
+}
+
 export function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+export function shiftUtcDate(isoDate: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDate(date);
 }
 
 export function parseTimeOfDay(text: string): number | null {

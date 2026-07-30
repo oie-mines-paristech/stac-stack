@@ -31,6 +31,8 @@ def expand_patterns(base_dir: Path, root_dir: Path, patterns: list[str]) -> list
             p = (base_dir / pat)
             if p.exists():
                 matches = [p]
+            else:
+                raise ValueError(f"Pattern matched nothing: {pat!r} in {base_dir}")
 
         for m in matches:
             m = m.resolve()

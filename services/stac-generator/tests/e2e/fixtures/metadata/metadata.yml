@@ -4,6 +4,7 @@ description: Catalog for metadata mapping regression tests
 children:
   - netcdf
   - zarr
+  - zarr-nosuffix
   - geotiff
   - acdd
   - insitu

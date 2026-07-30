@@ -8,8 +8,21 @@ from typing import Any
 import pystac
 from pystac.extensions import datacube as stac_datacube
 
+from acdd_metadata import (
+    geotiff_properties_from_tags,
+    item_id_from_acdd_attrs,
+    item_links_from_acdd_attrs,
+    item_properties_from_acdd_attrs,
+)
 from discovery import expand_patterns, find_thumbnail
-from geo_metadata import datacube_metadata_from_asset, extent_from_asset, union_extents
+from geo_metadata import (
+    bands_metadata_from_asset,
+    datacube_metadata_from_asset,
+    extent_from_asset,
+    read_xarray_global_attrs,
+    union_extents,
+)
+from geotiff_metadata import bands_from_geotiff, geotiff_dataset_tags
 from mime import guess_mime_type
 from models import FolderMetadata, normalize_asset_entry
 from yaml_io import read_yaml
@@ -206,6 +219,31 @@ def _add_folder_assets(ctx: BuildContext, folder: Path, rel_dir: Path, obj: pyst
         )
 
 
+def _merge_band_fields(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    merged = {**base, **extra}
+    if "statistics" in base and "statistics" in extra:
+        merged["statistics"] = {**base["statistics"], **extra["statistics"]}
+    return {k: v for k, v in merged.items() if v is not None}
+
+
+def _build_bands_from_cube_vars(cube_vars: dict[str, Any], band_specs: dict[str, dict[str, Any]] | None) -> list[dict[str, Any]]:
+    bands: list[dict[str, Any]] = []
+    for name, spec in cube_vars.items():
+        base = {
+            k: v
+            for k, v in {
+                "name": name,
+                "description": spec.get("description"),
+                "unit": spec.get("unit"),
+            }.items()
+            if v is not None
+        }
+        if band_specs and name in band_specs:
+            base = _merge_band_fields(base, band_specs[name])
+        bands.append(base)
+    return bands
+
+
 def _item_id_from_rel(rel_to_root: Path) -> str:
     # Stable + readable, avoids simple collisions.
     parts = list(rel_to_root.parts)
@@ -246,9 +284,25 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
         # explicitly mark it as unknown.
         dt = datetime(1970, 1, 1)
         props["stac_generator:datetime_unknown"] = True
+    else:
+        props.pop("stac_generator:datetime_unknown", None)
+
+    global_attrs = read_xarray_global_attrs(asset_path)
+    is_geotiff = asset_path.suffix.lower() in {".tif", ".tiff", ".geotiff", ".gtiff"}
+
+    if global_attrs:
+        for key, value in item_properties_from_acdd_attrs(global_attrs).items():
+            if key not in props:
+                props[key] = value
+
+    item_id = _item_id_from_rel(rel_asset)
+    if global_attrs:
+        acdd_id = item_id_from_acdd_attrs(global_attrs)
+        if acdd_id:
+            item_id = acdd_id
 
     item = pystac.Item(
-        id=_item_id_from_rel(rel_asset),
+        id=item_id,
         geometry=geom,
         bbox=bbox,
         datetime=dt,
@@ -256,6 +310,15 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
         start_datetime=start_dt,
         end_datetime=end_dt,
     )
+
+    if global_attrs:
+        for link in item_links_from_acdd_attrs(global_attrs):
+            item.add_link(link)
+
+    if is_geotiff:
+        for key, value in geotiff_properties_from_tags(geotiff_dataset_tags(asset_path)).items():
+            if key not in item.properties or not item.properties.get(key):
+                item.properties[key] = value
 
     key = asset_path.stem if not (asset_path.is_dir() and asset_path.name.lower().endswith(".zarr")) else asset_path.name[:-5]
     asset = pystac.Asset(
@@ -267,22 +330,22 @@ def _build_item_for_asset(ctx: BuildContext, asset_path: Path, rel_asset: Path, 
     # Nécessaire pour certaines extensions (EO) qui exigent un owner.
     asset.set_owner(item)
 
-    # Datacube + EO extensions pour NetCDF/Zarr (dimensions + variables + unités).
+    # Datacube extension for NetCDF/Zarr (dimensions + variables + units).
     cube = datacube_metadata_from_asset(asset_path)
     if cube is not None:
         cube_dims, cube_vars = cube
+        band_specs = bands_metadata_from_asset(asset_path)
 
-        # Datacube via l'API pystac.extensions.datacube
         dc_ext = stac_datacube.DatacubeExtension.ext(item, add_if_missing=True)
         dc_ext.dimensions = {k: stac_datacube.Dimension.from_dict(v) for k, v in cube_dims.items()}
         dc_ext.variables = {k: stac_datacube.Variable.from_dict(v) for k, v in cube_vars.items()}
 
-        # Bands (Common Metadata) sur l'asset.
-        # `bands` remplace `eo:bands` (et `raster:bands`) : les champs EO restent possibles via des clés `eo:*` dans chaque Band Object.
-        asset.extra_fields["bands"] = [
-            {k: v for k, v in {"name": name, "description": spec.get("description"), "unit": spec.get("unit")}.items() if v is not None}
-            for name, spec in cube_vars.items()
-        ]
+        asset.extra_fields["bands"] = _build_bands_from_cube_vars(cube_vars, band_specs)
+
+    if is_geotiff:
+        tiff_bands = bands_from_geotiff(asset_path)
+        if tiff_bands:
+            asset.extra_fields["bands"] = tiff_bands
 
     item.add_asset(key, asset)
 

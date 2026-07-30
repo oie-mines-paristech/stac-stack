@@ -5,9 +5,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+import numpy as np
 import rasterio
 from rasterio.warp import transform_bounds
 import xarray as xr
+
+from acdd_metadata import bbox_from_acdd_attrs, datetime_range_from_acdd_attrs
 
 
 @dataclass(frozen=True)
@@ -216,6 +219,8 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
     if bbox is None:
         bbox = _bbox_from_lonlat(ds)
     if bbox is None:
+        bbox = bbox_from_acdd_attrs(dict(ds.attrs))
+    if bbox is None:
         return None
 
     time = _guess_time_coord(ds)
@@ -224,6 +229,8 @@ def extent_from_xarray_dataset(ds: xr.Dataset) -> GeoExtent | None:
         units = time.attrs.get("units")
         calendar = time.attrs.get("calendar")
         start_dt, end_dt = _as_datetime_minmax(time.values, units=str(units) if units else None, calendar=str(calendar) if calendar else None)
+    else:
+        start_dt, end_dt = datetime_range_from_acdd_attrs(dict(ds.attrs))
 
     if start_dt is not None and not isinstance(start_dt, datetime):
         start_dt = None
@@ -324,6 +331,146 @@ def datacube_metadata_from_xarray(ds: xr.Dataset) -> tuple[dict[str, Any], dict[
         variables[var_name] = v
 
     return dims, variables
+
+
+def _numpy_dtype_to_stac(dtype: np.dtype) -> str | None:
+    mapping = {
+        "int8": "int8",
+        "int16": "int16",
+        "int32": "int32",
+        "int64": "int64",
+        "uint8": "uint8",
+        "uint16": "uint16",
+        "uint32": "uint32",
+        "uint64": "uint64",
+        "float16": "float16",
+        "float32": "float32",
+        "float64": "float64",
+    }
+    return mapping.get(dtype.name)
+
+
+def _nodata_from_attrs(attrs: dict[str, Any]) -> Any | None:
+    for key in ("_FillValue", "missing_value"):
+        if key in attrs:
+            val = attrs[key]
+            if isinstance(val, (list, tuple, np.ndarray)):
+                return val[0] if len(val) else None
+            return val
+    return None
+
+
+def _statistics_from_attrs(attrs: dict[str, Any]) -> dict[str, float] | None:
+    actual = attrs.get("actual_range")
+    if actual is not None:
+        try:
+            arr = np.asarray(actual).astype(float)
+            if arr.size >= 2:
+                return {"minimum": float(arr[0]), "maximum": float(arr[1])}
+        except Exception:
+            pass
+
+    vmin = attrs.get("valid_min")
+    vmax = attrs.get("valid_max")
+    valid_range = attrs.get("valid_range")
+    if valid_range is not None:
+        try:
+            arr = np.asarray(valid_range).astype(float)
+            if arr.size >= 2:
+                vmin, vmax = arr[0], arr[1]
+        except Exception:
+            pass
+
+    stats: dict[str, float] = {}
+    if vmin is not None:
+        try:
+            stats["minimum"] = float(vmin)
+        except (TypeError, ValueError):
+            pass
+    if vmax is not None:
+        try:
+            stats["maximum"] = float(vmax)
+        except (TypeError, ValueError):
+            pass
+    return stats or None
+
+
+def band_metadata_from_dataarray(da: xr.DataArray) -> dict[str, Any]:
+    attrs = dict(da.attrs)
+    band: dict[str, Any] = {"name": da.name or "band"}
+    desc = attrs.get("long_name") or attrs.get("standard_name") or attrs.get("description")
+    if desc is not None:
+        band["description"] = str(desc)
+    unit = attrs.get("units") or attrs.get("unit")
+    if unit is not None:
+        band["unit"] = str(unit)
+
+    nodata = _nodata_from_attrs(attrs)
+    if nodata is not None:
+        try:
+            band["nodata"] = float(nodata) if not isinstance(nodata, str) else nodata
+        except (TypeError, ValueError):
+            band["nodata"] = nodata
+
+    data_type = _numpy_dtype_to_stac(da.dtype)
+    if data_type:
+        band["data_type"] = data_type
+
+    stats = _statistics_from_attrs(attrs)
+    if stats:
+        band["statistics"] = stats
+
+    return band
+
+
+def bands_metadata_from_xarray(ds: xr.Dataset) -> dict[str, dict[str, Any]]:
+    return {str(name): band_metadata_from_dataarray(da) for name, da in ds.data_vars.items()}
+
+
+def read_xarray_global_attrs(path: Path) -> dict[str, Any] | None:
+    lower = path.name.lower()
+    try:
+        if path.is_dir() and lower.endswith(".zarr"):
+            ds = xr.open_zarr(path, consolidated=False)
+            try:
+                return dict(ds.attrs)
+            finally:
+                ds.close()
+        ext = path.suffix.lower()
+        if ext in {".nc", ".netcdf"}:
+            ds = xr.open_dataset(path, decode_cf=True, mask_and_scale=False, engine="netcdf4")
+            try:
+                return dict(ds.attrs)
+            finally:
+                ds.close()
+    except Exception:
+        return None
+    return None
+
+
+def bands_metadata_from_asset(path: Path) -> dict[str, dict[str, Any]] | None:
+    lower = path.name.lower()
+    try:
+        if path.is_dir() and lower.endswith(".zarr"):
+            ds = xr.open_zarr(path, consolidated=False)
+            try:
+                try:
+                    ds = xr.decode_cf(ds)
+                except Exception:
+                    pass
+                return bands_metadata_from_xarray(ds)
+            finally:
+                ds.close()
+        ext = path.suffix.lower()
+        if ext in {".nc", ".netcdf"}:
+            ds = xr.open_dataset(path, decode_cf=True, mask_and_scale=False, engine="netcdf4")
+            try:
+                return bands_metadata_from_xarray(ds)
+            finally:
+                ds.close()
+    except Exception:
+        return None
+    return None
 
 
 def datacube_metadata_from_asset(path: Path) -> tuple[dict[str, Any], dict[str, Any]] | None:

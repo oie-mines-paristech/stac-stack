@@ -27,3 +27,9 @@ packages = ["src"]
 
 [tool.uv]
 package = true
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/e2e"]

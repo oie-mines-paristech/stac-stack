@@ -1,0 +1,5 @@
+id: test-acdd
+title: ACDD global metadata tests
+description: Collection exercising ACDD global attribute mappings
+items:
+  - acdd.nc

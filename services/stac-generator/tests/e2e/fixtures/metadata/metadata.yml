@@ -1,0 +1,9 @@
+id: test-catalog
+title: E2E test catalog
+description: Catalog for metadata mapping regression tests
+children:
+  - netcdf
+  - zarr
+  - geotiff
+  - acdd
+  - insitu

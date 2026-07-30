@@ -1,0 +1,5 @@
+id: test-insitu
+title: In-situ point tests
+description: Collection exercising point geometry mappings
+items:
+  - point.nc

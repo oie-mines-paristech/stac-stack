@@ -1,0 +1,6 @@
+id: test-geotiff
+title: GeoTIFF mapping tests
+description: Collection exercising GeoTIFF to STAC mappings
+items:
+  - rgb.tif
+  - single.tif

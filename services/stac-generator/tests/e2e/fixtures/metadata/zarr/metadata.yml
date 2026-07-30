@@ -1,0 +1,5 @@
+id: test-zarr
+title: Zarr mapping tests
+description: Collection exercising Zarr to STAC mappings
+items:
+  - cube.zarr

@@ -12,4 +12,4 @@ def test_zarr_matches_netcdf_mappings(stac_output):
     assert band["name"] == "temperature"
     assert band["unit"] == "K"
     assert band["statistics"]["minimum"] == 250.0
-    assert item["assets"]["cube"]["type"] == "application/vnd+zarr"
+    assert item["assets"]["cube"]["type"] == "application/vnd.zarr; version=3"

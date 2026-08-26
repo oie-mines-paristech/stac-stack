@@ -5,7 +5,7 @@
 #   make test-direct   — localhost:TEST_DIRECT_PORT seulement
 #   make test-proxy    — nginx HTTPS auto-signé → stack /stac/
 
-.PHONY: build up down sync sync-dry test test-direct test-proxy test-certs e2e-clean rebuild-viewer
+.PHONY: build up down sync sync-dry test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
 
 COMPOSE := docker compose
 PORT ?= 8000
@@ -17,11 +17,15 @@ TEST_HTTPS_PORT ?= 18443
 
 export TEST_DIRECT_PORT TEST_BACKEND_PORT TEST_HTTPS_PORT
 
-build:
+submodules:
+	@test -f services/zarr-viewer/package.json || (echo "Run: git submodule update --init --recursive" && exit 1)
+	@test -f services/stac-generator/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
+
+build: submodules
 	$(COMPOSE) down
 	$(COMPOSE) build
 
-rebuild-viewer:
+rebuild-viewer: submodules
 	$(COMPOSE) build zarr-viewer-build
 	$(COMPOSE) run --rm zarr-viewer-build
 	$(COMPOSE) up -d --force-recreate stac-browser

@@ -1,5 +1,0 @@
-id: test-zarr-nosuffix
-title: Zarr without .zarr suffix
-description: Collection exercising Zarr stores without the .zarr suffix
-items:
-  - cube_store

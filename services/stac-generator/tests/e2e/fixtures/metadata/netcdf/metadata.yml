@@ -1,5 +1,0 @@
-id: test-netcdf
-title: NetCDF mapping tests
-description: Collection exercising NetCDF to STAC mappings
-items:
-  - cube.nc

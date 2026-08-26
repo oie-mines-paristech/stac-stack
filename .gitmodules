@@ -1,0 +1,6 @@
+[submodule "services/zarr-viewer"]
+	path = services/zarr-viewer
+	url = git@git.sophia.minesparis.psl.eu:oie/zarr-viewer.git
+[submodule "services/stac-generator"]
+	path = services/stac-generator
+	url = git@git.sophia.minesparis.psl.eu:oie/stac-generator.git

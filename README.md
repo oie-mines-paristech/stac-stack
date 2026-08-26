@@ -101,23 +101,51 @@ Les tests contrôlent notamment :
 - page browser et `config.js` (`catalogUrl` path-absolute)
 - viewer Zarr (`/viewer/` ou `/stac/viewer/`) et proxy same-origin (`…/viewer/proxy/https/…`)
 
-## Git subtrees
+## Git submodules and subtrees
 
-Services under `services/` are git subtrees with standalone upstream repos (see [`subtrees.yaml`](subtrees.yaml)). **Standalone repos are the source of truth** for service code (e.g. develop in `stac-generator.git`, then pull into this monorepo).
+### Submodules (OIE-owned services)
+
+`services/zarr-viewer` and `services/stac-generator` are **git submodules** pointing at their standalone repos. Those repos are the source of truth; develop there (or inside the submodule checkout), then bump the gitlink in this monorepo.
+
+Clone with submodules initialized:
+
+```bash
+git clone --recurse-submodules git@git.sophia.minesparis.psl.eu:oie/stac-oie.git
+# or after a plain clone:
+git submodule update --init --recursive
+```
+
+Daily workflow (example: zarr-viewer):
+
+```bash
+cd services/zarr-viewer
+git checkout main && git pull origin main
+cd ../..
+git add services/zarr-viewer
+git commit -m "Bump zarr-viewer submodule."
+```
+
+Docker builds require submodule checkouts (`docker compose build` reads `services/zarr-viewer` and `services/stac-generator` from disk).
+
+The JPEG-XL codec (`@oie-minesparis-psl/jpegxl-zarr`) is **not** a submodule: it is consumed via npm in the viewer (`package.json`).
+
+### Subtrees (upstream without OIE main, or diverged fork)
+
+`services/stac-browser` and `services/stac-fastapi-static` remain **git subtrees** (see [`subtrees.yaml`](subtrees.yaml)).
 
 ```bash
 ./scripts/sync-subtree.sh status [name]   # tree + git link; exit 0 if all in sync
-./scripts/sync-subtree.sh pull <name>     # daily workflow: fetch upstream into monorepo
-./scripts/sync-subtree.sh push <name>     # exception: monorepo-only changes (export + reconcile)
+./scripts/sync-subtree.sh pull <name>     # fetch upstream into monorepo
+./scripts/sync-subtree.sh push <name>     # export monorepo-only changes + reconcile
 ```
 
 `git subtree push` fails on this monorepo (recursion depth on deep history). `push` exports directory contents to the upstream repo, then runs `git subtree pull` in the monorepo to keep git history linked.
 
-Typical workflow for `stac-generator`:
+Typical workflow for `stac-browser`:
 
-1. Commit and push in the standalone clone (`~/stac-generator`).
-2. `./scripts/sync-subtree.sh pull stac-generator` in this repo.
-3. `./scripts/sync-subtree.sh status stac-generator` should report `state=in sync`.
+1. Make changes in `services/stac-browser` (or pull from upstream).
+2. `./scripts/sync-subtree.sh pull stac-browser` when updating from upstream.
+3. `./scripts/sync-subtree.sh status stac-browser` should report `state=in sync` when aligned.
 
 ---
 

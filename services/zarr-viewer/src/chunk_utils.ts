@@ -1,7 +1,7 @@
 export function chunkIndex(stride: number[], coords: number[]): number {
   let index = 0;
   for (let axis = 0; axis < coords.length; axis++) {
-    index += coords[axis] * stride[axis];
+    index += coords[axis]! * stride[axis]!;
   }
   return index;
 }
@@ -14,41 +14,130 @@ export function chunkValue(
   return data[chunkIndex(stride, coords)] as number;
 }
 
-export type PlaneData = Float32Array | Float64Array;
+export type PlaneDtypeTag =
+  | "uint8"
+  | "int8"
+  | "uint16"
+  | "int16"
+  | "uint32"
+  | "int32"
+  | "float32"
+  | "float64";
 
-export function planeUsesFloat32(dtype: string): boolean {
+export type PlaneData =
+  | Uint8Array
+  | Int8Array
+  | Uint16Array
+  | Int16Array
+  | Uint32Array
+  | Int32Array
+  | Float32Array
+  | Float64Array;
+
+export function planeDtypeTagFromString(dtype: string): PlaneDtypeTag {
   const normalized = dtype.toLowerCase();
-  return normalized.includes("float32") || normalized === "single" || normalized.includes("<f4");
+  if (normalized.includes("float32") || normalized === "single" || normalized.includes("<f4")) {
+    return "float32";
+  }
+  if (normalized.includes("uint8")) return "uint8";
+  if (normalized.includes("int8")) return "int8";
+  if (normalized.includes("uint16")) return "uint16";
+  if (normalized.includes("int16")) return "int16";
+  if (normalized.includes("uint32")) return "uint32";
+  if (normalized.includes("int32")) return "int32";
+  return "float64";
+}
+
+/** @deprecated use planeDtypeTagFromString */
+export function planeUsesFloat32(dtype: string): boolean {
+  return planeDtypeTagFromString(dtype) === "float32";
 }
 
 export function createPlaneBuffer(size: number, dtype: string): PlaneData {
-  return planeUsesFloat32(dtype) ? new Float32Array(size) : new Float64Array(size);
+  switch (planeDtypeTagFromString(dtype)) {
+    case "float32":
+      return new Float32Array(size);
+    case "uint8":
+      return new Uint8Array(size);
+    case "int8":
+      return new Int8Array(size);
+    case "uint16":
+      return new Uint16Array(size);
+    case "int16":
+      return new Int16Array(size);
+    case "uint32":
+      return new Uint32Array(size);
+    case "int32":
+      return new Int32Array(size);
+    default:
+      return new Float64Array(size);
+  }
 }
 
-/** Materialize a zarrita chunk into C-order logical layout. */
+function isCOrderStrides(shape: number[], stride: number[]): boolean {
+  let step = 1;
+  for (let axis = shape.length - 1; axis >= 0; axis--) {
+    if (stride[axis] !== step) return false;
+    step *= shape[axis]!;
+  }
+  return true;
+}
+
+function copyCOrderChunk(
+  data: ArrayLike<number>,
+  out: PlaneData,
+  size: number,
+): boolean {
+  if (!ArrayBuffer.isView(data) || data.length !== size) return false;
+  out.set(data as PlaneData);
+  return true;
+}
+
+/** Materialize a zarrita chunk into C-order logical layout, preserving dtype. */
 export function materializeChunk(
   data: ArrayLike<number>,
   shape: number[],
   stride: number[],
   dtype = "float64",
 ): PlaneData {
-  const out = createPlaneBuffer(shape.reduce((acc, size) => acc * size, 1), dtype);
-  const coords = new Array<number>(shape.length).fill(0);
-  let outIdx = 0;
-
-  function walk(axis: number): void {
-    if (axis === shape.length) {
-      out[outIdx++] = data[chunkIndex(stride, coords)];
-      return;
-    }
-    for (let i = 0; i < shape[axis]; i++) {
-      coords[axis] = i;
-      walk(axis + 1);
-    }
+  const size = shape.reduce((acc, dim) => acc * dim, 1);
+  const out = createPlaneBuffer(size, dtype);
+  if (isCOrderStrides(shape, stride) && copyCOrderChunk(data, out, size)) {
+    return out;
   }
 
-  walk(0);
+  const rank = shape.length;
+  const coords = new Array<number>(rank).fill(0);
+  for (let outIdx = 0; outIdx < size; outIdx++) {
+    out[outIdx] = data[chunkIndex(stride, coords)]!;
+    for (let axis = rank - 1; axis >= 0; axis--) {
+      coords[axis]!++;
+      if (coords[axis]! < shape[axis]!) break;
+      coords[axis] = 0;
+    }
+  }
   return out;
+}
+
+export function computeStrides(shape: number[]): number[] {
+  const stride = new Array<number>(shape.length);
+  let step = 1;
+  for (let axis = shape.length - 1; axis >= 0; axis--) {
+    stride[axis] = step;
+    step *= shape[axis]!;
+  }
+  return stride;
+}
+
+export function planeDtypeTag(data: PlaneData): PlaneDtypeTag {
+  if (data instanceof Float32Array) return "float32";
+  if (data instanceof Uint8Array) return "uint8";
+  if (data instanceof Int8Array) return "int8";
+  if (data instanceof Uint16Array) return "uint16";
+  if (data instanceof Int16Array) return "int16";
+  if (data instanceof Uint32Array) return "uint32";
+  if (data instanceof Int32Array) return "int32";
+  return "float64";
 }
 
 export interface ImageAxes {

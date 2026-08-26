@@ -154,6 +154,7 @@ export interface RgbRenderParams {
 export function renderRgbRegionToRgba(params: RgbRenderParams): Uint8ClampedArray {
   const {
     data,
+    planeWidth,
     planeHeight,
     shape,
     axes,
@@ -168,6 +169,45 @@ export function renderRgbRegionToRgba(params: RgbRenderParams): Uint8ClampedArra
   const outHeight = target.height;
   const pixels = new Uint8ClampedArray(outWidth * outHeight * 4);
   const fullResolution = outWidth === region.width && outHeight === region.height;
+
+  if (
+    data instanceof Uint8Array &&
+    axes.band === 2 &&
+    shape.length === 3 &&
+    shape[2] === 3 &&
+    bandIndices[0] === 0 &&
+    bandIndices[1] === 1 &&
+    bandIndices[2] === 2
+  ) {
+    const identity = ranges.every(([min, max]) => min === 0 && max === 255);
+    const rowStride = planeWidth * 3;
+
+    for (let oy = 0; oy < outHeight; oy++) {
+      for (let ox = 0; ox < outWidth; ox++) {
+        const src = fullResolution
+          ? { x: region.x0 + ox, y: region.y0 + oy }
+          : sourcePixelInRegion(ox, oy, outWidth, outHeight, region);
+        const dataY = dataRowFromCanvas(src.y, planeHeight, flipY);
+        const srcIdx = dataY * rowStride + src.x * 3;
+        const px = (oy * outWidth + ox) * 4;
+        if (identity) {
+          pixels[px] = data[srcIdx]!;
+          pixels[px + 1] = data[srcIdx + 1]!;
+          pixels[px + 2] = data[srcIdx + 2]!;
+        } else {
+          const [rMin, rMax] = ranges[0]!;
+          const [gMin, gMax] = ranges[1]!;
+          const [bMin, bMax] = ranges[2]!;
+          pixels[px] = normalize(data[srcIdx]!, rMin, rMax);
+          pixels[px + 1] = normalize(data[srcIdx + 1]!, gMin, gMax);
+          pixels[px + 2] = normalize(data[srcIdx + 2]!, bMin, bMax);
+        }
+        pixels[px + 3] = 255;
+      }
+    }
+    return pixels;
+  }
+
   const stride = computeStrides(shape);
   const coords = new Array<number>(shape.length).fill(0);
 

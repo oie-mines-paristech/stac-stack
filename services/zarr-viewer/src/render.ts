@@ -1,17 +1,18 @@
 import * as zarr from "zarrita";
 import { loadFullPlane, type SpatialRegionSelection } from "./array_load.js";
 import { spatialChunkGrid, type SpatialRegionPick } from "./chunk_plan.js";
-import { chunkValue, resolvePlaneAxes, type PlaneData } from "./chunk_utils.js";
+import { chunkValue, computeStrides, resolvePlaneAxes } from "./chunk_utils.js";
 import { DEFAULT_COLORMAP, getColormapLut } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
+import { ensurePlaneBandStats, type BandValueStats, type PlaneForStats } from "./plane_stats.js";
 import { putRgbaOnCanvas2d, renderRgbRegionToRgba, renderScalarRegionToRgba } from "./render_core.js";
 import {
-  arrayMinMax,
   cfScaleBounds,
-  resolveManualScaleRange,
+  integerDtypeDisplayRange,
+  scaleRangeFromBandStats,
+  type ScaleMode,
   type ScaleRange,
 } from "./scaling.js";
-import { dataRowFromCanvas } from "./spatial.js";
 import {
   canvasToPlanePixel,
   computeViewLayout,
@@ -23,11 +24,7 @@ import {
 
 export type { DisplaySize, DisplayTransform, ViewLayout, ViewOrigin };
 
-export interface ImagePlane {
-  data: PlaneData;
-  shape: number[];
-  axes: ReturnType<typeof resolvePlaneAxes>;
-}
+export interface ImagePlane extends PlaneForStats {}
 
 export function countFiniteSamples(plane: ImagePlane): number {
   let count = 0;
@@ -37,10 +34,21 @@ export function countFiniteSamples(plane: ImagePlane): number {
   return count;
 }
 
+/** False when a float plane is all-zero (common empty-chunk sentinel) or entirely non-finite. */
+export function planeHasDisplayableData(plane: ImagePlane, variableDtype: string): boolean {
+  if (countFiniteSamples(plane) === 0) return false;
+  const isFloat = variableDtype.toLowerCase().includes("float");
+  if (!isFloat) return true;
+  for (const value of plane.data) {
+    if (Number.isFinite(value) && value !== 0) return true;
+  }
+  return false;
+}
+
 export interface RenderOptions {
   mode: "rgb" | "scalar";
   rgbBands: [number, number, number];
-  autoscale: boolean;
+  scaleMode: ScaleMode;
   attributes: Record<string, unknown>;
   flipY?: boolean;
   colormap?: string;
@@ -79,48 +87,154 @@ export async function loadImagePlane(
   return { data: loaded.data, shape: loaded.shape, axes };
 }
 
+export { ensurePlaneBandStats };
+
+/** True when channel ranges need a full-plane stats pass before render. */
+export function channelRangeNeedsBandStats(options: RenderOptions, dtype: string): boolean {
+  if (options.scaleMode !== "none") return true;
+  const { min: cfMin, max: cfMax } = cfScaleBounds(options.attributes);
+  if (Number.isFinite(cfMin) && Number.isFinite(cfMax) && cfMax! > cfMin!) return false;
+  if (integerDtypeDisplayRange(dtype)) return false;
+  return !options.manualRanges?.some(
+    (range) =>
+      Number.isFinite(range.min) && Number.isFinite(range.max) && range.max > range.min,
+  );
+}
+
+function resolveNoneChannelRange(
+  manual: ScaleRange | undefined,
+  cfMin: unknown,
+  cfMax: unknown,
+  dtype: string,
+  stats: BandValueStats,
+): [number, number] {
+  if (manual && Number.isFinite(manual.min) && Number.isFinite(manual.max) && manual.max > manual.min) {
+    return [manual.min, manual.max];
+  }
+  const min = Number(cfMin);
+  const max = Number(cfMax);
+  if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+    return [min, max];
+  }
+  const full = integerDtypeDisplayRange(dtype);
+  if (full) return full;
+  return scaleRangeFromBandStats(stats, "minmax", undefined, cfMin, cfMax);
+}
+
+/** Resolve per-channel [min,max] tuples; skips stats when None + integer dtype. */
+export function resolveChannelRangeTuples(
+  plane: PlaneForStats,
+  options: RenderOptions,
+  dtype: string,
+  bandStats?: BandValueStats[],
+  statsLevel: "minmax" | "full" = "full",
+): Array<[number, number]> {
+  const { shape, axes } = plane;
+  const bandCount = axes.band >= 0 ? shape[axes.band]! : 1;
+  const { min: cfMin, max: cfMax } = cfScaleBounds(options.attributes);
+  const stats =
+    bandStats ??
+    (channelRangeNeedsBandStats(options, dtype)
+      ? ensurePlaneBandStats(plane, statsLevel)
+      : undefined);
+  const fallbackStats: BandValueStats = {
+    min: 0,
+    max: 1,
+    counts: new Uint32Array(0),
+    sampleCount: 0,
+  };
+
+  if (options.mode === "scalar" || bandCount === 1) {
+    const entry = stats?.[0] ?? fallbackStats;
+    if (options.scaleMode === "none") {
+      return [resolveNoneChannelRange(options.manualRanges?.[0], cfMin, cfMax, dtype, entry)];
+    }
+    const resolved = stats ?? ensurePlaneBandStats(plane, statsLevel);
+    return [
+      scaleRangeFromBandStats(
+        resolved[0]!,
+        options.scaleMode,
+        options.manualRanges?.[0],
+        cfMin,
+        cfMax,
+      ),
+    ];
+  }
+
+  return options.rgbBands.map((band, channel) => {
+    const entry = stats?.[band] ?? stats?.[0] ?? fallbackStats;
+    if (options.scaleMode === "none") {
+      return resolveNoneChannelRange(
+        options.manualRanges?.[channel],
+        cfMin,
+        cfMax,
+        dtype,
+        entry,
+      );
+    }
+    const resolved = stats ?? ensurePlaneBandStats(plane, statsLevel);
+    return scaleRangeFromBandStats(
+      resolved[band] ?? resolved[0]!,
+      options.scaleMode,
+      options.manualRanges?.[channel],
+      cfMin,
+      cfMax,
+    );
+  });
+}
+
 export function autoscaleRangesFromPlane(
   plane: ImagePlane,
   flipY: boolean,
   attributes: Record<string, unknown>,
+  scaleMode: ScaleMode = "percentile",
+  dtype = "float64",
+  mode: "rgb" | "scalar" = "scalar",
+  rgbBands: [number, number, number] = [0, 1, 2],
 ): ScaleRange[] {
-  const { min: cfMin, max: cfMax } = cfScaleBounds(attributes);
-  const { data, shape, axes } = plane;
-  const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
-  const height = shape[axes.y];
-  const width = shape[axes.x];
-  const stride = computeStrides(shape);
-  const coords = new Array<number>(shape.length).fill(0);
-  const ranges: ScaleRange[] = [];
+  return computeChannelScaleRanges(
+    plane,
+    {
+      mode,
+      rgbBands,
+      scaleMode,
+      attributes,
+      flipY,
+    },
+    dtype,
+    plane.bandStats,
+  );
+}
 
-  for (let band = 0; band < bandCount; band++) {
-    let min = Infinity;
-    let max = -Infinity;
-    for (let canvasY = 0; canvasY < height; canvasY++) {
-      coords[axes.y] = dataRowFromCanvas(canvasY, height, flipY);
-      for (let x = 0; x < width; x++) {
-        coords[axes.x] = x;
-        if (axes.band >= 0) coords[axes.band] = band;
-        const value = chunkValue(data, stride, coords);
-        if (!Number.isFinite(value)) continue;
-        if (value < min) min = value;
-        if (value > max) max = value;
-      }
-    }
-    if (!Number.isFinite(min) || !Number.isFinite(max)) {
-      ranges.push({ min: 0, max: 1 });
-      continue;
-    }
-    if (cfMin !== undefined && cfMax !== undefined && cfMax > cfMin) {
-      ranges.push({
-        min: Math.max(min, cfMin),
-        max: Math.min(max, cfMax),
-      });
-    } else {
-      ranges.push({ min, max: min === max ? max + 1 : max });
-    }
-  }
-  return ranges;
+/** Scale ranges per display channel (scalar: 1 entry; RGB: one per rgb band). */
+export function computeChannelScaleRanges(
+  plane: ImagePlane,
+  options: RenderOptions,
+  dtype: string,
+  bandStats?: BandValueStats[],
+): ScaleRange[] {
+  return resolveChannelRangeTuples(plane, options, dtype, bandStats).map(([min, max]) => ({
+    min,
+    max,
+  }));
+}
+
+function resolveScalarRange(
+  options: RenderOptions,
+  dtype: string,
+  bandStats: BandValueStats[] | undefined,
+  plane: PlaneForStats,
+): [number, number] {
+  return resolveChannelRangeTuples(plane, options, dtype, bandStats)[0]!;
+}
+
+function resolveRgbRanges(
+  options: RenderOptions,
+  dtype: string,
+  bandStats: BandValueStats[] | undefined,
+  plane: PlaneForStats,
+): Array<[number, number]> {
+  return resolveChannelRangeTuples(plane, options, dtype, bandStats);
 }
 
 export interface RenderLayoutInput {
@@ -136,10 +250,11 @@ export function renderImageToCanvas(
   plane: ImagePlane,
   options: RenderOptions,
   layoutInput?: RenderLayoutInput,
+  dtype = "float64",
 ): RenderResult {
   const { data, shape, axes } = plane;
-  const planeHeight = shape[axes.y];
-  const planeWidth = shape[axes.x];
+  const planeHeight = shape[axes.y]!;
+  const planeWidth = shape[axes.x]!;
   const fillView = layoutInput?.fillView ?? false;
   const viewportWidth = layoutInput?.viewportWidth ?? planeWidth;
   const viewportHeight = layoutInput?.viewportHeight ?? planeHeight;
@@ -153,13 +268,13 @@ export function renderImageToCanvas(
     viewOrigin,
   );
   const flipY = options.flipY ?? false;
-  const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
-  const { min: cfMin, max: cfMax } = cfScaleBounds(options.attributes);
+  const bandCount = axes.band >= 0 ? shape[axes.band]! : 1;
+  const bandStats = channelRangeNeedsBandStats(options, dtype)
+    ? ensurePlaneBandStats(plane)
+    : plane.bandStats;
 
   if (options.mode === "scalar" || bandCount === 1) {
-    const [min, max] = options.autoscale
-      ? arrayMinMax(data)
-      : resolveManualScaleRange(options.manualRanges?.[0], data, cfMin, cfMax);
+    const [min, max] = resolveScalarRange(options, dtype, bandStats, plane);
     const lut = getColormapLut(options.colormap ?? DEFAULT_COLORMAP);
     const rgba = renderScalarRegionToRgba({
       data,
@@ -179,19 +294,7 @@ export function renderImageToCanvas(
   }
 
   const bandIndices = options.rgbBands;
-  const ranges = bandIndices.map((band, channel) => {
-    if (options.autoscale) {
-      if (axes.band >= 0 && shape.length === 3) {
-        const bandHeight = shape[axes.y];
-        const bandWidth = shape[axes.x];
-        const bandStride = band * bandHeight * bandWidth;
-        return arrayMinMax(data.subarray(bandStride, bandStride + bandHeight * bandWidth));
-      }
-      return arrayMinMax(data);
-    }
-    return resolveManualScaleRange(options.manualRanges?.[channel], data, cfMin, cfMax);
-  });
-
+  const ranges = resolveRgbRanges(options, dtype, bandStats, plane);
   const rgba = renderRgbRegionToRgba({
     data,
     planeWidth,
@@ -227,7 +330,7 @@ export function samplePlaneValues(
     return { bands: [{ label: "value", value }] };
   }
 
-  const bandCount = shape[axes.band];
+  const bandCount = shape[axes.band]!;
   const bands: Array<{ label: string; value: number }> = [];
   for (let band = 0; band < bandCount; band++) {
     coords[axes.band] = band;
@@ -235,16 +338,6 @@ export function samplePlaneValues(
     bands.push({ label, value: chunkValue(data, stride, coords) });
   }
   return { bands };
-}
-
-function computeStrides(shape: number[]): number[] {
-  const stride = new Array<number>(shape.length);
-  let step = 1;
-  for (let axis = shape.length - 1; axis >= 0; axis--) {
-    stride[axis] = step;
-    step *= shape[axis];
-  }
-  return stride;
 }
 
 export { canvasToPlanePixel, computeViewLayout };

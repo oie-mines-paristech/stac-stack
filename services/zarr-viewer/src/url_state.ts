@@ -10,7 +10,7 @@ import {
 import { DEFAULT_COLORMAP, isColormapName } from "./colormap.js";
 import type { ImageVariable } from "./dimensions.js";
 import { axisByRole } from "./dimensions.js";
-import { defaultRgbBands, rgbBandsEqual, type ScaleRange } from "./scaling.js";
+import { defaultRgbBands, rgbBandsEqual, type ScaleMode, type ScaleRange } from "./scaling.js";
 import { parseScaleParam, serializeScaleParam } from "./scale_url.js";
 import { formatDate, formatTime } from "./time.js";
 import {
@@ -31,7 +31,7 @@ export interface ViewerUrlParams {
   datetime?: string;
   rgb?: [number, number, number];
   colormap?: string;
-  autoscale?: boolean;
+  scaleMode?: ScaleMode;
   manualScale?: ScaleRange[];
   fillView?: boolean;
   fullTab?: boolean;
@@ -163,7 +163,14 @@ export function parseLegacySearchParams(
       datetime: params.get("datetime") ?? undefined,
       rgb,
       colormap: cmapParam && isColormapName(cmapParam) ? cmapParam : undefined,
-      autoscale: autoscaleParam === "0" ? false : autoscaleParam === "1" ? true : undefined,
+      scaleMode:
+        autoscaleParam === "0"
+          ? "none"
+          : autoscaleParam === "1"
+            ? "minmax"
+            : autoscaleParam === "2"
+              ? "percentile"
+              : undefined,
       manualScale: scaleParam ? parseScaleParam(scaleParam) : undefined,
       fillView: zoomParam === "fill" ? true : zoomParam === "1" ? true : undefined,
       dims,
@@ -231,7 +238,7 @@ export function writeViewerParams(input: {
   selection: Record<string, number>;
   rgbBands: [number, number, number];
   colormap: string;
-  autoscale: boolean;
+  scaleMode: ScaleMode;
   manualScale: ScaleRange[];
   fillView: boolean;
   fullTab: boolean;
@@ -265,11 +272,15 @@ export function writeViewerParams(input: {
     json.cmap = input.colormap;
   }
 
-  if (!input.autoscale) {
+  if (input.scaleMode === "none") {
     json.as = 0;
     if (input.manualScale.length > 0) {
       json.scale = serializeScaleParam(input.manualScale);
     }
+  } else if (input.scaleMode === "minmax") {
+    json.as = 1;
+  } else if (input.scaleMode === "percentile") {
+    json.as = 2;
   }
 
   if (input.fillView) {

@@ -129,6 +129,22 @@ const sophiaPlan = planPlaneChunks(sophia, { time: 0, y: 0, x: 0 }, "scalar");
 assert(sophiaPlan.chunkCount === 4, `Sophia-like frame: 4 chunks, got ${sophiaPlan.chunkCount}`);
 assert(!shouldWarnChunkPlan(sophiaPlan), "Sophia-like frame does not warn");
 
+const sophiaOldMask = {
+  chunkCount: 1,
+  logicalBytes: 755_000,
+  networkBytes: 72_000_000,
+  imageChunks: 1,
+};
+assert(!shouldWarnChunkPlan(sophiaOldMask), "single large shard does not warn on wire alone");
+
+const multiChunkHeavyWire = {
+  chunkCount: 2,
+  logicalBytes: 755_000,
+  networkBytes: 72_000_000,
+  imageChunks: 2,
+};
+assert(shouldWarnChunkPlan(multiChunkHeavyWire), "multi-chunk heavy wire still warns");
+
 const lightPlan = { chunkCount: WARN_CHUNK_COUNT, logicalBytes: WARN_LOGICAL_BYTES, networkBytes: WARN_LOGICAL_BYTES };
 assert(!shouldWarnChunkPlan(lightPlan), "at threshold does not warn");
 const heavyPlan = { chunkCount: WARN_CHUNK_COUNT + 1, logicalBytes: 0, networkBytes: 0 };

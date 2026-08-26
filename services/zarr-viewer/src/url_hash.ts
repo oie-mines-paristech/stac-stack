@@ -1,6 +1,7 @@
 import LZString from "lz-string";
 import { resolveStoreAuth, serializeAuthParam } from "./auth.js";
 import { isColormapName } from "./colormap.js";
+import type { ScaleMode } from "./scaling.js";
 import { parseScaleParam } from "./scale_url.js";
 import type { ViewerUrlParams } from "./url_state.js";
 import type { SpatialRegionPick } from "./chunk_plan.js";
@@ -13,13 +14,20 @@ export interface ViewerStateJsonV1 {
   dt?: string;
   rgb?: [number, number, number];
   cmap?: string;
-  as?: 0 | 1;
+  as?: 0 | 1 | 2;
   scale?: string;
   zoom?: "fill";
   dims?: Record<string, number>;
   /** Spatial chunk region [y0, y1, x0, x1] inclusive */
   region?: [number, number, number, number];
   ui?: "full";
+}
+
+export function parseScaleModeFromJson(as: 0 | 1 | 2 | undefined): ScaleMode | undefined {
+  if (as === 0) return "none";
+  if (as === 1) return "minmax";
+  if (as === 2) return "percentile";
+  return undefined;
 }
 
 export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
@@ -36,8 +44,9 @@ export function viewerParamsToJson(params: ViewerUrlParams): ViewerStateJsonV1 {
   if (params.datetime) json.dt = params.datetime;
   if (params.rgb) json.rgb = params.rgb;
   if (params.colormap) json.cmap = params.colormap;
-  if (params.autoscale === false) json.as = 0;
-  else if (params.autoscale === true) json.as = 1;
+  if (params.scaleMode === "none") json.as = 0;
+  else if (params.scaleMode === "minmax") json.as = 1;
+  else if (params.scaleMode === "percentile") json.as = 2;
   if (params.manualScale && params.manualScale.length > 0) {
     json.scale = params.manualScale.map((r) => `${r.min}:${r.max}`).join(",");
   }
@@ -92,7 +101,7 @@ export function jsonToViewerParams(
     datetime: json.dt,
     rgb: json.rgb,
     colormap: json.cmap && isColormapName(json.cmap) ? json.cmap : undefined,
-    autoscale: json.as === 0 ? false : json.as === 1 ? true : undefined,
+    scaleMode: parseScaleModeFromJson(json.as),
     manualScale: json.scale ? parseScaleParam(json.scale) : undefined,
     fillView: json.zoom === "fill" ? true : undefined,
     dims: json.dims ?? {},

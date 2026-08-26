@@ -1,3 +1,4 @@
+import type { PlaneData, PlaneDtypeTag } from "./chunk_utils.js";
 import { renderRgbRegionToRgba, renderScalarRegionToRgba } from "./render_core.js";
 
 export interface WorkerScalarRequest {
@@ -14,7 +15,7 @@ export interface WorkerScalarRequest {
   max: number;
   lut: Uint8Array;
   flipY: boolean;
-  dtype: "float32" | "float64";
+  dtype: PlaneDtypeTag;
 }
 
 export interface WorkerRgbRequest {
@@ -30,7 +31,7 @@ export interface WorkerRgbRequest {
   bandIndices: [number, number, number];
   ranges: Array<[number, number]>;
   flipY: boolean;
-  dtype: "float32" | "float64";
+  dtype: PlaneDtypeTag;
 }
 
 export type WorkerRenderRequest = WorkerScalarRequest | WorkerRgbRequest;
@@ -42,10 +43,25 @@ export interface WorkerRenderResponse {
   height: number;
 }
 
-function planeDataFromBuffer(buffer: ArrayBuffer, dtype: "float32" | "float64"): Float32Array | Float64Array {
-  return dtype === "float32"
-    ? new Float32Array(buffer)
-    : new Float64Array(buffer);
+function planeDataFromBuffer(buffer: ArrayBuffer, dtype: PlaneDtypeTag): PlaneData {
+  switch (dtype) {
+    case "float32":
+      return new Float32Array(buffer);
+    case "uint8":
+      return new Uint8Array(buffer);
+    case "int8":
+      return new Int8Array(buffer);
+    case "uint16":
+      return new Uint16Array(buffer);
+    case "int16":
+      return new Int16Array(buffer);
+    case "uint32":
+      return new Uint32Array(buffer);
+    case "int32":
+      return new Int32Array(buffer);
+    default:
+      return new Float64Array(buffer);
+  }
 }
 
 self.onmessage = (event: MessageEvent<WorkerRenderRequest>) => {

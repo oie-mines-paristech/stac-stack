@@ -69,6 +69,15 @@ export function formatTimeHourUtc(date: Date): string {
   return `${date.getUTCHours()}H UTC`;
 }
 
+export function formatTimeStepLabel(date: Date, stepMs: number | null): string {
+  if (stepMs !== null && stepMs < 3_600_000) {
+    const hh = String(date.getUTCHours()).padStart(2, "0");
+    const mm = String(date.getUTCMinutes()).padStart(2, "0");
+    return `${hh}:${mm} UTC`;
+  }
+  return formatTimeHourUtc(date);
+}
+
 export function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -125,12 +134,45 @@ export function defaultDayFromDates(dates: Date[]): string {
   return formatDate(dates[0]);
 }
 
+/** Default calendar day: last date on the axis (most recent timestep). */
+export function defaultDayFromDatesLast(dates: Date[]): string {
+  if (dates.length === 0) return formatDate(new Date());
+  return formatDate(dates.at(-1)!);
+}
+
 /** Default time index within a day's indices (middle step, aligned with date-picker). */
 export function defaultTimeIndexForDay(timeIndices: number[]): number {
   if (timeIndices.length === 0) {
     throw new Error("defaultTimeIndexForDay requires at least one index");
   }
   return timeIndices[Math.floor(timeIndices.length / 2)]!;
+}
+
+/** Default time index within a day: last step of that day. */
+export function defaultTimeIndexForDayLast(timeIndices: number[]): number {
+  if (timeIndices.length === 0) {
+    throw new Error("defaultTimeIndexForDayLast requires at least one index");
+  }
+  return timeIndices.at(-1)!;
+}
+
+/** Default time index within a day: first step of that day. */
+export function defaultTimeIndexForDayFirst(timeIndices: number[]): number {
+  if (timeIndices.length === 0) {
+    throw new Error("defaultTimeIndexForDayFirst requires at least one index");
+  }
+  return timeIndices[0]!;
+}
+
+/** Pick a timestep on the current day using axis cadence (metadata only). */
+export function defaultTimeIndexForAxis(dates: Date[], timeIndices: number[]): number {
+  if (timeIndices.length === 0) {
+    throw new Error("defaultTimeIndexForAxis requires at least one index");
+  }
+  if (supportsIntraDayTimePlayback(dates)) {
+    return defaultTimeIndexForDayFirst(timeIndices);
+  }
+  return timeIndices.at(-1)!;
 }
 
 /** Search order from middle of day outward (for finding a frame with valid data). */
@@ -143,6 +185,43 @@ export function timeIndicesSearchOrder(timeIndices: number[]): number[] {
     const after = mid + offset;
     if (before >= 0) order.push(timeIndices[before]!);
     if (after < timeIndices.length) order.push(timeIndices[after]!);
+  }
+  return order;
+}
+
+/** Search order from the end of the axis backward. */
+export function timeIndicesGlobalBackwardOrder(length: number, limit?: number): number[] {
+  const order: number[] = [];
+  for (let index = length - 1; index >= 0; index--) {
+    order.push(index);
+    if (limit !== undefined && order.length >= limit) break;
+  }
+  return order;
+}
+
+/**
+ * Probe order aligned on Zarr time chunks: chunk end, then chunk start, walking backward.
+ * Finds the latest timestep with data using at most two loads per chunk.
+ */
+export function timeIndicesChunkProbeOrder(
+  length: number,
+  chunkSize: number,
+  fromIndex = length - 1,
+): number[] {
+  const order: number[] = [];
+  const seen = new Set<number>();
+  const push = (index: number): void => {
+    if (index < 0 || index >= length || seen.has(index)) return;
+    seen.add(index);
+    order.push(index);
+  };
+
+  const safeChunkSize = Math.max(1, chunkSize);
+  const startChunk = Math.floor(fromIndex / safeChunkSize) * safeChunkSize;
+  for (let chunkStart = startChunk; chunkStart >= 0; chunkStart -= safeChunkSize) {
+    const chunkEnd = Math.min(chunkStart + safeChunkSize - 1, length - 1);
+    push(chunkEnd);
+    if (chunkEnd !== chunkStart) push(chunkStart);
   }
   return order;
 }

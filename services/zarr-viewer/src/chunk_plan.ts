@@ -96,6 +96,31 @@ export function chunkGridKeysForSelection(
   return [...keys];
 }
 
+/** Group day time indices by image chunk grid key (union prefetch granularity). */
+export function groupTimeIndicesByImageChunk(
+  variable: ImageVariable,
+  mode: "rgb" | "scalar",
+  selection: Record<string, number>,
+  timeAxisName: string,
+  timeIndices: number[],
+): Map<string, number[]> {
+  const groups = new Map<string, number[]>();
+  for (const timeIndex of timeIndices) {
+    const sel = { ...selection, [timeAxisName]: timeIndex };
+    const chunkKey = chunkGridKeysForSelection(variable, sel, mode)[0] ?? "unknown";
+    const bucket = groups.get(chunkKey);
+    if (bucket) {
+      bucket.push(timeIndex);
+    } else {
+      groups.set(chunkKey, [timeIndex]);
+    }
+  }
+  for (const indices of groups.values()) {
+    indices.sort((a, b) => a - b);
+  }
+  return groups;
+}
+
 function selectionElementCount(
   variable: ImageVariable,
   selection: Record<string, number>,
@@ -237,7 +262,17 @@ export function formatChunkEstimate(plan: ChunkPlan): string {
   return `${plan.chunkCount} chunks · ~${formatBytes(plan.logicalBytes)}`;
 }
 
-export function shouldWarnChunkPlan(plan: Pick<ChunkPlan, "chunkCount" | "logicalBytes" | "networkBytes">): boolean {
+export function shouldWarnChunkPlan(
+  plan: Pick<ChunkPlan, "chunkCount" | "logicalBytes" | "networkBytes"> & {
+    imageChunks?: number;
+  },
+): boolean {
+  const imageChunks = plan.imageChunks ?? plan.chunkCount;
+  if (imageChunks === 1) {
+    return (
+      plan.chunkCount > WARN_CHUNK_COUNT || plan.logicalBytes > WARN_LOGICAL_BYTES
+    );
+  }
   return (
     plan.chunkCount > WARN_CHUNK_COUNT ||
     plan.logicalBytes > WARN_LOGICAL_BYTES ||

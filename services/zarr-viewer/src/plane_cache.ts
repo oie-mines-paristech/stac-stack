@@ -1,5 +1,6 @@
 import type * as zarr from "zarrita";
 import {
+  groupTimeIndicesByImageChunk,
   isSpatiallyMultiChunk,
   planLoadOperation,
   planPlaneChunks,
@@ -13,8 +14,13 @@ import { beginChunkLoad, endChunkLoad } from "./chunk_progress.js";
 import type { DatasetSchema, ImageVariable } from "./dimensions.js";
 import { axisByRole } from "./dimensions.js";
 import type { SpatialCoords } from "./hover.js";
-import { loadImagePlane, type ImagePlane } from "./render.js";
-import { getCachedCoordinateValues } from "./store.js";
+import {
+  loadImagePlaneCoordinated,
+  runChunkPrefetch,
+  yieldToMain,
+} from "./plane_load_coordinator.js";
+import { loadImagePlane, planeHasDisplayableData, type ImagePlane } from "./render.js";
+import { getCachedCoordinateValues, jpegxlDecodeConcurrency } from "./store.js";
 import {
   promptChunkLoadChoice,
 } from "./ui/chunk_confirm_dialog.js";
@@ -112,6 +118,10 @@ export function cancelPrefetch(): void {
   prefetchGeneration++;
 }
 
+function cacheablePlane(plane: ImagePlane, variable: ImageVariable): boolean {
+  return planeHasDisplayableData(plane, variable.dtype);
+}
+
 function cachedCoordPathsForVariable(variable: ImageVariable): Set<string> {
   const cached = new Set<string>();
   for (const axis of variable.axes) {
@@ -170,47 +180,119 @@ export async function prefetchDayPlanes(ctx: PrefetchContext): Promise<void> {
   if (ctx.spatialRegion) return;
 
   const runId = ++prefetchGeneration;
-  const concurrency = 4;
-  const queue = [...ctx.timeIndices];
+  const chunkGroups = groupTimeIndicesByImageChunk(
+    ctx.variable,
+    ctx.mode,
+    ctx.selection,
+    ctx.timeAxisName,
+    ctx.timeIndices,
+  );
 
-  async function worker(): Promise<void> {
-    while (queue.length > 0) {
-      if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
-      const timeIndex = queue.shift();
-      if (timeIndex === undefined) return;
+  for (const [chunkKey, timeIndices] of chunkGroups) {
+    if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
 
-      const key = planeCacheKey(
-        ctx.variable.path,
-        ctx.mode,
-        { ...ctx.selection, [ctx.timeAxisName]: timeIndex },
-        ctx.timeAxisName,
-        timeIndex,
-        null,
-      );
-      if (ctx.cache.has(key)) continue;
+    await runChunkPrefetch(chunkKey, async () => {
+      const batchSize = jpegxlDecodeConcurrency();
 
-      const indices = ctx.variable.axes.map((axis) => {
-        if (axis.name === ctx.timeAxisName) return timeIndex;
-        return ctx.selection[axis.name] ?? 0;
-      });
-
-      try {
-        const plane = await loadImagePlane(ctx.arr, ctx.variable, indices, ctx.mode);
+      const prefetchOne = async (timeIndex: number): Promise<void> => {
         if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
-        ctx.cache.set(key, plane);
-      } catch {
-        // Skip failed prefetch frames; interactive load will surface errors.
+
+        const key = planeCacheKey(
+          ctx.variable.path,
+          ctx.mode,
+          { ...ctx.selection, [ctx.timeAxisName]: timeIndex },
+          ctx.timeAxisName,
+          timeIndex,
+          null,
+        );
+        if (ctx.cache.has(key)) return;
+
+        const indices = ctx.variable.axes.map((axis) => {
+          if (axis.name === ctx.timeAxisName) return timeIndex;
+          return ctx.selection[axis.name] ?? 0;
+        });
+
+        try {
+          const plane = await loadImagePlaneCoordinated(key, "prefetch", () =>
+            loadImagePlane(ctx.arr, ctx.variable, indices, ctx.mode),
+          );
+          if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
+          if (cacheablePlane(plane, ctx.variable)) {
+            ctx.cache.set(key, plane);
+          }
+        } catch {
+          // Skip failed prefetch frames; interactive load will surface errors.
+        }
+      };
+
+      for (let offset = 0; offset < timeIndices.length; offset += batchSize) {
+        if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
+        const batch = timeIndices.slice(offset, offset + batchSize);
+        await Promise.all(batch.map((timeIndex) => prefetchOne(timeIndex)));
+        await yieldToMain();
       }
+    });
+
+    await yieldToMain();
+  }
+}
+
+export interface PrefetchOtherDimContext extends PrefetchContext {
+  otherAxes: Array<{ name: string; size: number }>;
+}
+
+export async function prefetchOtherDimValues(ctx: PrefetchOtherDimContext): Promise<void> {
+  if (ctx.spatialRegion || ctx.otherAxes.length === 0) return;
+
+  const runId = ++prefetchGeneration;
+  const queue: Array<{ axisName: string; index: number }> = [];
+  for (const axis of ctx.otherAxes) {
+    const current = ctx.selection[axis.name] ?? 0;
+    for (let index = 0; index < axis.size; index++) {
+      if (index !== current) queue.push({ axisName: axis.name, index });
     }
   }
 
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  for (const item of queue) {
+    if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
+
+    const trySelection = { ...ctx.selection, [item.axisName]: item.index };
+    const key = planeCacheKey(
+      ctx.variable.path,
+      ctx.mode,
+      trySelection,
+      ctx.timeAxisName,
+      trySelection[ctx.timeAxisName] ?? null,
+      null,
+    );
+    if (ctx.cache.has(key)) continue;
+
+    const indices = ctx.variable.axes.map((axis) => trySelection[axis.name] ?? 0);
+
+    try {
+      const plane = await loadImagePlaneCoordinated(key, "prefetch", () =>
+        loadImagePlane(ctx.arr, ctx.variable, indices, ctx.mode),
+      );
+      if (runId !== prefetchGeneration || !ctx.isCurrentGeneration()) return;
+      if (cacheablePlane(plane, ctx.variable)) {
+        ctx.cache.set(key, plane);
+      }
+    } catch {
+      // Skip failed prefetch frames; interactive load will surface errors.
+    }
+
+    await yieldToMain();
+  }
 }
 
 export interface FrameTimings {
   cacheHit: boolean;
   fetchMs: number;
   renderMs: number;
+  statsMs: number;
+  postUiMs: number;
+  histogramMs: number;
+  frameMs: number;
   totalMs: number;
 }
 
@@ -240,6 +322,9 @@ export async function loadPlaneWithCache(
   const started = performance.now();
   let key = cacheKey(spatialRegion);
   let cached = cache.get(key);
+  if (cached && !cacheablePlane(cached, variable)) {
+    cached = undefined;
+  }
   if (cached) {
     return {
       plane: cached,
@@ -247,6 +332,10 @@ export async function loadPlaneWithCache(
         cacheHit: true,
         fetchMs: 0,
         renderMs: 0,
+        statsMs: 0,
+        postUiMs: 0,
+        histogramMs: 0,
+        frameMs: 0,
         totalMs: performance.now() - started,
       },
     };
@@ -279,6 +368,10 @@ export async function loadPlaneWithCache(
           cacheHit: true,
           fetchMs: 0,
           renderMs: 0,
+          statsMs: 0,
+          postUiMs: 0,
+          histogramMs: 0,
+          frameMs: 0,
           totalMs: performance.now() - started,
         },
       };
@@ -305,9 +398,13 @@ export async function loadPlaneWithCache(
   const fetchStart = performance.now();
   try {
     const indices = variable.axes.map((axis) => selection[axis.name] ?? 0);
-    const plane = await loadImagePlane(arr, variable, indices, mode, spatialRegion ?? undefined);
+    const plane = await loadImagePlaneCoordinated(key, "interactive", () =>
+      loadImagePlane(arr, variable, indices, mode, spatialRegion ?? undefined),
+    );
     const fetchMs = performance.now() - fetchStart;
-    cache.set(key, plane);
+    if (cacheablePlane(plane, variable)) {
+      cache.set(key, plane);
+    }
 
     return {
       plane,
@@ -315,6 +412,10 @@ export async function loadPlaneWithCache(
         cacheHit: false,
         fetchMs,
         renderMs: 0,
+        statsMs: 0,
+        postUiMs: 0,
+        histogramMs: 0,
+        frameMs: 0,
         totalMs: performance.now() - started,
       },
     };

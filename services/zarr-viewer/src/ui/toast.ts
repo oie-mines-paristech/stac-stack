@@ -16,6 +16,13 @@ function toastElement(): HTMLDivElement {
   return node;
 }
 
+function hideToastNode(node: HTMLDivElement): void {
+  node.hidden = true;
+  node.textContent = "";
+  node.classList.remove("error-toast-visible", "info-toast-visible");
+  node.classList.remove("info-toast");
+}
+
 export function dismissErrorToast(): void {
   if (hideTimer !== undefined) {
     window.clearTimeout(hideTimer);
@@ -23,9 +30,7 @@ export function dismissErrorToast(): void {
   }
   const node = document.querySelector<HTMLDivElement>("#error-toast");
   if (!node) return;
-  node.hidden = true;
-  node.textContent = "";
-  node.classList.remove("error-toast-visible");
+  hideToastNode(node);
 }
 
 /** Show a pale banner under the header; auto-hides after a few seconds. */
@@ -44,17 +49,52 @@ export function showErrorToast(message: string, durationMs = DEFAULT_DURATION_MS
   const node = toastElement();
   node.textContent = text;
   node.hidden = false;
+  node.classList.remove("info-toast", "info-toast-visible");
   node.classList.remove("error-toast-visible");
   void node.offsetWidth;
   node.classList.add("error-toast-visible");
 
   hideTimer = window.setTimeout(() => {
     hideTimer = undefined;
-    node.classList.remove("error-toast-visible");
+    node.classList.remove("error-toast-visible", "info-toast-visible");
     window.setTimeout(() => {
-      if (!node.classList.contains("error-toast-visible")) {
-        node.hidden = true;
-        node.textContent = "";
+      if (
+        !node.classList.contains("error-toast-visible") &&
+        !node.classList.contains("info-toast-visible")
+      ) {
+        hideToastNode(node);
+      }
+    }, 300);
+  }, durationMs);
+}
+
+/** Show an informational banner under the header; auto-hides after a few seconds. */
+export function showInfoToast(message: string, durationMs = DEFAULT_DURATION_MS): void {
+  const text = message.trim();
+  if (!text) {
+    dismissErrorToast();
+    return;
+  }
+
+  if (hideTimer !== undefined) {
+    window.clearTimeout(hideTimer);
+    hideTimer = undefined;
+  }
+
+  const node = toastElement();
+  node.textContent = text;
+  node.hidden = false;
+  node.classList.add("info-toast");
+  node.classList.remove("error-toast-visible", "info-toast-visible");
+  void node.offsetWidth;
+  node.classList.add("info-toast-visible");
+
+  hideTimer = window.setTimeout(() => {
+    hideTimer = undefined;
+    node.classList.remove("info-toast-visible");
+    window.setTimeout(() => {
+      if (!node.classList.contains("info-toast-visible")) {
+        hideToastNode(node);
       }
     }, 300);
   }, durationMs);

@@ -58,6 +58,59 @@ const SPATIAL_Y_NAMES = new Set([
 ]);
 const BAND_NAMES = new Set(["band", "channel", "wavelength", "c"]);
 
+/** Case-insensitive: rgb, RGB, rgba, rgb_channel, … */
+export function isRgbBandName(name: string): boolean {
+  return name.toLowerCase().startsWith("rgb");
+}
+
+const STRING_V3_DTYPE_NAMES = new Set([
+  "string",
+  "fixed_length_utf8",
+  "fixed_length_utf32",
+  "variable_length_utf8",
+]);
+
+/** Normalize Zarr v2/v3 dtype metadata to a stable string for schema display and chunk math. */
+export function normalizeDtype(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    const name = String(record.name ?? "");
+    const numericNames: Record<string, string> = {
+      float32: "float32",
+      float64: "float64",
+      int8: "int8",
+      int16: "int16",
+      int32: "int32",
+      int64: "int64",
+      uint8: "uint8",
+      uint16: "uint16",
+      uint32: "uint32",
+      uint64: "uint64",
+      bool: "bool",
+    };
+    if (name in numericNames) return numericNames[name]!;
+    if (name) return name;
+  }
+  return String(raw ?? "unknown");
+}
+
+/** True when coordinate values can be read through zarrita as numeric arrays. */
+export function isNumericCoordinateDtype(dtype: unknown): boolean {
+  if (typeof dtype === "string") {
+    const lower = dtype.toLowerCase();
+    if (lower === "v2:object" || lower === "string" || lower.includes("utf")) return false;
+    return true;
+  }
+  if (dtype && typeof dtype === "object" && !Array.isArray(dtype)) {
+    const name = String((dtype as Record<string, unknown>).name ?? "").toLowerCase();
+    if (!name) return false;
+    if (STRING_V3_DTYPE_NAMES.has(name) || name.includes("utf") || name === "string") return false;
+    return true;
+  }
+  return false;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -86,7 +139,8 @@ function isSpatialYCoord(name: string, attrs: Record<string, unknown>): boolean 
 
 function isBandCoord(name: string, attrs: Record<string, unknown>): boolean {
   if (Array.isArray(attrs.names) || Array.isArray(attrs.flag_meanings)) return true;
-  return BAND_NAMES.has(name.toLowerCase());
+  const lower = name.toLowerCase();
+  return BAND_NAMES.has(lower) || isRgbBandName(name);
 }
 
 function bandLabels(attrs: Record<string, unknown>): string[] | undefined {
@@ -110,7 +164,7 @@ function classifyCoord(name: string, attrs: Record<string, unknown>): AxisRole {
 function classifyDimByName(name: string): AxisRole | null {
   const lower = name.toLowerCase();
   if (lower === "time" || lower === "t") return "time";
-  if (BAND_NAMES.has(lower) || lower.startsWith("band")) return "band";
+  if (BAND_NAMES.has(lower) || lower.startsWith("band") || isRgbBandName(name)) return "band";
   if (SPATIAL_X_NAMES.has(lower) || lower.endsWith("_x") || lower === "x") return "x";
   if (SPATIAL_Y_NAMES.has(lower) || lower.endsWith("_y") || lower === "y") return "y";
   return null;
@@ -151,7 +205,7 @@ export function buildDatasetSchema(
       labels: bandLabels(attributes),
       chunkShape: extractChunkShape(meta),
       shape: Array.isArray(shape) ? shape.map(Number) : undefined,
-      dtype: typeof meta.data_type === "string" ? meta.data_type : undefined,
+      dtype: normalizeDtype(meta.data_type ?? meta.dtype),
     };
   }
 
@@ -165,7 +219,7 @@ export function buildDatasetSchema(
     const shape = meta.shape as number[];
     const dimensionNames = (meta.dimension_names as string[]) ?? shape.map((_, i) => `dim_${i}`);
     const attributes = asRecord(meta.attributes);
-    const dtype = String(meta.data_type ?? "unknown");
+    const dtype = normalizeDtype(meta.data_type ?? meta.dtype ?? "unknown");
 
     const axes: AxisInfo[] = dimensionNames.map((name, index) => {
       const coord = coordinates[name];

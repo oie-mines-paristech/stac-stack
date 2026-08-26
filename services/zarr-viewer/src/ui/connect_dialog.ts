@@ -38,6 +38,7 @@ export function wireConnectDialog(options: ConnectDialogOptions): {
 
   const dialog = el<HTMLDialogElement>("#connect-dialog");
   const urlInput = el<HTMLInputElement>("#connect-url");
+  const modeNone = el<HTMLInputElement>("#connect-mode-none");
   const modeLogin = el<HTMLInputElement>("#connect-mode-login");
   const modeToken = el<HTMLInputElement>("#connect-mode-token");
   const loginFields = el<HTMLDivElement>("#connect-login-fields");
@@ -53,9 +54,10 @@ export function wireConnectDialog(options: ConnectDialogOptions): {
   let connecting = false;
 
   function syncModeVisibility(): void {
-    const isLogin = modeLogin.checked;
-    loginFields.hidden = !isLogin;
-    tokenFields.hidden = isLogin;
+    const showLogin = modeLogin.checked;
+    const showToken = modeToken.checked;
+    loginFields.hidden = !showLogin;
+    tokenFields.hidden = !showToken;
   }
 
   function clearError(): void {
@@ -79,6 +81,7 @@ export function wireConnectDialog(options: ConnectDialogOptions): {
     tokenInput.disabled = loading;
     modeLogin.disabled = loading;
     modeToken.disabled = loading;
+    modeNone.disabled = loading;
     connectButton.textContent = loading ? "Connecting…" : "Connect";
   }
 
@@ -97,13 +100,14 @@ export function wireConnectDialog(options: ConnectDialogOptions): {
       modeToken.checked = true;
       tokenInput.value = auth.token;
     } else {
-      modeLogin.checked = true;
+      modeNone.checked = true;
     }
     syncModeVisibility();
     clearError();
   }
 
   function readAuthFromForm(): StoreAuth | undefined {
+    if (modeNone.checked) return undefined;
     if (modeToken.checked) {
       const token = tokenInput.value.trim();
       return token ? { kind: "bearer", token } : undefined;
@@ -143,6 +147,7 @@ export function wireConnectDialog(options: ConnectDialogOptions): {
     dialog.showModal();
   }
 
+  modeNone.addEventListener("change", syncModeVisibility);
   modeLogin.addEventListener("change", syncModeVisibility);
   modeToken.addEventListener("change", syncModeVisibility);
 
@@ -153,7 +158,7 @@ export function wireConnectDialog(options: ConnectDialogOptions): {
   });
 
   clearButton.addEventListener("click", () => {
-    modeLogin.checked = true;
+    modeNone.checked = true;
     usernameInput.value = "";
     passwordInput.value = "";
     tokenInput.value = "";
@@ -199,7 +204,11 @@ export function connectDialogMarkup(): string {
         <fieldset class="auth-mode-fieldset">
           <legend>Authentication</legend>
           <label class="auth-mode-option">
-            <input type="radio" name="connect-auth-mode" id="connect-mode-login" value="login" checked />
+            <input type="radio" name="connect-auth-mode" id="connect-mode-none" value="none" checked />
+            None
+          </label>
+          <label class="auth-mode-option">
+            <input type="radio" name="connect-auth-mode" id="connect-mode-login" value="login" />
             Login
           </label>
           <label class="auth-mode-option">
@@ -207,7 +216,7 @@ export function connectDialogMarkup(): string {
             Token
           </label>
         </fieldset>
-        <div id="connect-login-fields" class="auth-fields">
+        <div id="connect-login-fields" class="auth-fields" hidden>
           <label class="control">
             Username
             <input id="connect-username" type="text" autocomplete="username" />

@@ -145,7 +145,7 @@ withLocation("https://example.com", "/", () => {
     "/?url=https://host/data.zarr/&autoscale=0&scale=250:310,0:100",
   );
   const params = readViewerParams();
-  assert(params.autoscale === false, "readViewerParams parses autoscale=0");
+  assert(params.scaleMode === "none", "readViewerParams parses autoscale=0 as none");
   assert(params.manualScale?.length === 2, "readViewerParams parses scale bands");
   assert(params.manualScale?.[0].min === 250, "scale min");
   assert(params.manualScale?.[0].max === 310, "scale max");
@@ -166,7 +166,7 @@ withLocation("https://example.com", "/", () => {
     datetime: "2024-06-16T12:00:00Z",
     rgb: [0, 2, 3],
     colormap: "viridis",
-    autoscale: false,
+    scaleMode: "none",
     manualScale: [{ min: 250, max: 310 }],
     fillView: true,
     dims: { level: 2 },
@@ -176,7 +176,7 @@ withLocation("https://example.com", "/", () => {
   globalThis.window.history.replaceState({}, "", `/#${compressed}`);
   const params = readViewerParams();
   assert(params.variable === "t2m", "hash round-trip variable");
-  assert(params.autoscale === false, "hash round-trip autoscale");
+  assert(params.scaleMode === "none", "hash round-trip scaleMode none");
   assert(params.manualScale?.[0].max === 310, "hash round-trip scale");
   assert(params.fillView === true, "hash round-trip zoom");
   assert(params.dims.level === 2, "hash round-trip dims");

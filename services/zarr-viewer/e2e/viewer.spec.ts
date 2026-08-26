@@ -71,8 +71,9 @@ test("shared url restores variable and datetime", async ({ page }, testInfo) => 
   );
   await assertCanvasRendered(page, monitor);
   await expect(page.locator("#variable-select")).toHaveValue("overexposure_mask");
-  await expect(page.locator("#rgb-bands")).toBeVisible();
-  await expect(page.locator("#autoscale")).not.toBeChecked();
+  await expect(page.locator("#rgb-bands")).toBeHidden();
+  await expect(page.locator("#colormap-row")).toBeVisible();
+  await expect(page.locator("#scale-mode")).toHaveValue("none");
   await expect(page).toHaveURL(/^[^?]*#/);
 });
 
@@ -82,7 +83,7 @@ test("manual scale min/max is persisted in hash url", async ({ page }, testInfo)
   await waitForViewerReady(page, monitor);
   const hashBefore = await page.evaluate(() => window.location.hash);
 
-  await page.locator("#autoscale").uncheck();
+  await page.locator("#scale-mode").selectOption("none");
   await expect(page.locator("#scale-controls")).toBeVisible({ timeout: 5_000 });
 
   const minInput = page.locator('.scale-input[data-bound="min"]').first();
@@ -101,7 +102,7 @@ test("manual scale min/max is persisted in hash url", async ({ page }, testInfo)
   await page.goto(shareUrl);
   await waitForViewerReady(page, monitor);
 
-  await expect(page.locator("#autoscale")).not.toBeChecked();
+  await expect(page.locator("#scale-mode")).toHaveValue("none");
   await expect(minInput).toHaveValue("100");
   await expect(maxInput).toHaveValue("200");
 });

@@ -49,7 +49,7 @@ const result = renderImageToCanvas(
   {
     mode: "scalar",
     rgbBands: [0, 1, 2],
-    autoscale: true,
+    scaleMode: "percentile",
     attributes: {},
     flipY: false,
     colormap: "viridis",

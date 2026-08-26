@@ -1,5 +1,5 @@
 import * as zarr from "zarrita";
-import { registerJpegxlCodec } from "@oie-minesparis-psl/jpegxl-zarr";
+import { configureJpegxlWorkerPool, registerJpegxlCodec, setJpegxlWorkerFactory } from "@oie-minesparis-psl/jpegxl-zarr";
 import { loadFull1DArray } from "./array_load.js";
 import type { StoreAuth } from "./auth.js";
 import { resolveStoreAuth, storeUrlForFetch } from "./auth.js";
@@ -15,6 +15,8 @@ import {
 } from "./consolidated.js";
 import {
   buildDatasetSchema,
+  isNumericCoordinateDtype,
+  type CoordinateMeta,
   type DatasetSchema,
   type ImageVariable,
 } from "./dimensions.js";
@@ -33,8 +35,31 @@ const byteCache = new Map<string, Uint8Array | undefined>();
 const arrayCache = new Map<string, zarr.Array<zarr.DataType>>();
 const coordinateCache = new Map<string, unknown[]>();
 
+function jpegxlWorkerPoolSize(): number {
+  const raw = import.meta.env.VITE_JXL_WORKER_POOL;
+  if (raw === undefined || raw === "") return 4;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 4;
+}
+
+/** Parallel JXL decode slots (worker pool size, or 1 on main thread). */
+export function jpegxlDecodeConcurrency(): number {
+  const poolSize = jpegxlWorkerPoolSize();
+  return poolSize > 0 ? poolSize : 1;
+}
+
 function ensureCodec(): void {
   if (!codecRegistered) {
+    if (typeof Worker !== "undefined" && jpegxlWorkerPoolSize() > 0) {
+      setJpegxlWorkerFactory(
+        (index) =>
+          new Worker(new URL("./jpegxl_worker.ts", import.meta.url), {
+            type: "module",
+            name: `jpegxl-${index}`,
+          }),
+      );
+    }
+    configureJpegxlWorkerPool({ poolSize: jpegxlWorkerPoolSize() });
     registerJpegxlCodec();
     codecRegistered = true;
   }
@@ -123,6 +148,13 @@ export function getCachedCoordinateValues(coordPath: string): unknown[] | undefi
   return cached ? [...cached] : undefined;
 }
 
+/** Whether zarrita should load this coordinate array (skip string coords with schema labels). */
+export function shouldFetchCoordinateValues(coord: CoordinateMeta | undefined): boolean {
+  if (!coord) return false;
+  if (coord.labels?.length) return false;
+  return isNumericCoordinateDtype(coord.dtype);
+}
+
 export async function preloadVariableCoordinates(
   root: OpenDatasetResult["root"],
   variable: ImageVariable,
@@ -136,9 +168,16 @@ export async function preloadVariableCoordinates(
   await Promise.all(
     [...paths].map(async (path) => {
       if (coordinateCache.has(path)) return;
-      const node = await zarr.open(root.resolve(path), { kind: "array" });
-      if (!(node instanceof zarr.Array)) return;
-      coordinateCache.set(path, await loadFull1DArray(node));
+      const axis = variable.axes.find((item) => item.coordinate?.path === path);
+      const coord = axis?.coordinate;
+      if (!coord || !shouldFetchCoordinateValues(coord)) return;
+      try {
+        const node = await zarr.open(root.resolve(path), { kind: "array" });
+        if (!(node instanceof zarr.Array)) return;
+        coordinateCache.set(path, await loadFull1DArray(node));
+      } catch {
+        // Non-fatal: consolidated attrs may still describe the coordinate.
+      }
     }),
   );
 }
@@ -185,9 +224,14 @@ export async function openVariableArray(
 export async function readCoordinateValues(
   root: OpenDatasetResult["root"],
   coordPath: string,
+  coord?: CoordinateMeta,
 ): Promise<unknown[]> {
   const cached = coordinateCache.get(coordPath);
   if (cached) return [...cached];
+
+  if (coord && !shouldFetchCoordinateValues(coord)) {
+    return [...(coord.labels ?? [])];
+  }
 
   ensureCodec();
   const node = await zarr.open(root.resolve(coordPath), { kind: "array" });

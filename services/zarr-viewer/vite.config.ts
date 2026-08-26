@@ -71,6 +71,9 @@ export default defineConfig(({ mode }) => ({
     },
   },
   assetsInclude: ["**/*.wasm"],
+  worker: {
+    format: "es",
+  },
   optimizeDeps: {
     exclude: ["zarrita", "@oie-minesparis-psl/jpegxl-zarr"],
   },

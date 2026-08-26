@@ -1,4 +1,4 @@
-import type { PlaneData } from "./chunk_utils.js";
+import type { PlaneData, PlaneDtypeTag } from "./chunk_utils.js";
 import type { WorkerRenderRequest, WorkerRenderResponse } from "./render_worker.js";
 
 let worker: Worker | null = null;
@@ -38,8 +38,15 @@ export function renderWorkerAvailable(): boolean {
   return ensureWorker() !== null;
 }
 
-export function planeDtype(data: PlaneData): "float32" | "float64" {
-  return data instanceof Float32Array ? "float32" : "float64";
+export function planeDtype(data: PlaneData): PlaneDtypeTag {
+  if (data instanceof Float32Array) return "float32";
+  if (data instanceof Uint8Array) return "uint8";
+  if (data instanceof Int8Array) return "int8";
+  if (data instanceof Uint16Array) return "uint16";
+  if (data instanceof Int16Array) return "int16";
+  if (data instanceof Uint32Array) return "uint32";
+  if (data instanceof Int32Array) return "int32";
+  return "float64";
 }
 
 export async function renderInWorker(request: WorkerRenderRequest): Promise<WorkerRenderResponse> {

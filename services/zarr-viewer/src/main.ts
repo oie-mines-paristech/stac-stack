@@ -14,13 +14,14 @@ import {
   type ImageVariable,
 } from "./dimensions.js";
 import { canvasPixelCoords, formatHoverLine, type SpatialCoords } from "./hover.js";
-import { updateHistogram } from "./histogram.js";
+import { updateHistogram, type HistogramScaleMarker } from "./histogram.js";
 import {
   cancelPrefetch,
   ChunkLoadCancelledError,
   loadPlaneWithCache,
   LruPlaneCache,
   prefetchDayPlanes,
+  prefetchOtherDimValues,
   type FrameTimings,
   type LoadPlaneOptions,
   type SpatialRegionPick,
@@ -38,12 +39,15 @@ import {
   canvasToPlanePixel,
   computeViewLayout,
   countFiniteSamples,
+  ensurePlaneBandStats,
+  planeHasDisplayableData,
+  resolveChannelRangeTuples,
   type DisplayTransform,
   type ImagePlane,
   type RenderOptions,
 } from "./render.js";
 import { renderPlaneToView } from "./render_pipeline.js";
-import { defaultRgbBands, type ScaleRange } from "./scaling.js";
+import { defaultRgbBands, defaultManualRangesForDtype, defaultScaleModeForDtype, type ScaleMode, type ScaleRange } from "./scaling.js";
 import {
   connectStore,
   openVariableArray,
@@ -54,13 +58,13 @@ import {
 } from "./store.js";
 import {
   dateRangeFromDates,
-  defaultDayFromDates,
-  defaultTimeIndexForDay,
+  defaultDayFromDatesLast,
+  defaultTimeIndexForAxis,
   filterTimeIndicesByDay,
-  formatTimeHourUtc,
+  formatTimeStepLabel,
+  inferTimeStepMs,
   shiftUtcDate,
   supportsIntraDayTimePlayback,
-  timeIndicesSearchOrder,
   timeValuesToDates,
 } from "./time.js";
 import { shouldFlipYAxis, canShowCoastlines } from "./spatial.js";
@@ -108,7 +112,7 @@ interface AppState {
   selection: Record<string, number>;
   rgbBands: [number, number, number];
   colormap: string;
-  autoscale: boolean;
+  scaleMode: ScaleMode;
   manualScale: {
     ranges: ScaleRange[];
     locked: boolean;
@@ -120,6 +124,7 @@ interface AppState {
   displayTransform: DisplayTransform | null;
   viewOrigin: { x: number; y: number };
   scaleRange: { min: number; max: number } | null;
+  lastRenderedScaleRanges: ScaleRange[];
   isPlaying: boolean;
   renderGeneration: number;
   fillView: boolean;
@@ -135,7 +140,7 @@ const state: AppState = {
   selection: {},
   rgbBands: [0, 1, 2],
   colormap: DEFAULT_COLORMAP,
-  autoscale: true,
+  scaleMode: "percentile",
   manualScale: { ranges: [], locked: false, needsSeed: false },
   spatialCoords: null,
   spatialRegion: null,
@@ -143,6 +148,7 @@ const state: AppState = {
   displayTransform: null,
   viewOrigin: { x: 0, y: 0 },
   scaleRange: null,
+  lastRenderedScaleRanges: [],
   isPlaying: false,
   renderGeneration: 0,
   fillView: false,
@@ -184,10 +190,26 @@ function clearLoadingStatus(): void {
 }
 
 function formatTimings(timings: FrameTimings): string {
-  if (timings.cacheHit) {
-    return `cache hit · render ${timings.renderMs.toFixed(0)} ms`;
+  if (state.isPlaying) {
+    return `frame ${timings.frameMs.toFixed(0)} ms (render ${timings.renderMs.toFixed(0)} ms)`;
   }
-  return `fetch ${timings.fetchMs.toFixed(0)} ms · render ${timings.renderMs.toFixed(0)} ms`;
+  if (timings.cacheHit) {
+    const parts = [`cache hit · render ${timings.renderMs.toFixed(0)} ms`];
+    if (timings.statsMs > 0) parts.push(`stats ${timings.statsMs.toFixed(0)} ms`);
+    if (timings.histogramMs > 0) parts.push(`hist ${timings.histogramMs.toFixed(0)} ms`);
+    return parts.join(" · ");
+  }
+  const parts = [
+    `fetch ${timings.fetchMs.toFixed(0)} ms`,
+    `render ${timings.renderMs.toFixed(0)} ms`,
+  ];
+  if (timings.statsMs > 0) parts.push(`stats ${timings.statsMs.toFixed(0)} ms`);
+  if (timings.histogramMs > 0) parts.push(`hist ${timings.histogramMs.toFixed(0)} ms`);
+  return parts.join(" · ");
+}
+
+function publishFrameProfile(timings: FrameTimings): void {
+  (window as unknown as { __viewerFrameProfile?: FrameTimings }).__viewerFrameProfile = timings;
 }
 
 function variableDataUnit(): string | undefined {
@@ -195,20 +217,53 @@ function variableDataUnit(): string | undefined {
 }
 
 function refreshHistogram(): void {
+  if (state.isPlaying) return;
   if (!state.variable) return;
   const bandAxis = axisByRole(state.variable, "band");
   const mode = displayMode(state.variable);
   const rgbIndices = mode === "rgb" ? [...state.rgbBands] : null;
-  const domain =
-    mode === "scalar" && state.scaleRange ? state.scaleRange : null;
-  updateHistogram(
-    el<HTMLCanvasElement>("#histogram"),
-    state.currentPlane,
-    bandAxis?.coordinate?.labels,
-    rgbIndices,
-    domain,
-    variableDataUnit(),
-  );
+  const labels = bandAxis?.coordinate?.labels;
+  const markers: HistogramScaleMarker[] = [];
+  if (mode === "rgb" && state.lastRenderedScaleRanges.length > 0) {
+    for (let channel = 0; channel < state.rgbBands.length; channel++) {
+      const bandIndex = state.rgbBands[channel];
+      const range = state.lastRenderedScaleRanges[channel];
+      if (!range) continue;
+      const label = labels?.[bandIndex] ?? `band ${bandIndex}`;
+      markers.push({
+        label,
+        color: histogramMarkerColor(label, bandIndex),
+        min: range.min,
+        max: range.max,
+      });
+    }
+  } else if (state.lastRenderedScaleRanges[0]) {
+    markers.push({
+      label: "value",
+      color: "rgba(200, 200, 200, 0.9)",
+      min: state.lastRenderedScaleRanges[0].min,
+      max: state.lastRenderedScaleRanges[0].max,
+    });
+  }
+
+  const plane = state.currentPlane;
+  const canvas = el<HTMLCanvasElement>("#histogram");
+  if (!plane) {
+    updateHistogram(canvas, null, labels, rgbIndices, markers, variableDataUnit());
+    return;
+  }
+
+  updateHistogram(canvas, plane, labels, rgbIndices, markers, variableDataUnit());
+}
+
+function histogramMarkerColor(label: string, index: number): string {
+  const lower = label.toLowerCase();
+  if (lower === "r" || lower === "red") return "rgba(231, 76, 60, 0.95)";
+  if (lower === "g" || lower === "g1" || lower === "green") return "rgba(46, 204, 113, 0.95)";
+  if (lower === "b" || lower === "blue") return "rgba(52, 152, 219, 0.95)";
+  if (lower === "g2") return "rgba(26, 188, 156, 0.95)";
+  const palette = ["#e74c3c", "#2ecc71", "#3498db", "#9b59b6"];
+  return palette[index % palette.length]!;
 }
 
 function fitCanvasDisplay(canvas: HTMLCanvasElement): void {
@@ -418,9 +473,13 @@ function schedulePrefetch(): void {
   const selection = { ...state.selection };
   const mode = displayMode(variable);
   const timeIndices = [...state.timeIndices];
+  const otherDimAxes = otherAxes(variable).map((axis) => ({
+    name: axis.name,
+    size: axis.size,
+  }));
 
-  void openVariableArray(state.dataset.root, variable).then((arr) =>
-    prefetchDayPlanes({
+  void openVariableArray(state.dataset.root, variable).then((arr) => {
+    const ctx = {
       arr,
       variable,
       mode,
@@ -431,8 +490,12 @@ function schedulePrefetch(): void {
       generation,
       spatialRegion: state.spatialRegion,
       isCurrentGeneration: () => generation === state.renderGeneration,
-    }),
-  );
+    };
+    void prefetchDayPlanes(ctx);
+    if (otherDimAxes.length > 0) {
+      void prefetchOtherDimValues({ ...ctx, otherAxes: otherDimAxes });
+    }
+  });
 }
 
 function el<T extends HTMLElement>(selector: string): T {
@@ -442,6 +505,7 @@ function el<T extends HTMLElement>(selector: string): T {
 }
 
 const IDLE_MESSAGE = "No dataset loaded.";
+const NO_DATA_MESSAGE = "No data at this time";
 
 interface LoadViewerOptions {
   dataset?: OpenDatasetResult;
@@ -468,6 +532,7 @@ function showIdleState(): void {
   dismissErrorToast();
   state.dataset = null;
   state.variable = null;
+  hideCanvasNoData();
   el<HTMLDivElement>("#viewer-idle").hidden = false;
   renderStatus(el<HTMLParagraphElement>("#status"), IDLE_MESSAGE);
   el<HTMLParagraphElement>("#timings").textContent = "";
@@ -479,6 +544,30 @@ function showIdleState(): void {
 
 function hideIdleState(): void {
   el<HTMLDivElement>("#viewer-idle").hidden = true;
+}
+
+function showCanvasNoData(): void {
+  el<HTMLDivElement>("#canvas-no-data").hidden = false;
+}
+
+function hideCanvasNoData(): void {
+  el<HTMLDivElement>("#canvas-no-data").hidden = true;
+}
+
+function paintEmptyCanvas(canvas: HTMLCanvasElement, plane: ImagePlane): void {
+  const width = plane.shape[plane.axes.x];
+  const height = plane.shape[plane.axes.y];
+  if (width > 0 && height > 0) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext("2d");
+  if (ctx && canvas.width > 0 && canvas.height > 0) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  fitCanvasDisplay(canvas);
+  syncCoastlineOverlay(canvas);
 }
 
 function updateDatasetLabel(storeUrl: string, auth?: StoreAuth): void {
@@ -542,7 +631,10 @@ function onDateChanged(): void {
   refreshTimeIndices();
   const timeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
   if (timeAxis && state.timeIndices.length > 0) {
-    state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
+    state.selection[timeAxis.name] = defaultTimeIndexForAxis(
+      state.timeDates,
+      state.timeIndices,
+    );
   }
   void renderCurrentFrame();
 }
@@ -572,39 +664,72 @@ function defaultSelection(variable: ImageVariable): Record<string, number> {
 }
 
 function stopAnimation(): void {
+  const wasPlaying = state.isPlaying;
   state.isPlaying = false;
   updatePlayPauseButton();
+  if (wasPlaying) {
+    refreshHistogram();
+    pushViewerUrl();
+  }
+}
+
+function preferScalarDisplay(variable: ImageVariable): boolean {
+  const path = variable.path.toLowerCase();
+  if (path.endsWith("_mask") || path.includes("mask")) return true;
+  const standardName = variable.attributes.standard_name;
+  if (typeof standardName === "string" && standardName.toLowerCase().includes("mask")) {
+    return true;
+  }
+  return false;
 }
 
 function displayMode(variable: ImageVariable): "rgb" | "scalar" {
+  if (preferScalarDisplay(variable)) return "scalar";
   const bandAxis = axisByRole(variable, "band");
   return bandAxis && bandAxis.size >= 3 ? "rgb" : "scalar";
+}
+
+function planeIsDisplayable(plane: ImagePlane): boolean {
+  return state.variable
+    ? planeHasDisplayableData(plane, state.variable.dtype)
+    : countFiniteSamples(plane) > 0;
 }
 
 function renderOptions(variable: ImageVariable): RenderOptions {
   return {
     mode: displayMode(variable),
     rgbBands: state.rgbBands,
-    autoscale: state.autoscale,
+    scaleMode: state.scaleMode,
     attributes: variable.attributes,
     flipY: effectiveSpatialCoords()?.flipY ?? false,
     colormap: state.colormap,
-    manualRanges: state.autoscale ? undefined : state.manualScale.ranges,
+    manualRanges: state.scaleMode === "none" ? state.manualScale.ranges : undefined,
   };
-}
-
-function bandCountForVariable(variable: ImageVariable): number {
-  const bandAxis = axisByRole(variable, "band");
-  return bandAxis?.size ?? 1;
 }
 
 function seedManualScaleFromCurrentFrame(): void {
   if (!state.variable || !state.currentPlane) return;
-  state.manualScale.ranges = autoscaleRangesFromPlane(
-    state.currentPlane,
-    effectiveSpatialCoords()?.flipY ?? false,
-    state.variable.attributes,
-  );
+  const bandAxis = axisByRole(state.variable, "band");
+  const bandCount = bandAxis?.size ?? 1;
+  const defaults = defaultManualRangesForDtype(state.variable.dtype, bandCount);
+  if (defaults.length > 0) {
+    state.manualScale.ranges = defaults;
+  } else if (state.lastRenderedScaleRanges.length > 0) {
+    state.manualScale.ranges = state.lastRenderedScaleRanges.map((range) => ({
+      min: range.min,
+      max: range.max,
+    }));
+  } else {
+    state.manualScale.ranges = autoscaleRangesFromPlane(
+      state.currentPlane,
+      effectiveSpatialCoords()?.flipY ?? false,
+      state.variable.attributes,
+      "minmax",
+      state.variable.dtype,
+      displayMode(state.variable),
+      state.rgbBands,
+    );
+  }
   state.manualScale.needsSeed = false;
   state.manualScale.locked = true;
   buildScaleControls(state.variable);
@@ -637,36 +762,39 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
 function buildScaleControls(variable: ImageVariable): void {
   const container = el<HTMLDivElement>("#scale-controls");
   const bandAxis = axisByRole(variable, "band");
-  const bandCount = bandCountForVariable(variable);
   const labels = bandAxis?.coordinate?.labels;
-  const visible = !state.autoscale && state.manualScale.ranges.length > 0;
+  const mode = displayMode(variable);
+  const visible = state.scaleMode === "none" && state.manualScale.ranges.length > 0;
 
   container.hidden = !visible;
   container.innerHTML = "";
   if (!visible) return;
 
-  if (state.manualScale.ranges.length > bandCount) {
-    state.manualScale.ranges = state.manualScale.ranges.slice(0, bandCount);
-  }
+  const rows =
+    mode === "rgb"
+      ? state.rgbBands.map((bandIndex, channel) => ({
+          channel,
+          label: labels?.[bandIndex] ?? `band ${bandIndex}`,
+        }))
+      : [{ channel: 0, label: labels?.[0] ?? "min/max" }];
 
-  for (let band = 0; band < bandCount; band++) {
-    const row = document.createElement("div");
-    row.className = "scale-band-row";
+  for (const row of rows) {
+    const range = state.manualScale.ranges[row.channel];
+    if (!range) continue;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "scale-band-row";
 
     const label = document.createElement("span");
     label.className = "scale-band-label";
-    label.textContent =
-      labels?.[band] ?? (bandCount === 1 ? "min/max" : `band ${band}`);
-
-    const range = state.manualScale.ranges[band];
-    if (!range) continue;
+    label.textContent = row.label;
 
     const minInput = document.createElement("input");
     minInput.type = "text";
     minInput.inputMode = "decimal";
     minInput.className = "scale-input";
     minInput.placeholder = "min";
-    minInput.dataset.band = String(band);
+    minInput.dataset.band = String(row.channel);
     minInput.dataset.bound = "min";
     minInput.value = formatScaleInput(range.min);
 
@@ -675,11 +803,11 @@ function buildScaleControls(variable: ImageVariable): void {
     maxInput.inputMode = "decimal";
     maxInput.className = "scale-input";
     maxInput.placeholder = "max";
-    maxInput.dataset.band = String(band);
+    maxInput.dataset.band = String(row.channel);
     maxInput.dataset.bound = "max";
     maxInput.value = formatScaleInput(range.max);
 
-    const commit = () => commitManualScaleFromInputs(band, minInput, maxInput);
+    const commit = () => commitManualScaleFromInputs(row.channel, minInput, maxInput);
     const commitDebounced = debounce(commit, 300);
 
     minInput.addEventListener("change", commit);
@@ -687,9 +815,13 @@ function buildScaleControls(variable: ImageVariable): void {
     minInput.addEventListener("input", commitDebounced);
     maxInput.addEventListener("input", commitDebounced);
 
-    row.append(label, minInput, maxInput);
-    container.appendChild(row);
+    wrapper.append(label, minInput, maxInput);
+    container.appendChild(wrapper);
   }
+}
+
+function syncScaleModeSelect(): void {
+  el<HTMLSelectElement>("#scale-mode").value = state.scaleMode;
 }
 
 function pushViewerUrl(): void {
@@ -702,8 +834,8 @@ function pushViewerUrl(): void {
     selection: state.selection,
     rgbBands: state.rgbBands,
     colormap: state.colormap,
-    autoscale: state.autoscale,
-    manualScale: state.autoscale ? [] : state.manualScale.ranges,
+    scaleMode: state.scaleMode,
+    manualScale: state.scaleMode === "none" ? state.manualScale.ranges : [],
     fillView: state.fillView,
     fullTab: state.fullTabMode,
     spatialRegion: state.spatialRegion,
@@ -746,7 +878,7 @@ function syncTimeSlider(): void {
   suppressSliderEvent = false;
 
   const date = state.timeDates[current] ?? new Date(0);
-  label.textContent = formatTimeHourUtc(date);
+  label.textContent = formatTimeStepLabel(date, inferTimeStepMs(state.timeDates));
 }
 
 function setTimeSliderPosition(position: number): void {
@@ -778,10 +910,10 @@ async function loadSpatialCoords(
   const yAxis = axisByRole(variable, "y");
   const [xValues, yValues] = await Promise.all([
     xAxis?.coordinate
-      ? readCoordinateValues(dataset.root, xAxis.coordinate.path).then(toNumbers)
+      ? readCoordinateValues(dataset.root, xAxis.coordinate.path, xAxis.coordinate).then(toNumbers)
       : Promise.resolve(null),
     yAxis?.coordinate
-      ? readCoordinateValues(dataset.root, yAxis.coordinate.path).then(toNumbers)
+      ? readCoordinateValues(dataset.root, yAxis.coordinate.path, yAxis.coordinate).then(toNumbers)
       : Promise.resolve(null),
   ]);
   const yAttrs = yAxis?.coordinate?.attributes ?? {};
@@ -819,7 +951,6 @@ function buildOtherDimControls(variable: ImageVariable): void {
     select.value = String(state.selection[axis.name] ?? 0);
     select.addEventListener("change", () => {
       state.selection[axis.name] = Number(select.value);
-      clearFrameCache();
       void renderCurrentFrame();
     });
     wrapper.textContent = `${axis.name} `;
@@ -899,7 +1030,11 @@ function buildColorControls(variable: ImageVariable): void {
   buildScaleControls(variable);
 }
 
-async function loadTimeCoordinate(dataset: OpenDatasetResult, variable: ImageVariable): Promise<void> {
+async function loadTimeCoordinate(
+  dataset: OpenDatasetResult,
+  variable: ImageVariable,
+  options?: { preferredTimeIndex?: number },
+): Promise<void> {
   const timeAxis = axisByRole(variable, "time");
   if (!timeAxis?.coordinate) {
     state.timeDates = [];
@@ -911,36 +1046,72 @@ async function loadTimeCoordinate(dataset: OpenDatasetResult, variable: ImageVar
   updateTimeControlsVisibility();
   const attrs = timeAxis.coordinate.attributes;
   const units = typeof attrs.units === "string" ? attrs.units : "";
-  const values = await readCoordinateValues(dataset.root, timeAxis.coordinate.path);
+  const values = await readCoordinateValues(
+    dataset.root,
+    timeAxis.coordinate.path,
+    timeAxis.coordinate,
+  );
   state.timeDates = timeValuesToDates(values, units);
 
   const dateInput = el<HTMLInputElement>("#date-picker");
   const range = dateRangeFromDates(state.timeDates);
   dateInput.min = range.min;
   dateInput.max = range.max;
-  dateInput.value = defaultDayFromDates(state.timeDates);
+
+  const preferred = options?.preferredTimeIndex;
+  if (
+    preferred !== undefined &&
+    preferred >= 0 &&
+    preferred < state.timeDates.length
+  ) {
+    applyDatetimeToControls(state.timeDates, preferred, dateInput);
+    refreshTimeIndices();
+    state.selection[timeAxis.name] = preferred;
+    syncTimeSlider();
+    return;
+  }
+
+  dateInput.value = defaultDayFromDatesLast(state.timeDates);
 
   refreshTimeIndices();
   if (state.timeIndices.length > 0) {
-    state.selection[timeAxis.name] = defaultTimeIndexForDay(state.timeIndices);
+    state.selection[timeAxis.name] = defaultTimeIndexForAxis(
+      state.timeDates,
+      state.timeIndices,
+    );
     syncTimeSlider();
   }
 }
 
 function applyViewerParams(params: ViewerUrlParams): void {
-  if (params.autoscale !== undefined) {
-    state.autoscale = params.autoscale;
-    el<HTMLInputElement>("#autoscale").checked = params.autoscale;
-    state.manualScale.locked = !params.autoscale;
-    if (params.autoscale) {
+  if (params.scaleMode !== undefined) {
+    state.scaleMode = params.scaleMode;
+    syncScaleModeSelect();
+    state.manualScale.locked = params.scaleMode === "none";
+    if (params.scaleMode !== "none") {
       state.manualScale.ranges = [];
       state.manualScale.needsSeed = false;
+    } else {
+      state.manualScale.needsSeed = false;
+      if (!params.manualScale?.length && state.variable) {
+        const bandAxis = axisByRole(state.variable, "band");
+        state.manualScale.ranges = defaultManualRangesForDtype(
+          state.variable.dtype,
+          bandAxis?.size ?? 1,
+        );
+      }
     }
     if (state.variable) buildScaleControls(state.variable);
   } else if (!params.manualScale?.length) {
-    state.autoscale = true;
-    el<HTMLInputElement>("#autoscale").checked = true;
-    state.manualScale = { ranges: [], locked: false, needsSeed: false };
+    state.scaleMode = state.variable
+      ? defaultScaleModeForDtype(state.variable.dtype)
+      : "percentile";
+    syncScaleModeSelect();
+    state.manualScale = {
+      ranges: [],
+      locked: state.scaleMode === "none",
+      needsSeed: state.scaleMode === "none",
+    };
   }
 
   if (params.manualScale && params.manualScale.length > 0) {
@@ -994,7 +1165,10 @@ function applyViewerParams(params: ViewerUrlParams): void {
   }
 }
 
-async function selectVariable(path: string): Promise<void> {
+async function selectVariable(
+  path: string,
+  options?: { preferredTimeIndex?: number },
+): Promise<void> {
   if (!state.dataset) return;
   const variable = state.dataset.schema.variables.find((item) => item.path === path);
   if (!variable) return;
@@ -1005,68 +1179,27 @@ async function selectVariable(path: string): Promise<void> {
   updateTimeControlsVisibility();
   retainSpatialRegionForVariable(variable);
   state.selection = defaultSelection(variable);
-  state.manualScale = { ranges: [], locked: false, needsSeed: !state.autoscale };
+  state.scaleMode = defaultScaleModeForDtype(variable.dtype);
+  syncScaleModeSelect();
+  const bandAxis = axisByRole(variable, "band");
+  state.manualScale = {
+    ranges: defaultManualRangesForDtype(variable.dtype, bandAxis?.size ?? 1),
+    locked: state.scaleMode === "none",
+    needsSeed: false,
+  };
   buildOtherDimControls(variable);
   buildColorControls(variable);
   updateCoastlineControlVisibility();
   await preloadVariableCoordinates(state.dataset.root, variable);
   await Promise.all([
-    loadTimeCoordinate(state.dataset, variable),
+    loadTimeCoordinate(state.dataset, variable, {
+      preferredTimeIndex: options?.preferredTimeIndex,
+    }),
     loadSpatialCoords(state.dataset, variable),
   ]);
   renderMetadataPanel(el<HTMLElement>("#metadata"), state.dataset.schema, variable, state.auth);
   syncCoastlineOverlay(el<HTMLCanvasElement>("#canvas"));
   updateHoverBarIdle();
-}
-
-async function loadPlaneWithFiniteFallback(
-  arr: Awaited<ReturnType<typeof openVariableArray>>,
-  variable: ImageVariable,
-  selection: Record<string, number>,
-  mode: "rgb" | "scalar",
-): Promise<{ plane: ImagePlane; timings: FrameTimings; usedFallback: boolean }> {
-  if (!state.dataset) {
-    throw new Error("Dataset not loaded");
-  }
-  const schema = state.dataset.schema;
-  const timeAxis = axisByRole(variable, "time");
-  let { plane, timings } = await loadPlaneWithCache(
-    planeCache,
-    arr,
-    variable,
-    schema,
-    selection,
-    mode,
-    planeLoadOptions(),
-  );
-  if (countFiniteSamples(plane) > 0 || !timeAxis || state.timeIndices.length === 0) {
-    return { plane, timings, usedFallback: false };
-  }
-
-  const currentTime = selection[timeAxis.name];
-  const candidates = timeIndicesSearchOrder(state.timeIndices).filter(
-    (index) => index !== currentTime,
-  );
-
-  for (const timeIndex of candidates) {
-    const trySelection = { ...selection, [timeAxis.name]: timeIndex };
-    const result = await loadPlaneWithCache(
-      planeCache,
-      arr,
-      variable,
-      schema,
-      trySelection,
-      mode,
-      planeLoadOptions(),
-    );
-    if (countFiniteSamples(result.plane) > 0) {
-      state.selection[timeAxis.name] = timeIndex;
-      syncTimeSlider();
-      return { plane: result.plane, timings: result.timings, usedFallback: true };
-    }
-  }
-
-  return { plane, timings, usedFallback: false };
 }
 
 async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameTimings | null> {
@@ -1078,38 +1211,80 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
 
   try {
     const arr = await openVariableArray(state.dataset.root, state.variable);
-    const options_ = renderOptions(state.variable);
-    const { plane, timings, usedFallback } = await loadPlaneWithFiniteFallback(
+    const renderOpts = renderOptions(state.variable);
+    const { plane, timings } = await loadPlaneWithCache(
+      planeCache,
       arr,
       state.variable,
+      state.dataset.schema,
       state.selection,
-      options_.mode,
+      renderOpts.mode,
+      planeLoadOptions(),
     );
     if (generation !== state.renderGeneration) return null;
 
-    if (countFiniteSamples(plane) === 0) {
-      showErrorToast(
-        "Aucune valeur valide à cet instant — essayez un autre pas ou une autre date.",
-      );
-    } else if (usedFallback) {
-      showErrorToast(
-        "Aucune valeur valide à cet instant — affichage d'un pas voisin.",
-      );
-    }
-
-    state.currentPlane = plane;
+    const displayable = planeIsDisplayable(plane);
+    dismissErrorToast();
     hideIdleState();
     const canvas = el<HTMLCanvasElement>("#canvas");
-    if (!state.autoscale && state.manualScale.needsSeed && !state.manualScale.locked) {
-      state.manualScale.ranges = autoscaleRangesFromPlane(
-        plane,
-        effectiveSpatialCoords()?.flipY ?? false,
-        state.variable.attributes,
+
+    if (!displayable) {
+      state.currentPlane = null;
+      state.displayTransform = null;
+      state.scaleRange = null;
+      state.lastRenderedScaleRanges = [];
+      showCanvasNoData();
+      paintEmptyCanvas(canvas, plane);
+      el<HTMLElement>("#color-legend").hidden = true;
+      refreshHistogram();
+      syncTimeSlider();
+      clearLoadingStatus();
+      renderStatus(status, "");
+      renderTimings(timingsEl, formatTimings(timings));
+      timings.frameMs = timings.fetchMs + timings.postUiMs;
+      publishFrameProfile(timings);
+      if (!state.isPlaying) {
+        pushViewerUrl();
+      }
+      updateHoverBarIdle();
+      return timings;
+    }
+
+    hideCanvasNoData();
+    state.currentPlane = plane;
+    if (state.scaleMode === "none" && state.manualScale.needsSeed && !state.manualScale.locked) {
+      const bandAxis = axisByRole(state.variable, "band");
+      const defaults = defaultManualRangesForDtype(
+        state.variable.dtype,
+        bandAxis?.size ?? 1,
       );
+      if (defaults.length > 0) {
+        state.manualScale.ranges = defaults;
+      } else {
+        state.manualScale.ranges = autoscaleRangesFromPlane(
+          plane,
+          effectiveSpatialCoords()?.flipY ?? false,
+          state.variable.attributes,
+          "minmax",
+          state.variable.dtype,
+          displayMode(state.variable),
+          state.rgbBands,
+        );
+      }
       state.manualScale.needsSeed = false;
       state.manualScale.locked = true;
       buildScaleControls(state.variable);
     }
+    const statsLevel = state.isPlaying ? "minmax" : "full";
+    const statsStart = performance.now();
+    const channelRanges = resolveChannelRangeTuples(
+      plane,
+      renderOpts,
+      state.variable.dtype,
+      plane.bandStats,
+      statsLevel,
+    );
+    timings.statsMs = performance.now() - statsStart;
     const renderStart = performance.now();
     const layout = viewLayoutForPlane(plane);
     state.viewOrigin = {
@@ -1119,19 +1294,31 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     const { scaleMin, scaleMax, displayTransform } = await renderPlaneToView(
       canvas,
       plane,
-      renderOptions(state.variable),
+      renderOpts,
       layout,
+      { dtype: state.variable.dtype, channelRanges },
     );
     timings.renderMs = performance.now() - renderStart;
     state.displayTransform = displayTransform;
     state.scaleRange = { min: scaleMin, max: scaleMax };
+    state.lastRenderedScaleRanges = channelRanges.map(([min, max]) => ({ min, max }));
     const mode = displayMode(state.variable);
     const unit = variableDataUnit();
     updateColorLegend(mode === "scalar", state.colormap, scaleMin, scaleMax, unit);
+    const postStart = performance.now();
     fitCanvasDisplay(canvas);
+    const histogramStart = performance.now();
+    if (!state.isPlaying) {
+      ensurePlaneBandStats(plane, "full");
+    }
     refreshHistogram();
+    timings.histogramMs = performance.now() - histogramStart;
     syncTimeSlider();
     clearLoadingStatus();
+    timings.postUiMs = performance.now() - postStart;
+    timings.frameMs =
+      timings.fetchMs + timings.statsMs + timings.renderMs + timings.postUiMs;
+    publishFrameProfile(timings);
     const tileStatus = spatialRegionStatusHtml();
     if (tileStatus) {
       status.innerHTML = tileStatus;
@@ -1145,11 +1332,10 @@ async function renderCurrentFrame(options?: { quiet?: boolean }): Promise<FrameT
     } else {
       renderStatus(status, "");
     }
-    if (countFiniteSamples(plane) > 0 && !usedFallback) {
-      dismissErrorToast();
-    }
     renderTimings(timingsEl, formatTimings(timings));
-    pushViewerUrl();
+    if (!state.isPlaying) {
+      pushViewerUrl();
+    }
     schedulePrefetch();
     updateHoverBarIdle();
     return timings;
@@ -1198,6 +1384,8 @@ async function runAnimation(): Promise<void> {
     }
   }
   updatePlayPauseButton();
+  refreshHistogram();
+  pushViewerUrl();
 }
 
 function togglePlayback(): void {
@@ -1244,9 +1432,13 @@ function mountLayout(): void {
               <div id="colormap-picker"></div>
             </div>
             <div id="scale-controls" class="scale-controls" hidden></div>
-            <label class="control checkbox">
-              <input id="autoscale" type="checkbox" checked />
-              Autoscale (P5–P95)
+            <label class="control">
+              Scale range
+              <select id="scale-mode">
+                <option value="percentile" selected>Auto (P5–P95)</option>
+                <option value="minmax">Min–max</option>
+                <option value="none">None (manual / CF)</option>
+              </select>
             </label>
             <label class="control checkbox" id="coastline-control" hidden>
               <input id="show-coastlines" type="checkbox" checked />
@@ -1278,6 +1470,9 @@ function mountLayout(): void {
                 </div>
                 <div class="canvas-stack">
                   <canvas id="canvas"></canvas>
+                  <div id="canvas-no-data" class="canvas-no-data" hidden aria-live="polite">
+                    <p>${NO_DATA_MESSAGE}</p>
+                  </div>
                   <svg id="coastline-overlay" class="coastline-overlay" hidden preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
               </div>
@@ -1346,16 +1541,19 @@ async function loadViewer(params: ViewerUrlParams, options?: LoadViewerOptions):
       state.dataset.schema.variables[0]?.path;
 
     if (defaultVariable) {
+      let variableReady = false;
       try {
         await selectVariable(defaultVariable);
+        variableReady = true;
       } catch (error) {
+        state.variable = null;
         reportError(error);
       }
       applyViewerParams(params);
       if (state.variable && state.spatialRegion) {
         retainSpatialRegionForVariable(state.variable);
       }
-      if (state.variable) {
+      if (variableReady && state.variable) {
         await renderCurrentFrame();
       }
     }
@@ -1411,8 +1609,17 @@ function wireEvents(): void {
 
   el<HTMLSelectElement>("#variable-select").addEventListener("change", (event) => {
     void (async () => {
-      await selectVariable((event.target as HTMLSelectElement).value);
-      await renderCurrentFrame();
+      try {
+        const prevTimeAxis = state.variable ? axisByRole(state.variable, "time") : undefined;
+        const preferredTimeIndex =
+          prevTimeAxis !== undefined ? state.selection[prevTimeAxis.name] : undefined;
+        await selectVariable((event.target as HTMLSelectElement).value, {
+          preferredTimeIndex,
+        });
+        await renderCurrentFrame();
+      } catch (error) {
+        reportError(error);
+      }
     })();
   });
 
@@ -1432,10 +1639,10 @@ function wireEvents(): void {
   el<HTMLButtonElement>("#btn-zoom").addEventListener("click", () => toggleFillView());
   el<HTMLButtonElement>("#btn-layout").addEventListener("click", () => toggleFullTabMode());
 
-  el<HTMLInputElement>("#autoscale").addEventListener("change", (event) => {
-    const checked = (event.target as HTMLInputElement).checked;
-    state.autoscale = checked;
-    if (!checked) {
+  el<HTMLSelectElement>("#scale-mode").addEventListener("change", (event) => {
+    const scaleMode = (event.target as HTMLSelectElement).value as ScaleMode;
+    state.scaleMode = scaleMode;
+    if (scaleMode === "none") {
       state.manualScale.needsSeed = false;
       seedManualScaleFromCurrentFrame();
       pushViewerUrl();
@@ -1444,6 +1651,7 @@ function wireEvents(): void {
       state.manualScale.needsSeed = false;
       state.manualScale.ranges = [];
       if (state.variable) buildScaleControls(state.variable);
+      pushViewerUrl();
     }
     void renderCurrentFrame();
   });

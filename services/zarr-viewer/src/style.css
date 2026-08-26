@@ -68,6 +68,17 @@ header h1 {
   transform: translateY(0);
 }
 
+.error-toast.info-toast {
+  background: #e0f2fe;
+  color: #0c4a6e;
+  border-bottom-color: #7dd3fc;
+}
+
+.error-toast.info-toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .body {
   flex: 1;
   display: grid;
@@ -900,6 +911,28 @@ legend {
   position: relative;
   display: inline-block;
   line-height: 0;
+}
+
+.canvas-no-data[hidden] {
+  display: none !important;
+}
+
+.canvas-no-data {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding: 1rem;
+  text-align: center;
+  color: #8b95a5;
+  font-size: 0.95rem;
+}
+
+.canvas-no-data p {
+  margin: 0;
 }
 
 .coastline-overlay {

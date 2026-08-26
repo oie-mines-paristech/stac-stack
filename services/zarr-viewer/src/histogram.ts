@@ -1,8 +1,12 @@
 import { formatValue } from "./format.js";
-import { chunkValue } from "./chunk_utils.js";
 import type { ImagePlane } from "./render.js";
+import {
+  ensurePlaneBandStats,
+  histogramDisplayCounts,
+  type BandValueStats,
+  VALUE_BIN_COUNT,
+} from "./plane_stats.js";
 
-const BIN_COUNT = 64;
 const FALLBACK_COLORS = ["#e74c3c", "#2ecc71", "#3498db", "#9b59b6", "#f1c40f", "#1abc9c"];
 
 export interface BandHistogramSeries {
@@ -10,35 +14,20 @@ export interface BandHistogramSeries {
   color: string;
   counts: number[];
   displayed: boolean;
+  rawMin: number;
+  rawMax: number;
+}
+
+export interface HistogramScaleMarker {
+  label: string;
+  color: string;
   min: number;
   max: number;
 }
 
-export interface HistogramDomain {
+export interface HistogramAxisDomain {
   min: number;
   max: number;
-}
-
-function computeStrides(shape: number[]): number[] {
-  const stride = new Array<number>(shape.length);
-  let step = 1;
-  for (let axis = shape.length - 1; axis >= 0; axis--) {
-    stride[axis] = step;
-    step *= shape[axis];
-  }
-  return stride;
-}
-
-function finiteMin(values: number[]): number {
-  let min = Infinity;
-  for (const value of values) min = Math.min(min, value);
-  return min;
-}
-
-function finiteMax(values: number[]): number {
-  let max = -Infinity;
-  for (const value of values) max = Math.max(max, value);
-  return max;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -57,68 +46,90 @@ function bandColor(label: string | undefined, index: number, displayed: boolean)
   if (lower === "g" || lower === "g1" || lower === "green") return `rgba(46, 204, 113, ${alpha})`;
   if (lower === "b" || lower === "blue") return `rgba(52, 152, 219, ${alpha})`;
   if (lower === "g2") return `rgba(26, 188, 156, ${alpha})`;
-  return hexToRgba(FALLBACK_COLORS[index % FALLBACK_COLORS.length], alpha);
+  return hexToRgba(FALLBACK_COLORS[index % FALLBACK_COLORS.length]!, alpha);
+}
+
+export function histogramAxisDomain(series: BandHistogramSeries[]): HistogramAxisDomain | null {
+  if (series.length === 0) return null;
+  const rawMin = Math.min(...series.map((item) => item.rawMin));
+  const rawMax = Math.max(...series.map((item) => item.rawMax));
+  if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return null;
+  const min = rawMin < 0 ? rawMin : 0;
+  const max = rawMax <= min ? min + 1 : rawMax;
+  return { min, max };
+}
+
+function seriesFromBandStats(
+  stats: BandValueStats[],
+  bandLabels: string[] | undefined,
+  rgbBandIndices: number[] | null,
+): BandHistogramSeries[] {
+  return stats.map((entry, band) => {
+    const displayed = rgbBandIndices ? rgbBandIndices.includes(band) : band === 0;
+    const label = bandLabels?.[band] ?? (stats.length === 1 ? "value" : `band ${band}`);
+    return {
+      label,
+      color: bandColor(label, band, displayed),
+      counts: histogramDisplayCounts(entry),
+      displayed,
+      rawMin: entry.min,
+      rawMax: entry.max,
+    };
+  });
 }
 
 export function buildBandHistogramSeries(
   plane: ImagePlane,
   bandLabels: string[] | undefined,
   rgbBandIndices: number[] | null,
-  domain?: HistogramDomain | null,
+  axisDomain?: HistogramAxisDomain | null,
 ): BandHistogramSeries[] {
-  const { data, shape, axes } = plane;
-  const stride = computeStrides(shape);
-  const coords = new Array<number>(shape.length).fill(0);
-  const height = shape[axes.y];
-  const width = shape[axes.x];
+  void axisDomain;
+  const stats = ensurePlaneBandStats(plane, "full");
+  return seriesFromBandStats(stats, bandLabels, rgbBandIndices);
+}
 
-  const series: BandHistogramSeries[] = [];
-  const bandCount = axes.band >= 0 ? shape[axes.band] : 1;
+function valueToX(
+  value: number,
+  domain: HistogramAxisDomain,
+  padLeft: number,
+  plotW: number,
+): number {
+  const span = domain.max > domain.min ? domain.max - domain.min : 1;
+  const t = (value - domain.min) / span;
+  return padLeft + Math.max(0, Math.min(1, t)) * plotW;
+}
 
-  for (let band = 0; band < bandCount; band++) {
-    const values: number[] = [];
-    for (let y = 0; y < height; y++) {
-      coords[axes.y] = y;
-      for (let x = 0; x < width; x++) {
-        coords[axes.x] = x;
-        if (axes.band >= 0) coords[axes.band] = band;
-        const value = chunkValue(data, stride, coords);
-        if (Number.isFinite(value)) values.push(value);
-      }
-    }
-    if (values.length === 0) continue;
-
-    const rawMin = finiteMin(values);
-    const rawMax = finiteMax(values);
-    const displayed = rgbBandIndices ? rgbBandIndices.includes(band) : band === 0;
-    const useDomain = domain && displayed && series.length === 0 && bandCount === 1;
-    const min = useDomain ? domain.min : rawMin;
-    const max = useDomain ? domain.max : rawMax;
-    const counts = new Array<number>(BIN_COUNT).fill(0);
-    const span = max > min ? max - min : 1;
-    for (const value of values) {
-      const bin = Math.min(BIN_COUNT - 1, Math.floor(((value - min) / span) * (BIN_COUNT - 1)));
-      counts[bin]++;
-    }
-
-    const label = bandLabels?.[band] ?? (bandCount === 1 ? "value" : `band ${band}`);
-    series.push({
-      label,
-      color: bandColor(label, band, displayed),
-      counts,
-      displayed,
-      min,
-      max,
-    });
+function drawScaleMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  baselineY: number,
+  color: string,
+  direction: "min" | "max",
+): void {
+  const height = 6;
+  const width = 5;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  if (direction === "min") {
+    ctx.moveTo(x, baselineY + 2 + height / 2);
+    ctx.lineTo(x + width, baselineY + 2);
+    ctx.lineTo(x + width, baselineY + 2 + height);
+  } else {
+    ctx.moveTo(x, baselineY + 2);
+    ctx.lineTo(x, baselineY + 2 + height);
+    ctx.lineTo(x + width, baselineY + 2 + height / 2);
   }
-
-  return series;
+  ctx.closePath();
+  ctx.fill();
 }
 
 export function renderBandHistogram(
   canvas: HTMLCanvasElement,
   series: BandHistogramSeries[],
   unit?: string,
+  markers?: HistogramScaleMarker[],
+  axisDomain?: HistogramAxisDomain | null,
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -137,7 +148,11 @@ export function renderBandHistogram(
     return;
   }
 
-  const pad = { left: 8, right: 8, top: 8, bottom: 30 };
+  const domain = axisDomain ?? histogramAxisDomain(series);
+  if (!domain) return;
+
+  const binCount = series[0]?.counts.length ?? VALUE_BIN_COUNT;
+  const pad = { left: 8, right: 8, top: 8, bottom: 34 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   let maxCount = 1;
@@ -155,9 +170,9 @@ export function renderBandHistogram(
   for (const band of series) {
     ctx.fillStyle = band.color;
     ctx.beginPath();
-    for (let bin = 0; bin < BIN_COUNT; bin++) {
-      const x = pad.left + (bin / (BIN_COUNT - 1)) * plotW;
-      const barH = (band.counts[bin] / maxCount) * plotH;
+    for (let bin = 0; bin < binCount; bin++) {
+      const x = pad.left + (bin / (binCount - 1)) * plotW;
+      const barH = (band.counts[bin]! / maxCount) * plotH;
       const y = pad.top + plotH - barH;
       if (bin === 0) ctx.moveTo(x, pad.top + plotH);
       ctx.lineTo(x, y);
@@ -167,8 +182,6 @@ export function renderBandHistogram(
     ctx.fill();
   }
 
-  const axisMin = Math.min(...series.map((item) => item.min));
-  const axisMax = Math.max(...series.map((item) => item.max));
   const baselineY = pad.top + plotH;
   ctx.strokeStyle = "#6b7280";
   ctx.fillStyle = "#9aa4b2";
@@ -182,17 +195,27 @@ export function renderBandHistogram(
   ctx.lineTo(pad.left + plotW, baselineY + 4);
   ctx.stroke();
 
-  const minLabel = formatValue(axisMin, unit);
-  const maxLabel = formatValue(axisMax, unit);
+  const minLabel = formatValue(domain.min, unit);
+  const maxLabel = formatValue(domain.max, unit);
   ctx.fillText(minLabel, pad.left, baselineY + 6);
   const maxWidth = ctx.measureText(maxLabel).width;
   ctx.fillText(maxLabel, pad.left + plotW - maxWidth, baselineY + 6);
+
+  if (markers) {
+    for (const marker of markers) {
+      const minX = valueToX(marker.min, domain, pad.left, plotW);
+      const maxX = valueToX(marker.max, domain, pad.left, plotW);
+      drawScaleMarker(ctx, minX, baselineY, marker.color, "min");
+      drawScaleMarker(ctx, maxX, baselineY, marker.color, "max");
+    }
+  }
 
   ctx.font = "11px system-ui, sans-serif";
   ctx.textBaseline = "alphabetic";
   let legendX = pad.left;
   const legendY = height - 4;
   for (const band of series) {
+    if (!band.displayed && series.some((item) => item.displayed)) continue;
     ctx.fillStyle = band.color;
     ctx.fillRect(legendX, legendY - 9, 10, 10);
     ctx.fillStyle = "#c3cad4";
@@ -207,22 +230,20 @@ export function updateHistogram(
   plane: ImagePlane | null,
   bandLabels: string[] | undefined,
   rgbBandIndices: number[] | null,
-  domain?: HistogramDomain | null,
+  markers?: HistogramScaleMarker[],
   unit?: string,
 ): void {
   if (!plane) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const width = canvas.clientWidth || 260;
-    const height = canvas.clientHeight || 140;
-    canvas.width = Math.floor(width * devicePixelRatio);
-    canvas.height = Math.floor(height * devicePixelRatio);
+    canvas.width = Math.floor((canvas.clientWidth || 260) * devicePixelRatio);
+    canvas.height = Math.floor((canvas.clientHeight || 140) * devicePixelRatio);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     return;
   }
-  renderBandHistogram(
-    canvas,
-    buildBandHistogramSeries(plane, bandLabels, rgbBandIndices, domain),
-    unit,
-  );
+  const series = buildBandHistogramSeries(plane, bandLabels, rgbBandIndices, null);
+  const domain = histogramAxisDomain(series);
+  renderBandHistogram(canvas, series, unit, markers, domain);
 }
+
+export { VALUE_BIN_COUNT };

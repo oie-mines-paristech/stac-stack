@@ -5,7 +5,9 @@
 #   make test-direct   — localhost:TEST_DIRECT_PORT seulement
 #   make test-proxy    — nginx HTTPS auto-signé → stack /stac/
 
-.PHONY: build up down sync sync-dry test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
+.PHONY: build up down sync sync-dry sync-code test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
+
+RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude-from .rsyncignore
 
 COMPOSE := docker compose
 PORT ?= 8000
@@ -37,14 +39,19 @@ down:
 	$(COMPOSE) down
 
 sync-dry:
-	rsync -anvh --exclude-from .rsyncignore ./ demos:~/stac/
+	rsync -anvh --delete $(RSYNC_EXCLUDES) ./ demos:~/stac/
+	@if [ -d volumes ]; then \
+		rsync -anvh --exclude .env ./volumes/ demos:~/stac/volumes/; \
+	fi
 
 sync:
-	rsync -avh --exclude-from .rsyncignore ./ demos:~/stac/
-
+	rsync -avh --delete $(RSYNC_EXCLUDES) ./ demos:~/stac/
+	@if [ -d volumes ]; then \
+		rsync -avh --exclude .env ./volumes/ demos:~/stac/volumes/; \
+	fi
 
 sync-code:
-	rsync -avh --exclude volumes --exclude-from .rsyncignore ./ demos:~/stac/
+	rsync -avh --delete $(RSYNC_EXCLUDES) ./ demos:~/stac/
 
 
 test-certs:

@@ -2,6 +2,9 @@
 .cache/
 node_modules
 /dist
+test-results/
+playwright-report/
+coverage/
 
 
 # local env files

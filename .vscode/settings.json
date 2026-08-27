@@ -1,0 +1,5 @@
+{
+  "yaml.schemas": {
+    "services/stac-generator/schemas/metadata.schema.json": "**/metadata.yml"
+  }
+}

@@ -1,7 +1,26 @@
 .DS_Store
 .cache/
-node_modules
-dist
+node_modules/
+dist/
+**/dist/
+**/node_modules/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# JS / test outputs
+test-results/
+playwright-report/
+coverage/
+*.tsbuildinfo
+
 data/stac-index/*
 data/*
 
@@ -31,7 +50,8 @@ pnpm-debug.log*
 
 # Editor directories and files
 .idea
-.vscode
+.vscode/*
+!.vscode/settings.json
 *.suo
 *.ntvs*
 *.njsproj

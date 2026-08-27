@@ -30,7 +30,7 @@ const configFromFile = require(configFile);
 const mergedConfig = Object.assign(configFromFile, argv);
 
 const vueConfig = {
-  lintOnSave: process.env.NODE_ENV !== 'production',
+  lintOnSave: process.env.VUE_CLI_LINT === 'false' ? false : process.env.NODE_ENV !== 'production',
   productionSourceMap: !mergedConfig.noSourceMaps,
   publicPath: mergedConfig.pathPrefix,
   chainWebpack: webpackConfig => {
@@ -67,5 +67,31 @@ const vueConfig = {
     }
   }
 };
+
+if (process.env.NODE_ENV === 'development') {
+  vueConfig.devServer = {
+    host: '0.0.0.0',
+    port: parseInt(process.env.VUE_DEV_SERVER_PORT || '8080', 10),
+    allowedHosts: 'all',
+    client: {
+      webSocketURL: 'auto://0.0.0.0:0/ws'
+    },
+    watchFiles: {
+      options: {
+        // Bind mounts + polling cause endless rebuild loops in Docker on Linux.
+        usePolling: process.env.CHOKIDAR_USEPOLLING === 'true',
+        ignored: [
+          '**/node_modules/**',
+          '**/public/config.js',
+          '**/tmp/**'
+        ]
+      }
+    }
+  };
+  vueConfig.configureWebpack.watchOptions = {
+    ignored: ['**/node_modules/**', '**/public/config.js', '**/tmp/**'],
+    aggregateTimeout: 300
+  };
+}
 
 module.exports = vueConfig;

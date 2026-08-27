@@ -5,11 +5,12 @@
 #   make test-direct   — localhost:TEST_DIRECT_PORT seulement
 #   make test-proxy    — nginx HTTPS auto-signé → stack /stac/
 
-.PHONY: build up down sync sync-dry sync-code test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
+.PHONY: build up down dev dev-up sync sync-dry sync-code test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude-from .rsyncignore
 
 COMPOSE := docker compose
+COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 PORT ?= 8000
 PATH_PREFIX ?= /
 
@@ -28,12 +29,17 @@ build: submodules
 	$(COMPOSE) build
 
 rebuild-viewer: submodules
-	$(COMPOSE) build zarr-viewer-build
-	$(COMPOSE) run --rm zarr-viewer-build
+	$(COMPOSE) build zarr-viewer
+	$(COMPOSE) run --rm zarr-viewer
 	$(COMPOSE) up -d --force-recreate stac-browser
 
 up:
 	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE) up
+
+.dev-up dev:
+	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE_DEV) up
+
+dev-up: dev
 
 down:
 	$(COMPOSE) down

@@ -36,6 +36,11 @@ echo "[nginx] SB_catalogUrl=${SB_catalogUrl}"
 
 printf '%s' "${SB_catalogUrl}" > /tmp/stac-catalog-url
 
+TEMPLATE="/etc/stac/nginx/default.conf.template"
+if [ "${STAC_BROWSER_DEV:-0}" = "1" ]; then
+    TEMPLATE="/etc/stac/nginx/default.conf.dev.template"
+fi
+
 envsubst '${PATH_PREFIX} ${PATH_PREFIX_REDIRECT_BLOCK}' \
-    < /etc/stac/nginx/default.conf.template \
+    < "$TEMPLATE" \
     > /tmp/stac-nginx.conf

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-CONFIG=/usr/share/nginx/html/config.js
+CONFIG="${STAC_BROWSER_CONFIG_JS:-/usr/share/nginx/html/config.js}"
 CATALOG_URL="$(cat /tmp/stac-catalog-url)"
 
 if [ ! -f "$CONFIG" ]; then

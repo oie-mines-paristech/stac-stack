@@ -1,11 +1,33 @@
 <template>
   <component :is="component">
     <b-card-title><span v-html="fileFormat" /></b-card-title>
-    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth" />
+    <HrefActions
+      isAsset
+      :data="asset"
+      :shown="shown"
+      :auth="auth"
+      :preview-mode="previewMode"
+      @show="show"
+      @expand="previewExpanded = true"
+    />
     <b-card-text class="mt-4" v-if="asset.description">
       <Description :description="asset.description" compact />
     </b-card-text>
     <Metadata class="mt-4" :data="resolvedAsset" :context="context" :ignoreFields="ignore" title="" type="Asset" />
+    <HtmlPreviewPanel
+      v-if="isHtmlPreview"
+      :asset="asset"
+      :auth="auth"
+      :expanded.sync="previewExpanded"
+      class="mt-4"
+    />
+    <NotebookPreviewPanel
+      v-if="isNotebookPreview"
+      :asset="asset"
+      :auth="auth"
+      :expanded.sync="previewExpanded"
+      class="mt-4"
+    />
   </component>
 </template>
 
@@ -17,12 +39,21 @@ import StacFieldsMixin from './StacFieldsMixin';
 import AuthUtils from './auth/utils';
 import Utils from '../utils';
 import { Asset, STACReference } from 'stac-js';
+import HtmlPreviewPanel from '../oie/HtmlPreviewPanel.vue';
+import NotebookPreviewPanel from '../oie/NotebookPreviewPanel.vue';
+import {
+  getPreviewMode,
+  isHtmlPreviewAsset,
+  isNotebookPreviewAsset
+} from '../oie/previewAssets.js';
 
 export default {
   name: 'AssetAlternative',
   components: {
     Description,
     HrefActions,
+    HtmlPreviewPanel,
+    NotebookPreviewPanel,
     Metadata: () => import('./Metadata.vue')
   },
   mixins: [
@@ -44,6 +75,7 @@ export default {
   },
   data() {
     return {
+      previewExpanded: false,
       ignore: [
         // Asset fields that are handled directly
         'href',
@@ -51,6 +83,8 @@ export default {
         'description',
         'type',
         'roles',
+        'expand',
+        'preview:height',
         // Don't show these complex lists of coordinates: https://github.com/radiantearth/stac-browser/issues/141
         'proj:bbox',
         'proj:geometry',
@@ -90,6 +124,15 @@ export default {
     },
     auth() {
       return AuthUtils.resolveAuth(this.asset);
+    },
+    isHtmlPreview() {
+      return isHtmlPreviewAsset(this.asset);
+    },
+    isNotebookPreview() {
+      return isNotebookPreviewAsset(this.asset);
+    },
+    previewMode() {
+      return getPreviewMode(this.asset);
     }
   },
   methods: {

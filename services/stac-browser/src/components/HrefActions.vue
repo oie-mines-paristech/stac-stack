@@ -6,13 +6,21 @@
       </b-button>
       <b-button v-if="hasDownloadButton" :disabled="requiresAuth" v-bind="downloadProps" v-on="downloadEvents" variant="primary">
         <b-spinner v-if="loading" small variant="light" />
-        <b-icon-box-arrow-up-right v-else-if="browserCanOpenFile" /> 
+        <b-icon-box-arrow-up-right v-else-if="showAsOpen" />
         <b-icon-download v-else />
         {{ buttonText }}
       </b-button>
-      <CopyButton variant="primary" :copyText="shareableHref" :title="shareableHref">
+      <CopyButton v-if="!effectivePreviewMode" variant="primary" :copyText="shareableHref" :title="shareableHref">
         {{ copyButtonText }}
       </CopyButton>
+      <b-button
+        v-if="effectivePreviewMode"
+        variant="primary"
+        :title="$t('fullscreen.show')"
+        @click="$emit('expand')"
+      >
+        {{ $t('fullscreen.showLabel') }}
+      </b-button>
       <b-button v-if="hasShowButton" @click="show" variant="primary">
         <b-icon-eye class="mr-1" />
         <template v-if="isThumbnail">{{ $t('assets.showThumbnail') }}</template>
@@ -107,6 +115,15 @@ export default {
     auth: {
       type: Array,
       default: () => ([])
+    },
+    replaceCopyWithExpand: {
+      type: Boolean,
+      default: false
+    },
+    previewMode: {
+      type: String,
+      default: null,
+      validator: value => value === null || ['html', 'notebook'].includes(value)
     }
   },
   data() {
@@ -239,6 +256,15 @@ export default {
     parsedHref() {
       return URI(this.href);
     },
+    showAsOpen() {
+      return this.browserCanOpenFile && this.isBrowserProtocol && this.previewMode !== 'notebook';
+    },
+    effectivePreviewMode() {
+      if (this.previewMode) {
+        return this.previewMode;
+      }
+      return this.replaceCopyWithExpand ? 'html' : null;
+    },
     from() {
       return this.protocolName(this.protocol);
     },
@@ -261,7 +287,7 @@ export default {
       return false;
     },
     buttonText() {
-      if (this.browserCanOpenFile && this.isBrowserProtocol) {
+      if (this.showAsOpen) {
         return this.$t('open');
       }
       let where = (!this.isBrowserProtocol && this.from) ? 'withSource' : 'generic';

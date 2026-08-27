@@ -89,4 +89,4 @@ env -0 | cut -f1 -d= | tr '\0' '\n' | grep "^SB_" | {
         echo ","
     done
     echo "}"
-} > /usr/share/nginx/html/config.js
+} > "${CONFIG_OUTPUT:-/usr/share/nginx/html/config.js}"

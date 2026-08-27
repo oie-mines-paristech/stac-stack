@@ -74,6 +74,27 @@ monsite.tld {
 - Après changement de préfixe, le **stac-generator** régénère les hrefs d'assets (`ROOT_HREF` dérivé automatiquement : `{PATH_PREFIX}data`).
 - Formes acceptées : `/`, `/stac`, `/stac/` (normalisées en `/` ou `/stac/`).
 
+### Mode développement
+
+Pour travailler sur **stac-generator**, **zarr-viewer** ou **stac-browser** sans rebuild d'image à chaque changement de code :
+
+```bash
+make dev
+# ou : make dev-up
+```
+
+- Logs dans le terminal ; **Ctrl+C** arrête la stack.
+- Overlay [`docker-compose.dev.yml`](docker-compose.dev.yml) :
+  - `zarr-viewer` : `DEV=1` (`vite build --watch` → volume `/viewer/`), mounts ciblés sur le code.
+  - `stac-generator` : mounts sur le code Python, debounce réduit.
+  - `stac-browser` : image `Dockerfile.dev` (nginx + `vue-cli-service serve`), HMR sur le code Vue monté dans `/app/src`.
+- Le `.venv` Python reste celui de l'image ; rebuild si deps changent : `docker compose build stac-generator`.
+- Rebuild si deps npm changent : `docker compose -f docker-compose.yml -f docker-compose.dev.yml build stac-browser`.
+- Refresh manuel du navigateur après modification zarr-viewer (pas de HMR). stac-browser : rechargement à chaud automatique sur `services/stac-browser/src/`.
+- Sur macOS (Docker Desktop), si le dev server reboucle en permanence, ajouter dans un override local : `CHOKIDAR_USEPOLLING=true` (désactivé par défaut sur Linux car cela provoque des rebuilds infinis).
+
+**Prod** (comportement par défaut) : `docker compose up --build`. Le service `zarr-viewer` build Vite dans l'image puis copie `dist/` dans le volume partagé au démarrage. Viewer modifié → `docker compose build zarr-viewer` (ou `make rebuild-viewer`).
+
 ### Tests E2E déploiement
 
 Vérifie automatiquement deux scénarios (ports dédiés pour ne pas perturber une stack en cours) :

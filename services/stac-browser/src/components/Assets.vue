@@ -3,7 +3,7 @@
     <h2 v-if="displayTitle">{{ displayTitle }}</h2>
     <div class="accordion" role="tablist">
       <Asset
-        v-for="asset in assets" :asset="asset" :expand="expand" :context="context"
+        v-for="asset in assets" :asset="asset" :expand="expandAsset(asset)" :context="context"
         :definition="definition" :shown="shownKeys.includes(asset.getKey())"
         :key="asset.getKey()" @show="show"
       />
@@ -13,6 +13,7 @@
 
 <script>
 import Asset from './Asset.vue';
+import { shouldExpandAsset } from '../oie/previewAssets.js';
 
 export default {
   name: 'Assets',
@@ -55,18 +56,15 @@ export default {
       else {
         return this.title;
       }
-    },
-    expand() {
-      if (this.definition) {
-        return false; // Don't expand assets for Item Asset Definitions
-      }
-      else if (this.assets.length === 1 && this.context && this.context.isItem()) {
-        return true; // Expand asset if it's the only asset available and it is in an Item
-      }
-      return null; // Let asset decide (e.g. depending on roles)
     }
   },
   methods: {
+    expandAsset(asset) {
+      return shouldExpandAsset(asset, {
+        definition: this.definition,
+        isSingleItem: this.assets.length === 1 && this.context && this.context.isItem()
+      });
+    },
     show() {
       this.$emit('showAsset', ...arguments);
     }

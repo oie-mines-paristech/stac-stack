@@ -38,7 +38,7 @@ services:
         condition: service_started
       stac-generator:
         condition: service_healthy
-      zarr-viewer-build:
+      zarr-viewer:
         condition: service_completed_successfully
     volumes:
       - ./services/nginx/default.conf.template:/etc/stac/nginx/default.conf.template:ro
@@ -48,12 +48,12 @@ services:
       - ./volumes/data:/data:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro
 
-  zarr-viewer-build:
-    build:
-      context: ./services/zarr-viewer
-      target: export
+  zarr-viewer:
+    build: ./services/zarr-viewer
     volumes:
       - zarr-viewer-static:/out
+    environment:
+      DEV: "0"
 
   static-api:
     # Serve the static catalog as an API

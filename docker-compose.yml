@@ -6,6 +6,7 @@ services:
   stac-generator:
     # Transform Zarr / NetCDF to static stac catalog
     build: ./services/stac-generator
+    restart: unless-stopped
     environment:
       PATH_PREFIX: ${PATH_PREFIX:-/}
       INPUT_DIR: /data
@@ -58,6 +59,7 @@ services:
   static-api:
     # Serve the static catalog as an API
     build: ./services/stac-fastapi-static
+    restart: unless-stopped
     depends_on:
       stac-generator:
         condition: service_healthy

@@ -12,6 +12,7 @@ services:
       INPUT_DIR: /data
       OUTPUT_DIR: /catalog
       WATCH_DEBOUNCE: "5"
+      VIEWER_URL: ${VIEWER_URL:-http://localhost:${PORT:-8000}${PATH_PREFIX}viewer/}
     healthcheck:
       test: ["CMD-SHELL", "test -f /catalog/catalog.json && grep -qx OK /catalog/status.log"]
       interval: 10s

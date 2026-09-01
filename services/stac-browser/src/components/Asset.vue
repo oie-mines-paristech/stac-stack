@@ -6,6 +6,9 @@
           <b-icon-chevron-down v-if="expanded" />
           <b-icon-chevron-right v-else />
         </span>
+        <span class="asset-icon mr-1" aria-hidden="true" :style="{ color: assetIconColor }">
+          <component :is="assetIcon" :title="assetIconTitle" />
+        </span>
         <span class="title">{{ title }}</span>
         <div class="badges ml-1">
           <b-badge v-if="shown" variant="success" class="shown" :title="$t('assets.currentlyShown')">
@@ -36,9 +39,10 @@
 </template>
 
 <script>
-import { BCollapse, BIconCheck, BIconChevronRight, BIconChevronDown, BTabs, BTab } from 'bootstrap-vue';
+import { BCollapse, BIconCheck, BIconChevronRight, BIconChevronDown, BTabs, BTab, BIconEye, BIconBook, BIconFileEarmark } from 'bootstrap-vue';
 import { formatMediaType } from '@radiantearth/stac-fields/formatters';
 import { mapState } from 'vuex';
+import config from '../config';
 import AssetAlternative from './AssetAlternative.vue';
 import StacFieldsMixin from './StacFieldsMixin';
 import Utils from '../utils';
@@ -52,6 +56,9 @@ export default {
     BIconCheck,
     BIconChevronDown,
     BIconChevronRight,
+    BIconEye,
+    BIconBook,
+    BIconFileEarmark,
     BTabs,
     BTab
   },
@@ -134,6 +141,49 @@ export default {
         if (b === 'data') return 1;
         return a.toLowerCase().localeCompare(b.toLowerCase(), undefined, { sensitivity: 'base' });
       });
+    },
+    assetIcon() {
+      const iconConfig = this.assetIconConfig || this.assetRoleConfig || config.assetIcons?.default;
+      return (iconConfig && iconConfig.name) || 'BIconFileEarmark';
+    },
+    assetIconTitle() {
+      const iconConfig = this.assetIconConfig || this.assetRoleConfig;
+      if (iconConfig && iconConfig.title) {
+        return iconConfig.title;
+      }
+      const role = this.assetIconRole;
+      if (role) {
+        return this.displayRole(role);
+      }
+      return null;
+    },
+    assetIconColor() {
+      const iconConfig = this.assetIconConfig || this.assetRoleConfig || config.assetIcons?.default;
+      return (iconConfig && iconConfig.color) || '#6c757d';
+    },
+    assetIconConfig() {
+      const assetIcons = config.assetIcons || {};
+      const type = typeof this.asset.type === 'string' ? this.asset.type.toLowerCase() : null;
+      if (type && assetIcons.byMime && assetIcons.byMime[type]) {
+        return assetIcons.byMime[type];
+      }
+      return null;
+    },
+    assetRoleConfig() {
+      const role = this.assetIconRole;
+      const assetIcons = config.assetIcons || {};
+      return (role && assetIcons.byRole && assetIcons.byRole[role]) || null;
+    },
+    assetIconRole() {
+      const assetIcons = config.assetIcons || {};
+      if (Array.isArray(this.asset.roles)) {
+        for (const role of this.asset.roles) {
+          if (assetIcons.byRole && assetIcons.byRole[role]) {
+            return role;
+          }
+        }
+      }
+      return null;
     }
   },
   created() {

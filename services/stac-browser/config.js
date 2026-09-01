@@ -53,5 +53,24 @@ module.exports = {
         // openIdConnectUrl:"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
     },
     crs: {},
-    footerLinks: null
+    footerLinks: null,
+    assetIcons: {
+        default: {
+            icon: 'BIconFileEarmark',
+            color: '#6c757d'
+        },
+        byMime: {
+            'application/x-ipynb+json': {
+                name: 'BIconBook',
+                color: '#f37726',
+                title: 'Jupyter Notebook'
+            }
+        },
+        byRole: {
+            preview: {
+                name: 'BIconEye',
+                color: '#198754'
+            }
+        }
+    }
 };

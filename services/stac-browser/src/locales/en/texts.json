@@ -23,7 +23,8 @@
     "inItems": "Asset in Items | Assets in Items",
     "role": {
       "data": "Data",
-      "metadata": "Metadata"
+      "metadata": "Metadata",
+      "preview": "Preview"
     },
     "showOnMap": "Show on map",
     "showThumbnail": "Show thumbnail",

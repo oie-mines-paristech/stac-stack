@@ -5,9 +5,9 @@
 #   make test-direct   — localhost:TEST_DIRECT_PORT seulement
 #   make test-proxy    — nginx HTTPS auto-signé → stack /stac/
 
-.PHONY: build up down dev dev-up sync sync-dry sync-code test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
+.PHONY: build up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
 
-RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude-from .rsyncignore
+RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
 COMPOSE := docker compose
 COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
@@ -19,6 +19,21 @@ TEST_BACKEND_PORT ?= 18002
 TEST_HTTPS_PORT ?= 18443
 
 export TEST_DIRECT_PORT TEST_BACKEND_PORT TEST_HTTPS_PORT
+
+env ?= dev
+
+ifeq ($(env),dev)
+  DEPLOY_HOST := demos
+  DEPLOY_PATH := ~/stac
+else ifeq ($(env),prod)
+  DEPLOY_HOST := stac
+  DEPLOY_PATH := ~/stac
+else
+  $(error Unknown env=$(env), expected dev or prod)
+endif
+
+DEPLOY_DEST := $(DEPLOY_HOST):$(DEPLOY_PATH)/
+
 
 submodules:
 	@test -f services/zarr-viewer/package.json || (echo "Run: git submodule update --init --recursive" && exit 1)
@@ -45,19 +60,29 @@ down:
 	$(COMPOSE) down
 
 sync-dry:
-	rsync -anvh --delete $(RSYNC_EXCLUDES) ./ demos:~/stac/
-	@if [ -d volumes ]; then \
-		rsync -anvh --exclude .env ./volumes/ demos:~/stac/volumes/; \
-	fi
+	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
+	rsync -anvh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
+	rsync -anvh --exclude .env ./volumes/ '$(DEPLOY_DEST)volumes/';
 
 sync:
-	rsync -avh --delete $(RSYNC_EXCLUDES) ./ demos:~/stac/
-	@if [ -d volumes ]; then \
-		rsync -avh --exclude .env ./volumes/ demos:~/stac/volumes/; \
-	fi
+	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
+	rsync -avh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
+	rsync -avh --exclude .env ./volumes/ '$(DEPLOY_DEST)volumes/';
+
 
 sync-code:
-	rsync -avh --delete $(RSYNC_EXCLUDES) ./ demos:~/stac/
+	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
+	rsync -avh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)'
+
+# Prod (stac) runs inside systemd-nspawn; Docker needs session keyrings (keyctl).
+deploy-check:
+	@echo "Checking Docker runtime on $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) 'docker run --rm hello-world >/dev/null' \
+		&& echo "Docker OK on $(DEPLOY_HOST)" \
+		|| (echo "ERROR: Docker cannot run containers on $(DEPLOY_HOST)." && \
+		    echo "Typical error: unable to join session keyring (systemd-nspawn restriction)." && \
+		    echo "Fix on the nspawn host (Capabilities / keyctl), then retry docker compose up --build." && \
+		    exit 1)
 
 
 test-certs:

@@ -23,7 +23,8 @@
     "inItems": "Ressource des éléments | Ressources des éléments",
     "role": {
       "data": "Données",
-      "metadata": "Métadonnées"
+      "metadata": "Métadonnées",
+      "preview": "Aperçu"
     },
     "showOnMap": "Afficher sur la carte",
     "showThumbnail": "Afficher l'aperçu",

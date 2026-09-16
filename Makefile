@@ -20,7 +20,7 @@ TEST_HTTPS_PORT ?= 18443
 
 export TEST_DIRECT_PORT TEST_BACKEND_PORT TEST_HTTPS_PORT
 
-env ?= dev
+env ?= prod
 
 ifeq ($(env),dev)
   DEPLOY_HOST := demos
@@ -62,12 +62,12 @@ down:
 sync-dry:
 	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
 	rsync -anvh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
-	rsync -anvh --exclude .env ./volumes/ '$(DEPLOY_DEST)volumes/';
+	rsync -anvh --exclude .env ./volumes/data/ '$(DEPLOY_DEST)volumes/data/';
 
 sync:
 	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
 	rsync -avh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
-	rsync -avh --exclude .env ./volumes/ '$(DEPLOY_DEST)volumes/';
+	rsync -avh --exclude .env ./volumes/data/ '$(DEPLOY_DEST)volumes/data/';
 
 
 sync-code:

@@ -1,9 +1,9 @@
 # STAC-OIE — orchestration Docker et tests E2E déploiement
 #
 # Tests :
-#   make test          — HTTP direct (PATH_PREFIX=/ et /stac/) + HTTPS derrière nginx
-#   make test-direct   — localhost:TEST_DIRECT_PORT seulement
-#   make test-proxy    — nginx HTTPS auto-signé → stack /stac/
+#   make test          — HTTP direct (:/TEST_DIRECT_PORT) + HTTPS derrière nginx
+#   make test-direct   — http://localhost:TEST_DIRECT_PORT
+#   make test-proxy    — nginx HTTPS auto-signé → stack (root)
 
 .PHONY: build up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
 
@@ -11,8 +11,6 @@ RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-fr
 
 COMPOSE := docker compose
 COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
-PORT ?= 8000
-PATH_PREFIX ?= /
 
 TEST_DIRECT_PORT ?= 18001
 TEST_BACKEND_PORT ?= 18002
@@ -46,13 +44,13 @@ build: submodules
 rebuild-viewer: submodules
 	$(COMPOSE) build zarr-viewer
 	$(COMPOSE) run --rm zarr-viewer
-	$(COMPOSE) up -d --force-recreate stac-browser
+	$(COMPOSE) up -d --force-recreate browser
 
 up:
-	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE) up
+	$(COMPOSE) up
 
 .dev-up dev:
-	PATH_PREFIX=$(PATH_PREFIX) PORT=$(PORT) $(COMPOSE_DEV) up
+	$(COMPOSE_DEV) up
 
 dev-up: dev
 
@@ -104,12 +102,8 @@ test: test-direct test-proxy
 	@echo "make test : OK"
 
 e2e-clean:
-	-$(COMPOSE) -p stac-e2e-direct-root down -v --remove-orphans 2>/dev/null
-	-$(COMPOSE) -p stac-e2e-direct-stac down -v --remove-orphans 2>/dev/null
+	-$(COMPOSE) -p stac-e2e-direct down -v --remove-orphans 2>/dev/null
 	-$(COMPOSE) -p stac-e2e-proxy down -v --remove-orphans 2>/dev/null
 	@echo "Projets E2E nettoyés"
 
 
-bind :
-	sudo mount --bind ~/zarr-cam/data/out/all.zarr/ volumes/data/fisheye/sophia.zarr
-	sudo mount --bind ~/zarr-cam/tmp/ome_ngff/stores/ volumes/data/fisheye/ome

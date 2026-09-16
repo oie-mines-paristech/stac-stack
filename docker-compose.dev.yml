@@ -1,4 +1,5 @@
 services:
+
   stac-generator:
     volumes:
       - ./services/stac-generator/src:/app/src
@@ -6,6 +7,25 @@ services:
       - ./services/stac-generator/schemas:/app/schemas
     environment:
       WATCH_DEBOUNCE: "2"
+
+  browser:
+    build:
+      context: ./services/stac-browser
+      target: dev
+    depends_on:
+      zarr-viewer:
+        condition: service_healthy
+    environment:
+      DEV: "1"
+      VUE_CLI_LINT: "false"
+    volumes:
+      - ./services/stac-browser/src:/app/src
+      - ./services/stac-browser/package.json:/app/package.json
+      - ./services/stac-browser/package-lock.json:/app/package-lock.json
+      - ./services/stac-browser/config.js:/app/config.js
+      - ./services/stac-browser/fields.config.js:/app/fields.config.js
+      - ./services/stac-browser/assetActions.config.js:/app/assetActions.config.js
+      - ./services/stac-browser/linkActions.config.js:/app/linkActions.config.js
 
   zarr-viewer:
     environment:
@@ -21,28 +41,6 @@ services:
       timeout: 3s
       retries: 30
       start_period: 120s
-
-  stac-browser:
-    depends_on:
-      zarr-viewer:
-        condition: service_healthy
-    build:
-      context: ./services/stac-browser
-      dockerfile: Dockerfile.dev
-    environment:
-      DEV: "1"
-      STAC_BROWSER_DEV: "1"
-      VUE_DEV_SERVER_PORT: "8081"
-      VUE_CLI_LINT: "false"
-    volumes:
-      - ./services/stac-browser/src:/app/src
-      - ./services/stac-browser/package.json:/app/package.json
-      - ./services/stac-browser/package-lock.json:/app/package-lock.json
-      - ./services/stac-browser/config.js:/app/config.js
-      - ./services/stac-browser/fields.config.js:/app/fields.config.js
-      - ./services/stac-browser/assetActions.config.js:/app/assetActions.config.js
-      - ./services/stac-browser/linkActions.config.js:/app/linkActions.config.js
-      - ./services/nginx/default.conf.dev.template:/etc/stac/nginx/default.conf.dev.template:ro
 
 volumes:
   zarr-viewer-node-modules:

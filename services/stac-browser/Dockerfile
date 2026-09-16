@@ -1,35 +1,28 @@
-ARG pathPrefix="/"
-
-FROM node:lts-alpine3.18 AS build-step
-ARG DYNAMIC_CONFIG=true
-ARG historyMode="history"
-ARG pathPrefix
+FROM node:lts-alpine AS build
 
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN \[ "${DYNAMIC_CONFIG}" == "true" \] && sed -i "s|<!-- <script defer=\"defer\" src=\"/config.js\"></script> -->|<script defer=\"defer\" src=\"${pathPrefix}config.js\"></script>|g" public/index.html
-RUN npm run build -- --historyMode="${historyMode}" --pathPrefix="${pathPrefix}"
+RUN npm run build
 
+# Full build (node_modules + src) for dev-mode serving via vue-cli-service.
+FROM build AS dev
 
-FROM nginxinc/nginx-unprivileged:1-alpine
-ARG pathPrefix
+COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
+COPY config.schema.json /etc/stac/config.schema.json
 
-USER root
-RUN apk add --no-cache jq pcre-tools
+EXPOSE 8081
 
-COPY ./config.schema.json /etc/nginx/conf.d/config.schema.json
-COPY --from=build-step /app/dist /usr/share/nginx/html
-COPY --from=build-step /app/docker/default.conf /etc/nginx/conf.d/default.conf
-ADD docker/docker-entrypoint.sh /docker-entrypoint.d/40-stac-browser-entrypoint.sh
+ENTRYPOINT ["node", "/usr/local/bin/serve.js"]
 
-RUN sed -i "s|<pathPrefix>|${pathPrefix}|" /etc/nginx/conf.d/default.conf && \
-    chown -R nginx:nginx /usr/share/nginx/html && \
-    chmod +x /docker-entrypoint.d/40-stac-browser-entrypoint.sh
+FROM node:lts-alpine
 
-EXPOSE 8080
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
+COPY config.schema.json /etc/stac/config.schema.json
 
-STOPSIGNAL SIGTERM
+EXPOSE 8081
 
-USER nginx
+ENTRYPOINT ["node", "/usr/local/bin/serve.js"]

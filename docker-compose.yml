@@ -1,18 +1,14 @@
-x-path-prefix: &path-prefix
-
-
 services:
 
   stac-generator:
-    # Transform Zarr / NetCDF to static stac catalog
     build: ./services/stac-generator
     restart: unless-stopped
     environment:
-      PATH_PREFIX: ${PATH_PREFIX:-/}
       INPUT_DIR: /data
       OUTPUT_DIR: /catalog
+      ROOT_HREF: /data
+      VIEWER_URL: http://localhost:${HTTP_PORT:-8000}/viewer/
       WATCH_DEBOUNCE: "5"
-      VIEWER_URL: ${VIEWER_URL:-http://localhost:${PORT:-8000}${PATH_PREFIX}viewer/}
     healthcheck:
       test: ["CMD-SHELL", "test -f /catalog/catalog.json && grep -qx OK /catalog/status.log"]
       interval: 10s
@@ -23,18 +19,9 @@ services:
       - ./volumes/data:/data:ro
       - ./volumes/catalog:/catalog
 
-  stac-browser:
-    build:
-      context: ./services/stac-browser
-      args:
-        pathPrefix: ${PATH_PREFIX:-/}
-    ports:
-      - ${PORT:-8000}:8080
+  browser:
+    build: ./services/stac-browser
     restart: unless-stopped
-    environment:
-      PATH_PREFIX: ${PATH_PREFIX:-/}
-      SB_allowExternalAccess: "true"
-      SB_itemsPerPage: 100
     depends_on:
       static-api:
         condition: service_started
@@ -42,11 +29,24 @@ services:
         condition: service_healthy
       zarr-viewer:
         condition: service_completed_successfully
+    environment:
+      SB_allowExternalAccess: "true"
+      SB_itemsPerPage: "100"
+
+  nginx:
+    image: nginx:1-alpine
+    restart: unless-stopped
+    environment:
+      NGINX_HTTP_PORT: "8080"
+      NGINX_HTTPS_PORT: "8443"
+    ports:
+      - "${HTTP_PORT:-8000}:8080"
+    depends_on:
+      - static-api
+      - browser
     volumes:
-      - ./services/nginx/default.conf.template:/etc/stac/nginx/default.conf.template:ro
-      - ./services/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./services/nginx/entrypoint.sh:/docker-entrypoint.d/05-path-prefix.sh:ro
-      - ./services/nginx/catalog-url.sh:/docker-entrypoint.d/45-catalog-url.sh:ro
+      - ./services/nginx/nginx.conf.template:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
       - ./volumes/data:/data:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro
 
@@ -58,18 +58,16 @@ services:
       DEV: "0"
 
   static-api:
-    # Serve the static catalog as an API
     build: ./services/stac-fastapi-static
     restart: unless-stopped
     depends_on:
       stac-generator:
         condition: service_healthy
     environment:
-      PATH_PREFIX: ${PATH_PREFIX:-/}
-      app_port: 80
-      app_host: 0.0.0.0
-      root_path: ${PATH_PREFIX:-/}api/
       catalog_href: file:///catalog/catalog.json
+      root_path: /api/
+      app_port: "80"
+      app_host: "0.0.0.0"
     volumes:
       - ./volumes/catalog:/catalog:ro
 

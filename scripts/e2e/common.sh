@@ -45,37 +45,15 @@ wait_https() {
   done
 }
 
-generate_https_proxy_conf() {
-  local https_port="$1"
-  sed "s/__HTTPS_PORT__/${https_port}/g" \
-    "$ROOT_DIR/tests/nginx/https-stac.conf.template" \
-    > "$ROOT_DIR/tests/nginx/https-stac.generated.conf"
-}
-
 stack_up() {
-  local path_prefix="$1"
-  local port="$2"
-  log "Démarrage stack PATH_PREFIX=${path_prefix} PORT=${port} (projet ${E2E_PROJECT})"
-  PATH_PREFIX="$path_prefix" PORT="$port" compose up -d --build --force-recreate
+  local port="$1"
+  log "Démarrage stack HTTP_PORT=${port} (projet ${E2E_PROJECT}, à la racine /)"
+  HTTP_PORT="$port" compose up -d --build --force-recreate
 }
 
 stack_down() {
   log "Arrêt stack (projet ${E2E_PROJECT})"
   compose down -v --remove-orphans 2>/dev/null || compose down --remove-orphans 2>/dev/null || true
-}
-
-stack_up_with_proxy() {
-  local port="$1"
-  local https_port="$2"
-  log "Démarrage stack + reverse proxy HTTPS (backend :${port}, TLS :${https_port})"
-  generate_https_proxy_conf "$https_port"
-  PATH_PREFIX="/stac/" PORT="$port" TEST_HTTPS_PORT="$https_port" \
-    compose -f docker-compose.yml -f tests/docker-compose.proxy.yml \
-    up -d --build --force-recreate
-}
-
-proxy_down() {
-  compose -f docker-compose.yml -f tests/docker-compose.proxy.yml -p "$E2E_PROJECT" down -v --remove-orphans 2>/dev/null || true
 }
 
 assert_api_links() {
@@ -129,8 +107,7 @@ assert_browser() {
 
 assert_viewer_proxy() {
   local base_url="$1"
-  local path_prefix="$2"
-  local viewer_url="${base_url%/}${path_prefix}viewer/"
+  local viewer_url="${base_url%/}/viewer/"
   local proxy_url="${viewer_url}proxy/https/httpbin.org/get"
 
   log "Vérification viewer ${viewer_url}"
@@ -147,7 +124,7 @@ assert_viewer_proxy() {
   log "Vérification proxy Zarr HEAD ${proxy_url}"
   status="$(curl -sS -o /dev/null -w '%{http_code}' -I "${proxy_url}")"
   [[ "$status" != "404" ]] || fail "Proxy HEAD ne doit pas retourner 404: ${proxy_url}"
-  log "OK: viewer + proxy ${path_prefix}viewer/"
+  log "OK: viewer + proxy ${viewer_url}"
 }
 
 ensure_certs() {

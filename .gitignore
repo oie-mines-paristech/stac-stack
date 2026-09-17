@@ -63,3 +63,8 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+/.playwright-mcp/console-2026-09-17T11-17-42-841Z.log
+/.playwright-mcp/console-2026-09-17T11-53-56-398Z.log
+/.playwright-mcp/page-2026-09-17T11-05-52-460Z.yml
+/.playwright-mcp/page-2026-09-17T11-17-43-099Z.yml
+/.playwright-mcp/page-2026-09-17T11-53-56-859Z.yml

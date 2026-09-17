@@ -27,6 +27,6 @@ services:
       - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
       - ./tests/e2e-data:/data:rw
-      - ./tests/e2e-data:/davroot/data:rw
-      - ./tests/e2e-catalog:/davroot/catalog:ro
+      - ./tests/e2e-data:/dav/data:rw
+      - ./tests/e2e-catalog:/dav/catalog:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro

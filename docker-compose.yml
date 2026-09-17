@@ -8,13 +8,6 @@ services:
       OUTPUT_DIR: /catalog
       ROOT_HREF: /data
       VIEWER_URL: ${EXTERNAL_URL}viewer/
-      WATCH_DEBOUNCE: "5"
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /catalog/catalog.json && grep -qx OK /catalog/status.log"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 120s
     volumes:
       - ./volumes/data:/data:ro
       - ./volumes/catalog:/catalog

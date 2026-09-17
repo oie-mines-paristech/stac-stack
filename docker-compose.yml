@@ -13,7 +13,9 @@ services:
       - ./volumes/catalog:/catalog
 
   browser:
-    build: ./services/stac-browser
+    build:
+      context: ./services/stac-browser
+      dockerfile: Dockerfile.oie
     restart: unless-stopped
     depends_on:
       static-api:
@@ -23,6 +25,7 @@ services:
       zarr-viewer:
         condition: service_completed_successfully
     environment:
+      SB_catalogUrl: "/api/"
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: "100"
 

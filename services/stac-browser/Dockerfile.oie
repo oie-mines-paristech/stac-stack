@@ -1,0 +1,41 @@
+# OIE build of stac-browser (upstream CDSE v5.x tree, runtime unchanged).
+#
+# Kept alongside the upstream Dockerfile (nginx) so we never touch theirs.
+# Differences:
+#   - runtime is a tiny node server (docker/serve.js) instead of nginx
+#   - runtime config (SB_* env -> runtime-config.js) is generated from
+#     config.schema.json at container start, so branding/catalogUrl are
+#     injected at runtime via docker compose (no per-org rebuild).
+ARG DYNAMIC_CONFIG=true
+ARG historyMode="history"
+ARG SB_CONFIG=""
+
+FROM node:lts-alpine AS build
+ARG DYNAMIC_CONFIG
+ARG historyMode
+ARG SB_CONFIG
+ENV DYNAMIC_CONFIG="${DYNAMIC_CONFIG}"
+ENV SB_historyMode="${historyMode}"
+ENV SB_CONFIG="${SB_CONFIG}"
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN [ "${DYNAMIC_CONFIG}" == "true" ] && sed -i 's/<!--RC//;s/RC-->//' index.html
+RUN npm run build
+
+# Dev: source + node_modules + vite dev server, launched by serve.js when DEV=1.
+FROM build AS dev
+COPY --from=build /app/config.schema.json /etc/stac/config.schema.json
+COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
+EXPOSE 8081
+ENTRYPOINT ["node", "/usr/local/bin/serve.js"]
+
+FROM node:lts-alpine
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/config.schema.json /etc/stac/config.schema.json
+COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
+EXPOSE 8081
+ENTRYPOINT ["node", "/usr/local/bin/serve.js"]

@@ -7,7 +7,7 @@ services:
       INPUT_DIR: /data
       OUTPUT_DIR: /catalog
       ROOT_HREF: /data
-      VIEWER_URL: http://localhost:${HTTP_PORT:-8000}/viewer/
+      VIEWER_URL: ${EXTERNAL_URL}viewer/
       WATCH_DEBOUNCE: "5"
     healthcheck:
       test: ["CMD-SHELL", "test -f /catalog/catalog.json && grep -qx OK /catalog/status.log"]

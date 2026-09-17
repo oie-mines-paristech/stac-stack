@@ -1,11 +1,13 @@
 # STAC-OIE — orchestration Docker et tests E2E déploiement
 #
+# TLS is handled by an external reverse proxy: the stack itself is HTTP-only.
+#
 # Tests :
-#   make test          — HTTP direct (:/TEST_DIRECT_PORT) + HTTPS derrière nginx
+#   make test          — HTTP direct (:/TEST_DIRECT_PORT) + WebDAV /data
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
-#   make test-proxy    — nginx HTTPS auto-signé → stack (root)
+#   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-proxy test-certs e2e-clean rebuild-viewer submodules
+.PHONY: build up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
@@ -14,9 +16,8 @@ COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 
 TEST_DIRECT_PORT ?= 18001
 TEST_BACKEND_PORT ?= 18002
-TEST_HTTPS_PORT ?= 18443
 
-export TEST_DIRECT_PORT TEST_BACKEND_PORT TEST_HTTPS_PORT
+export TEST_DIRECT_PORT TEST_BACKEND_PORT
 
 env ?= prod
 
@@ -62,10 +63,10 @@ sync-dry:
 	rsync -anvh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
 	rsync -anvh --exclude .env ./volumes/data/ '$(DEPLOY_DEST)volumes/data/';
 
-sync:
-	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
-	rsync -avh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
-	rsync -avh --exclude .env ./volumes/data/ '$(DEPLOY_DEST)volumes/data/';
+#sync:
+#	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
+#   rsync -avh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)';
+# 	rsync -avh --exclude .env ./volumes/data/ '$(DEPLOY_DEST)volumes/data/';
 
 
 sync-code:
@@ -83,27 +84,18 @@ deploy-check:
 		    exit 1)
 
 
-test-certs:
-	@mkdir -p tests/certs
-	@if [ ! -f tests/certs/cert.pem ]; then \
-		openssl req -x509 -nodes -days 7 -newkey rsa:2048 \
-		  -keyout tests/certs/key.pem -out tests/certs/cert.pem \
-		  -subj "/CN=localhost"; \
-		echo "Certificats générés dans tests/certs/"; \
-	fi
-
 test-direct:
 	@bash scripts/e2e/direct.sh
 
-test-proxy: test-certs
-	@bash scripts/e2e/proxy-https.sh
+test-webdav:
+	@bash scripts/e2e/webdav.sh
 
-test: test-direct test-proxy
+test: test-direct test-webdav
 	@echo "make test : OK"
 
 e2e-clean:
 	-$(COMPOSE) -p stac-e2e-direct down -v --remove-orphans 2>/dev/null
-	-$(COMPOSE) -p stac-e2e-proxy down -v --remove-orphans 2>/dev/null
+	-$(COMPOSE) -p stac-e2e-webdav down -v --remove-orphans 2>/dev/null
 	@echo "Projets E2E nettoyés"
 
 

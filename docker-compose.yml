@@ -33,21 +33,32 @@ services:
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: "100"
 
+  # ⚠ SUPPLY CHAIN: nginx is built FROM the third-party image hakwerk/nginx-dav
+  # (official nginx + statically-compiled arut/nginx-dav-ext-module), pinned by
+  # SHA256 digest in services/nginx/Dockerfile. NOT an official Docker/nginx build —
+  # review https://github.com/hakwerk/nginx-dav and the digest before bumping.
+  # Full audit of every base image: README → « Supply chain ».
   nginx:
-    image: nginx:1-alpine
+    build: ./services/nginx
+    image: stac-oie-nginx:local
     restart: unless-stopped
     environment:
       NGINX_HTTP_PORT: "8080"
-      NGINX_HTTPS_PORT: "8443"
+      NGINX_UID: "${NGINX_UID:-1000}"
+      NGINX_GID: "${NGINX_GID:-1000}"
+      WEBDAV_ADMIN: "${WEBDAV_ADMIN:-}"
+      WEBDAV_PASSWORD: "${WEBDAV_PASSWORD:-}"
     ports:
       - "${HTTP_PORT:-8000}:8080"
     depends_on:
       - static-api
       - browser
     volumes:
-      - ./services/nginx/nginx.conf.template:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
-      - ./volumes/data:/data:ro
+      - ./volumes/data:/data:rw
+      - ./volumes/data:/davroot/data:rw
+      - ./volumes/catalog:/davroot/catalog:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro
 
   zarr-viewer:

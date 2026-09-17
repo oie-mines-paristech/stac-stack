@@ -1,16 +1,13 @@
 ARG PYTHON_VERSION=3.12
+# Pinned by digest (python:3.12-alpine at pin time). Re-pin on bump: bump the
+# version, then docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine.
+ARG PYTHON_DIGEST=@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
 
-FROM python:${PYTHON_VERSION}-alpine AS build
+FROM python:${PYTHON_VERSION}-alpine${PYTHON_DIGEST} AS build
 
-RUN apk --no-cache add curl
-
-ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-
-ADD https://astral.sh/uv/install.sh uv-installer.sh
-RUN sh uv-installer.sh && \
-    rm uv-installer.sh
-
-ENV PATH="/root/.local/bin/:$PATH"
+# uv is installed from PyPI (pinned version), NOT from a downloaded install
+# script — the astral.sh installer is an unpinned remote-execution hole.
+RUN pip --no-cache-dir install uv==0.12.15
 
 WORKDIR /app
 
@@ -19,7 +16,7 @@ COPY ./uv.lock ./uv.lock
 
 RUN uv sync --compile --locked --no-cache --no-install-project --no-default-groups
 
-FROM python:${PYTHON_VERSION}-alpine
+FROM python:${PYTHON_VERSION}-alpine${PYTHON_DIGEST}
 
 WORKDIR /app
 

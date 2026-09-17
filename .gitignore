@@ -39,6 +39,12 @@ volumes/catalog/**
 tests/certs/*.pem
 tests/nginx/https-stac.generated.conf
 
+# E2E WebDAV test data
+tests/e2e-data/
+tests/e2e-catalog/
+tests/e2e-*.bin
+tests/e2e-upload.txt
+
 # lock files
 /yarn.lock
 

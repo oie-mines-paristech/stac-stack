@@ -10,7 +10,7 @@ echo "=============================="
 
 bash scripts/e2e/direct.sh
 echo
-bash scripts/e2e/proxy-https.sh
+bash scripts/e2e/webdav.sh
 
 echo
 echo "=============================="

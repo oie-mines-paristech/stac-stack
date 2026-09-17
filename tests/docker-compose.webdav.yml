@@ -1,0 +1,32 @@
+# E2E overlay: nginx WebDAV test on an isolated /data (no write into volumes/data).
+# Volume lists are replaced wholesale; the nginx bind mounts are re-declared here.
+# Also relax static-api so the webdav E2E doesn't get blocked by an unhealthy
+# stac-generator (the catalog pipeline is not under test here).
+services:
+  static-api:
+    depends_on:
+      stac-generator:
+        condition: service_started
+
+  browser:
+    depends_on:
+      static-api:
+        condition: service_started
+      stac-generator:
+        condition: service_started
+      zarr-viewer:
+        condition: service_completed_successfully
+
+  nginx:
+    environment:
+      WEBDAV_ADMIN: "${WEBDAV_ADMIN:-e2eadmin}"
+      WEBDAV_PASSWORD: "${WEBDAV_PASSWORD:-e2epassword123}"
+      NGINX_UID: "${NGINX_UID:-1000}"
+      NGINX_GID: "${NGINX_GID:-1000}"
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./tests/e2e-data:/data:rw
+      - ./tests/e2e-data:/davroot/data:rw
+      - ./tests/e2e-catalog:/davroot/catalog:ro
+      - zarr-viewer-static:/usr/share/nginx/html/viewer:ro

@@ -27,6 +27,8 @@ RUN npm run build
 
 # Dev: source + node_modules + vite dev server, launched by serve.js when DEV=1.
 FROM build AS dev
+ENV NODE_PATH=/app/node_modules
+RUN npm install --no-save yaml@2
 COPY --from=build /app/config.schema.json /etc/stac/config.schema.json
 COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
 EXPOSE 8081
@@ -34,6 +36,9 @@ ENTRYPOINT ["node", "/usr/local/bin/serve.js"]
 
 FROM node:lts-alpine
 WORKDIR /app
+COPY --from=build /app/package*.json ./
+ENV NODE_PATH=/app/node_modules
+RUN npm install --no-save yaml@2
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/config.schema.json /etc/stac/config.schema.json
 COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js

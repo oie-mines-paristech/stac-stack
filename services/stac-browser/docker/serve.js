@@ -17,14 +17,17 @@ const SCHEMA_PATH = process.env.STAC_SCHEMA_PATH || "/etc/stac/config.schema.jso
 const BRANDING_DIR = process.env.STAC_BRANDING_DIR || "/branding";
 const SERVE_PORT = parseInt(process.env.SERVER_PORT || "8081", 10);
 
-// OIE runtime config extensions, not in the upstream schema. Accepted as SB_*,
-// merged into the schema copy so the SB_* loop below types them correctly.
+// OIE runtime config extensions, not in the upstream schema. Accepted via SB_*
+// or branding/config.yaml, merged into the schema copy so they are typed too.
 const EXTRA_SCHEMA = {
   widgetConfigs: { type: ["object"] },
+  // Helper: collection id(s) for the "En vedette" (Featured) slot on the
+  // landing page. Derived into widgetConfigs when the latter is not set.
+  featuredCollections: { type: ["array"] },
 };
 
-// SB_* consumed directly by serve.js (not written into the runtime config).
-const BRANDING_ENV = new Set(["SB_css", "SB_favicon"]);
+// Keys consumed directly by serve.js (not written into the runtime config).
+const BRANDING_DIRECT = new Set(["css", "favicon"]);
 
 function isDev() {
   return /^(1|true|TRUE|yes|YES)$/.test(process.env.DEV || "");
@@ -36,7 +39,12 @@ function jsonSchemaType(schema, key) {
   return Array.isArray(type) ? type[0] : type;
 }
 
+// Env values arrive as strings; branding/config.* values are already typed.
+// Only coerce strings, pass everything else through.
 function encodeValue(type, value) {
+  if (typeof value !== "string") {
+    return value;
+  }
   switch (type) {
     case "boolean":
       if (["true", "1", "yes", "TRUE"].includes(value)) return true;
@@ -45,12 +53,20 @@ function encodeValue(type, value) {
     case "integer":
     case "number":
       return Number(value);
-    case "array":
+    case "array": {
       try {
-        return JSON.parse(value);
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
       } catch {
-        return value ? value.split(",").map((s) => s.trim()) : [];
+        /* fall through */
       }
+      // YAML-flow style "[a, b]" (unquoted) or comma-separated list
+      return value
+        .replace(/^\[|\]$/g, "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
     case "object":
       try {
         return JSON.parse(value);
@@ -62,7 +78,36 @@ function encodeValue(type, value) {
   }
 }
 
-function generateConfig() {
+// Per-org config sources, in increasing precedence:
+//   defaults < branding/config.(yaml|json) < SB_* environment
+function loadBrandingConfig() {
+  const candidates = [];
+  if (process.env.STAC_BRANDING_CONFIG) {
+    candidates.push(process.env.STAC_BRANDING_CONFIG);
+  }
+  candidates.push(
+    path.join(BRANDING_DIR, "config.yaml"),
+    path.join(BRANDING_DIR, "config.yml"),
+    path.join(BRANDING_DIR, "config.json"),
+  );
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    try {
+      const parsed = file.endsWith(".json") ? JSON.parse(text) : require("yaml").parse(text);
+      if (parsed && typeof parsed === "object") {
+        console.log(`[serve] branding config: ${file}`);
+        return parsed;
+      }
+    } catch (err) {
+      console.error(`[serve] cannot parse ${file}: ${err.message}`);
+    }
+    return {};
+  }
+  return {};
+}
+
+function computeConfig() {
   let schema = { properties: Object.assign({}, EXTRA_SCHEMA) };
   try {
     const raw = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf8"));
@@ -71,39 +116,57 @@ function generateConfig() {
     console.error(`[serve] warning: cannot read schema ${SCHEMA_PATH}: ${err.message}`);
   }
 
-  const overrides = {};
+  const envRaw = {};
   for (const [name, value] of Object.entries(process.env)) {
     const match = /^SB_(.+)$/.exec(name);
-    if (!match || BRANDING_ENV.has(name)) continue;
-    const key = match[1];
+    if (match) envRaw[match[1]] = value;
+  }
+  const raw = Object.assign(loadBrandingConfig(), envRaw); // env wins
+
+  const overrides = {};
+  const branding = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (BRANDING_DIRECT.has(key)) {
+      branding[key] = value;
+      continue;
+    }
     if (!schema.properties[key]) {
-      console.warn(`[serve] unknown SB_ config key: ${key}`);
+      console.warn(`[serve] unknown config key: ${key}`);
       continue;
     }
     overrides[key] = encodeValue(jsonSchemaType(schema, key), value);
   }
 
   const config = Object.assign({ catalogUrl: "/api/" }, overrides);
+  if (config.widgetConfigs === undefined && config.featuredCollections !== undefined) {
+    config.widgetConfigs = {
+      "view-catalog-catalogs-start": [{ id: "Featured", props: { entities: config.featuredCollections } }],
+    };
+  }
+  delete config.featuredCollections;
+  branding.cssList = String(branding.css || "").split(",").map((s) => s.trim()).filter(Boolean);
+  branding.favicon = String(branding.favicon || "").trim();
+  return { config, branding };
+}
+
+function writeConfig(config) {
   fs.mkdirSync(path.dirname(CONFIG_OUTPUT), { recursive: true });
   fs.writeFileSync(CONFIG_OUTPUT, `window.STAC_BROWSER_CONFIG = ${JSON.stringify(config)};\n`);
   console.log(`[serve] wrote ${CONFIG_OUTPUT}`);
-  return config;
 }
 
 // Inject CSS/favicon <link> tags from SB_css / SB_favicon into dist/index.html.
 // Keeps the image generic: each org's look is applied at container start.
-function injectBranding() {
+function injectBranding(branding, catalogTitle) {
   const indexPath = path.join(DIST_DIR, "index.html");
   if (!fs.existsSync(indexPath)) return;
 
-  const cssList = (process.env.SB_css || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const favicon = (process.env.SB_favicon || "").trim();
   const links = [];
-  for (const href of cssList) {
+  for (const href of branding.cssList) {
     links.push(`<link rel="stylesheet" href="${href}">`);
   }
-  if (favicon) {
-    links.push(`<link rel="icon" href="${favicon}">`);
+  if (branding.favicon) {
+    links.push(`<link rel="icon" href="${branding.favicon}">`);
   }
   if (!links.length) return;
 
@@ -111,7 +174,6 @@ function injectBranding() {
   let updated = html.replace(/<\/head>\s*/, links.join("\n    ") + "\n  </head>");
   // Static og:site_name in the built index.html carries the org defaults;
   // rebrand it from the runtime title so social shares don't leak the other org.
-  const catalogTitle = process.env.SB_catalogTitle;
   if (catalogTitle) {
     updated = updated.replace(
       /<meta[^>]*name="og:site_name"[^>]*>/,
@@ -224,8 +286,9 @@ function serveDev() {
   child.on("exit", (code) => process.exit(code || 0));
 }
 
-generateConfig();
-injectBranding();
+const { config, branding } = computeConfig();
+writeConfig(config);
+injectBranding(branding, config.catalogTitle);
 if (isDev()) {
   serveDev();
 } else {

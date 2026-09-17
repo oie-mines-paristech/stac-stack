@@ -28,15 +28,13 @@ services:
       SB_catalogUrl: "/api/"
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: "100"
-      SB_catalogTitle: "OIE - MinesParis PSL - STAC catalog"
-      SB_catalogTitleAfterImage: "STAC Browser"
-      SB_catalogImage: "/branding/logo.svg"
-      SB_favicon: "/branding/favicon.svg"
-      SB_css: "/branding/org.css"
-      SB_footerLinks: "[]"
-      SB_authConfig: "null"
-      SB_transactions: "off"
-      SB_widgetConfigs: '{"view-catalog-catalogs-start":[{"id":"Featured","props":{"entities":["fisheye"]}}]}'
+      # "En vedette" (Featured) block on the landing page: a collection name,
+      # or a list for several, resolved against /api/collections.
+      #   SB_featuredCollections: "fisheye"
+      #   SB_featuredCollections: "[fisheye, other]"
+      # Empty list or unset = block hidden.
+      # The rest of the branding lives in branding/config.yaml (env wins).
+      SB_featuredCollections: "[fisheye]"
     volumes:
       - ./branding:/branding:ro
 

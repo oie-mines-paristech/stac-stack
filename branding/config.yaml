@@ -1,0 +1,37 @@
+# Per-org branding config for stac-browser.
+#
+# Same keys as the SB_* environment variables, but without the prefix. The
+# container merges the sources at start with this precedence:
+#   serve.js defaults < this file < SB_* environment (docker-compose wins)
+#
+# Supported keys: everything in services/stac-browser/config.schema.json
+# (https://github.com/radiantearth/stac-browser/blob/main/config.schema.json)
+# plus the OIE extensions css, favicon, widgetConfigs and featuredCollections.
+
+# Title/tagline shown in the header, <title> and social-share meta tags.
+catalogTitle: OIE - MinesParis PSL - STAC catalog
+# Short label shown next to the logo in the header.
+catalogTitleAfterImage: STAC Browser
+# Logo (under /branding/ so it is served by the browser container).
+catalogImage: /branding/logo.svg
+# Favicon and extra stylesheet, injected into index.html at container start.
+favicon: /branding/favicon.svg
+css: /branding/org.css
+# Footer links as a list of {label, url}. Empty list hides the footer nav.
+footerLinks: []
+# Disable the CDSE OIDC login ("Connexion") and transactional editing.
+authConfig: null
+transactions: off
+
+# Featured ("En vedette") collections on the landing page.
+# Collection IDs are resolved against /api/collections; URLs also work.
+# Remove the line (or use []) to hide the block. It can also be set via the
+# SB_featuredCollections env var (value above wins for this key).
+# featuredCollections: [fisheye]
+
+# Advanced: full widget overrides, see services/stac-browser/widgets.config.js.
+# widgetConfigs:
+#   view-catalog-catalogs-start:
+#     - id: Featured
+#       props:
+#         entities: [fisheye]

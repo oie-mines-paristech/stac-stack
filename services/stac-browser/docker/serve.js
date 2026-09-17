@@ -14,7 +14,17 @@ const ROOT = "/app";
 const DIST_DIR = process.env.STAC_DIST_DIR || path.join(ROOT, "dist");
 const CONFIG_OUTPUT = process.env.STAC_CONFIG_OUTPUT || path.join(DIST_DIR, "runtime-config.js");
 const SCHEMA_PATH = process.env.STAC_SCHEMA_PATH || "/etc/stac/config.schema.json";
+const BRANDING_DIR = process.env.STAC_BRANDING_DIR || "/branding";
 const SERVE_PORT = parseInt(process.env.SERVER_PORT || "8081", 10);
+
+// OIE runtime config extensions, not in the upstream schema. Accepted as SB_*,
+// merged into the schema copy so the SB_* loop below types them correctly.
+const EXTRA_SCHEMA = {
+  widgetConfigs: { type: ["object"] },
+};
+
+// SB_* consumed directly by serve.js (not written into the runtime config).
+const BRANDING_ENV = new Set(["SB_css", "SB_favicon"]);
 
 function isDev() {
   return /^(1|true|TRUE|yes|YES)$/.test(process.env.DEV || "");
@@ -53,9 +63,10 @@ function encodeValue(type, value) {
 }
 
 function generateConfig() {
-  let schema = { properties: {} };
+  let schema = { properties: Object.assign({}, EXTRA_SCHEMA) };
   try {
-    schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf8"));
+    const raw = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf8"));
+    schema.properties = Object.assign({}, EXTRA_SCHEMA, raw.properties);
   } catch (err) {
     console.error(`[serve] warning: cannot read schema ${SCHEMA_PATH}: ${err.message}`);
   }
@@ -63,7 +74,7 @@ function generateConfig() {
   const overrides = {};
   for (const [name, value] of Object.entries(process.env)) {
     const match = /^SB_(.+)$/.exec(name);
-    if (!match || match[1] === "CATALOGURL" && !value) continue;
+    if (!match || BRANDING_ENV.has(name)) continue;
     const key = match[1];
     if (!schema.properties[key]) {
       console.warn(`[serve] unknown SB_ config key: ${key}`);
@@ -77,6 +88,40 @@ function generateConfig() {
   fs.writeFileSync(CONFIG_OUTPUT, `window.STAC_BROWSER_CONFIG = ${JSON.stringify(config)};\n`);
   console.log(`[serve] wrote ${CONFIG_OUTPUT}`);
   return config;
+}
+
+// Inject CSS/favicon <link> tags from SB_css / SB_favicon into dist/index.html.
+// Keeps the image generic: each org's look is applied at container start.
+function injectBranding() {
+  const indexPath = path.join(DIST_DIR, "index.html");
+  if (!fs.existsSync(indexPath)) return;
+
+  const cssList = (process.env.SB_css || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const favicon = (process.env.SB_favicon || "").trim();
+  const links = [];
+  for (const href of cssList) {
+    links.push(`<link rel="stylesheet" href="${href}">`);
+  }
+  if (favicon) {
+    links.push(`<link rel="icon" href="${favicon}">`);
+  }
+  if (!links.length) return;
+
+  const html = fs.readFileSync(indexPath, "utf8");
+  let updated = html.replace(/<\/head>\s*/, links.join("\n    ") + "\n  </head>");
+  // Static og:site_name in the built index.html carries the org defaults;
+  // rebrand it from the runtime title so social shares don't leak the other org.
+  const catalogTitle = process.env.SB_catalogTitle;
+  if (catalogTitle) {
+    updated = updated.replace(
+      /<meta[^>]*name="og:site_name"[^>]*>/,
+      `<meta name="og:site_name" content="${catalogTitle}">`,
+    );
+  }
+  if (updated !== html) {
+    fs.writeFileSync(indexPath, updated);
+    console.log(`[serve] injected branding links: ${links.join(" ")}`);
+  }
 }
 
 const MIME = {
@@ -100,6 +145,21 @@ const MIME = {
 
 function contentType(filePath) {
   return MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+
+// Serve a file from a fixed root with path-traversal protection. 404 on miss.
+function serveFrom(root, reqPath, res) {
+  let rel = path.relative(root, path.join(root, reqPath));
+  if (rel.startsWith("..") || rel.startsWith("/") || rel.includes("\0")) {
+    res.writeHead(404);
+    return res.end();
+  }
+  const filePath = path.join(root, rel);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    return sendFile(res, filePath, true);
+  }
+  res.writeHead(404);
+  return res.end();
 }
 
 function sendFile(res, filePath, allowCache) {
@@ -132,8 +192,13 @@ function serveStatic() {
 
     let filePath = rel ? path.join(DIST_DIR, rel) : null;
 
+    if (urlPath.startsWith("/branding/")) {
+      return serveFrom(BRANDING_DIR, urlPath.replace(/^\/branding/, ""), res);
+    }
+
     if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const allowCache = /\.(js|css|png|jpe?g|svg|gif|webp|woff2?|ttf|wasm)$/.test(filePath);
+      const allowCache = !filePath.endsWith("runtime-config.js")
+        && /\.(js|css|png|jpe?g|svg|gif|webp|woff2?|ttf|wasm)$/.test(filePath);
       return sendFile(res, filePath, allowCache);
     }
 
@@ -160,6 +225,7 @@ function serveDev() {
 }
 
 generateConfig();
+injectBranding();
 if (isDev()) {
   serveDev();
 } else {

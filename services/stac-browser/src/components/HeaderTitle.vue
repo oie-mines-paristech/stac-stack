@@ -21,7 +21,14 @@ export default {
     ...mapGetters(['description', 'root', 'rootLink', 'title']),
     logo() {
       if (this.catalogImage) {
-        return Utils.createLink(this.catalogImage, 'icon', this.catalogTitle || this.rootLink?.title);
+        const link = Utils.createLink(this.catalogImage, 'icon', this.catalogTitle || this.rootLink?.title);
+        if (!link.getAbsoluteUrl() && this.root) {
+          // Relative image paths (e.g. /branding/logo.svg) resolve to null
+          // without a context; attach the root so they resolve against the
+          // deployed origin in any deployment.
+          link._context = this.root;
+        }
+        return link;
       }
       else {
         return Utils.getIcon(this.root);

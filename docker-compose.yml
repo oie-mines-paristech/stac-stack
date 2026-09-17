@@ -28,6 +28,17 @@ services:
       SB_catalogUrl: "/api/"
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: "100"
+      SB_catalogTitle: "OIE - MinesParis PSL - STAC catalog"
+      SB_catalogTitleAfterImage: "STAC Browser"
+      SB_catalogImage: "/branding/logo.svg"
+      SB_favicon: "/branding/favicon.svg"
+      SB_css: "/branding/org.css"
+      SB_footerLinks: "[]"
+      SB_authConfig: "null"
+      SB_transactions: "off"
+      SB_widgetConfigs: '{"view-catalog-catalogs-start":[{"id":"Featured","props":{"entities":["fisheye"]}}]}'
+    volumes:
+      - ./branding:/branding:ro
 
   # ⚠ SUPPLY CHAIN: nginx is built FROM the third-party image hakwerk/nginx-dav
   # (official nginx + statically-compiled arut/nginx-dav-ext-module), pinned by

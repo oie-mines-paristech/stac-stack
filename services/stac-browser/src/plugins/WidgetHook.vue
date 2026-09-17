@@ -8,6 +8,14 @@
 import { defineAsyncComponent } from 'vue';
 import widgetConfig from '../../widgets.config';
 
+// OIE runtime override: orgs can (re)define widgets per slot via
+// window.STAC_BROWSER_CONFIG.widgetConfigs (injected from SB_widgetConfigs),
+// so the homepage content is set at container start, not at build time.
+const browserConfig = (typeof window !== 'undefined' && window.STAC_BROWSER_CONFIG) || {};
+const widgetConfig_ = browserConfig.widgetConfigs
+  ? Object.assign({}, widgetConfig, browserConfig.widgetConfigs)
+  : widgetConfig;
+
 export default {
   name: 'WidgetHook',
   components: {},
@@ -43,7 +51,7 @@ export default {
     }
   },
   created() {
-    const widgets = widgetConfig[this.id];
+    const widgets = widgetConfig_[this.id];
     if (!Array.isArray(widgets)) {
       return;
     }

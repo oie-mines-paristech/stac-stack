@@ -1,0 +1,12 @@
+/* OIE branding overlay for stac-browser.
+   Injected at container start by docker/serve.js (<link rel="stylesheet">),
+   loaded from SB_css env. Overrides bootstrap/stac-browser CSS variables. */
+:root {
+  --bs-primary: #1a5fb4;
+  --bs-primary-rgb: 26, 95, 180;
+  --bs-link-color: #1a5fb4;
+  --bs-link-color-rgb: 26, 95, 180;
+  --bs-link-hover-color: #124a88;
+  --bs-link-hover-color-rgb: 18, 74, 136;
+  --bs-focus-ring-color: rgba(26, 95, 180, 0.25);
+}

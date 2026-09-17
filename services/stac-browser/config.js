@@ -56,7 +56,9 @@ export default {
   socialSharing: ['email', 'bsky', 'mastodon', 'x'],
   preprocessSTAC: (stac, state, getters) => {
     if (getters.toBrowserPath(stac.getAbsoluteUrl()) === '/') {
-      stac.title = TITLE;
+      // Title of the landing root follows the runtime catalogTitle so orgs
+      // can rebrand via SB_catalogTitle without rebuilding.
+      stac.title = state.catalogTitle;
     }
     return stac;
   },

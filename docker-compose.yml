@@ -50,8 +50,8 @@ services:
       - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
       - ./volumes/data:/data:rw
-      - ./volumes/data:/davroot/data:rw
-      - ./volumes/catalog:/davroot/catalog:ro
+      - ./volumes/data:/dav/data:rw
+      - ./volumes/catalog:/dav/catalog:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro
 
   zarr-viewer:

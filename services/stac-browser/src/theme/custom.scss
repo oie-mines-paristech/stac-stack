@@ -2,43 +2,16 @@
   > header {
   
     > .site {
-      background-color: #005e9e;
-
-      .logo {
-        height: 4rem;
-        max-height: 4rem !important;
-      }
-
       > .col-md-12 {
         > .title {
-          color: #fff;
-
           a {
             color: #fff;
           }
 
           @media screen and (max-width: 1280px) {
-            .text {
+            span {
               display: none;
             }
-          }
-        }
-
-        > .actions > .btn-group {
-          > .btn-primary,
-          > .b-dropdown > button {
-            &:hover,
-            &:focus,
-            &:active {
-              background-color: #fff;
-              border-color: #fff;
-              color: map-get($theme-colors, "primary");
-            }
-          }
-          > .b-dropdown.show > button {
-            background-color: #fff;
-            border-color: #fff;
-            color: map-get($theme-colors, "primary");
           }
         }
       }

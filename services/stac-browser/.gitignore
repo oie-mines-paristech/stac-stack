@@ -2,15 +2,14 @@
 .cache/
 node_modules
 /dist
-test-results/
-playwright-report/
-coverage/
 
 
 # local env files
 .env
-.env.local
-.env.*.local
+.env.*
+
+# configuration overrides
+config.local.*
 
 # lock files
 /yarn.lock
@@ -29,3 +28,12 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# integration test outputs
+/tests/integration/generated/

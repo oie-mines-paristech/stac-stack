@@ -1,30 +1,39 @@
-# Pinned by digest (node:lts-alpine = v24 at pin time). Re-pin on bump: bump the
-# tag, then docker inspect --format '{{index .RepoDigests 0}}' node:lts-alpine.
-FROM node:lts-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS build
+FROM node:lts-alpine AS build-step
+ARG DYNAMIC_CONFIG=true
+ARG historyMode="history"
+ARG SB_CONFIG=""
+ENV DYNAMIC_CONFIG="${DYNAMIC_CONFIG}"
+ENV SB_historyMode="${historyMode}"
+ENV SB_CONFIG="${SB_CONFIG}"
 
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+RUN \[ "${DYNAMIC_CONFIG}" == "true" \] && sed -i 's/<!--RC//;s/RC-->//' index.html
 RUN npm run build
 
-# Full build (node_modules + src) for dev-mode serving via vue-cli-service.
-FROM build AS dev
 
-COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
-COPY config.schema.json /etc/stac/config.schema.json
+FROM nginxinc/nginx-unprivileged:1-alpine
+ARG pathPrefix="/"
 
-EXPOSE 8081
+USER root
+RUN apk add --no-cache jq pcre-tools
 
-ENTRYPOINT ["node", "/usr/local/bin/serve.js"]
+COPY ./config.schema.json /etc/nginx/conf.d/config.schema.json
+COPY --from=build-step /app/dist /usr/share/nginx/html
+COPY --from=build-step /app/docker/default.conf /etc/nginx/conf.d/default.conf.template
+ADD docker/docker-entrypoint.sh /docker-entrypoint.d/40-stac-browser-entrypoint.sh
 
-FROM node:lts-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81
+# Remove default.conf so a skipped entrypoint fails loudly instead of serving nginx's welcome page.
+RUN rm -f /etc/nginx/conf.d/default.conf && \
+    chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod +x /docker-entrypoint.d/40-stac-browser-entrypoint.sh
 
-WORKDIR /app
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
-COPY config.schema.json /etc/stac/config.schema.json
+ENV SB_pathPrefix="${pathPrefix}"
 
-EXPOSE 8081
+EXPOSE 8080
 
-ENTRYPOINT ["node", "/usr/local/bin/serve.js"]
+STOPSIGNAL SIGTERM
+
+USER nginx

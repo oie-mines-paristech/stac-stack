@@ -1,60 +1,31 @@
 <template>
-  <component :is="component">
-    <b-card-title><span v-html="fileFormat" /></b-card-title>
-    <HrefActions
-      isAsset
-      :data="asset"
-      :shown="shown"
-      :auth="auth"
-      :preview-mode="previewMode"
-      @show="show"
-      @expand="previewExpanded = true"
-    />
-    <b-card-text class="mt-4" v-if="asset.description">
+  <div class="asset-alternative">
+    <h4 class="mb-4" v-html="fileFormat" />
+    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth" />
+    <div class="mt-4" v-if="asset.description">
       <Description :description="asset.description" compact />
-    </b-card-text>
-    <Metadata class="mt-4" :data="resolvedAsset" :context="context" :ignoreFields="ignore" title="" type="Asset" />
-    <HtmlPreviewPanel
-      v-if="isHtmlPreview"
-      :asset="asset"
-      :auth="auth"
-      :expanded.sync="previewExpanded"
-      class="mt-4"
-    />
-    <NotebookPreviewPanel
-      v-if="isNotebookPreview"
-      :asset="asset"
-      :auth="auth"
-      :expanded.sync="previewExpanded"
-      class="mt-4"
-    />
-  </component>
+    </div>
+    <MetadataGroups class="mt-4" :data="resolvedAsset" :ignoreFields="ignoredMetadataFields" title="" type="Asset" />
+  </div>
 </template>
 
 <script>
+import { defineAsyncComponent } from 'vue';
 import { formatMediaType } from '@radiantearth/stac-fields/formatters';
 import Description from './Description.vue';
 import HrefActions from './HrefActions.vue';
 import StacFieldsMixin from './StacFieldsMixin';
 import AuthUtils from './auth/utils';
-import Utils from '../utils';
+import { isObject, size } from 'stac-js/src/utils.js';
 import { Asset, STACReference } from 'stac-js';
-import HtmlPreviewPanel from '../oie/HtmlPreviewPanel.vue';
-import NotebookPreviewPanel from '../oie/NotebookPreviewPanel.vue';
-import {
-  getPreviewMode,
-  isHtmlPreviewAsset,
-  isNotebookPreviewAsset
-} from '../oie/previewAssets.js';
+import { getIgnoredFields } from '../ignored-metadata.js';
 
 export default {
   name: 'AssetAlternative',
   components: {
     Description,
     HrefActions,
-    HtmlPreviewPanel,
-    NotebookPreviewPanel,
-    Metadata: () => import('./Metadata.vue')
+    MetadataGroups: defineAsyncComponent(() => import('./MetadataGroups.vue'))
   },
   mixins: [
     StacFieldsMixin({ formatMediaType })
@@ -64,57 +35,23 @@ export default {
       type: Object,
       required: true
     },
-    hasAlternatives: {
-      type: Boolean,
-      default: false
-    },
     shown: {
       type: Boolean,
       default: false
     }
   },
-  data() {
-    return {
-      previewExpanded: false,
-      ignore: [
-        // Asset fields that are handled directly
-        'href',
-        'title',
-        'description',
-        'type',
-        'roles',
-        'expand',
-        'preview:height',
-        // Don't show these complex lists of coordinates: https://github.com/radiantearth/stac-browser/issues/141
-        'proj:bbox',
-        'proj:geometry',
-        // Don't show very specific options that can't be rendered nicely
-        'table:storage_options',
-        'xarray:open_kwargs',
-        'xarray:storage_options',
-        // Special handling for auth and storage
-        'auth:refs',
-        'storage:refs',
-        // Alternative Assets are displayed separately
-        'alternate',
-        'alternate:name',
-      ]
-    };
-  },
+  emits: ['show'],
   computed: {
-    context() {
-      return this.asset.getContext();
+    ignoredMetadataFields() {
+      return getIgnoredFields(this.asset);
     },
     resolvedAsset() {
       if (Array.isArray(this.asset['storage:refs'])) {
-        const asset = new Asset(this.asset, this.asset.getKey(), this.context);
+        const asset = new Asset(this.asset);
         asset['storage:schemes'] = this.resolveStorage(this.asset);
         return asset;
       }
       return this.asset;
-    },
-    component() {
-      return this.hasAlternatives ? 'div' : 'b-card-body';
     },
     fileFormat() {
       if (typeof this.asset.type === "string" && this.asset.type.length > 0) {
@@ -124,15 +61,6 @@ export default {
     },
     auth() {
       return AuthUtils.resolveAuth(this.asset);
-    },
-    isHtmlPreview() {
-      return isHtmlPreviewAsset(this.asset);
-    },
-    isNotebookPreview() {
-      return isNotebookPreviewAsset(this.asset);
-    },
-    previewMode() {
-      return getPreviewMode(this.asset);
     }
   },
   methods: {
@@ -140,10 +68,10 @@ export default {
       if (obj instanceof STACReference) {
         const refs = obj.getMetadata('storage:refs');
         const schemes = obj.getMetadata('storage:schemes');
-        if (Utils.size(refs) > 0 && Utils.size(schemes) > 0) {
+        if (size(refs) > 0 && size(schemes) > 0) {
           return refs
             .map(ref => schemes[ref])
-            .filter(ref => Utils.isObject(ref));
+            .filter(ref => isObject(ref));
         }
       }
       return [];
@@ -154,3 +82,9 @@ export default {
   }
 };
 </script>
+
+<style lang="scss" scoped>
+.asset-alternative {
+  padding: 1rem;
+}
+</style>

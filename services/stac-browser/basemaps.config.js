@@ -1,5 +1,4 @@
-import { Collection } from './src/models/stac';
-import { STAC } from 'stac-js'
+import { Collection, STAC } from 'stac-js';
 
 // For documentation see https://github.com/radiantearth/stac-browser/blob/main/docs/basemaps.md
 
@@ -19,10 +18,18 @@ const BASEMAPS = {
  * 
  * @param {Object} stac The STAC object
  * @param {Object} i18n Vue I18N object
+ * @param {String} store Vuex store instance
  * @returns {Array.<BasemapOptions>}
  */
-export default function configureBasemap(stac, i18n) {
+export default function configureBasemap(stac, i18n, store) {
   let targets = ['earth'];
+
+  if (store.state.colorMode === 'dark') {
+    targets = targets.map(t => {
+      const darkVariant = `${t}-dark`;
+      return Array.isArray(BASEMAPS[darkVariant]) ? darkVariant : t;
+    });
+  }
 
   let layers = [];
   for (const target of targets) {

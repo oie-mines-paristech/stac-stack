@@ -1,76 +1,89 @@
-const TITLE = "OIE - MinesParis PSL - STAC catalog";
-module.exports = {
-    catalogUrl: "/api/",
-    catalogTitle: TITLE,
-    catalogImage: "/img/logo.png",
-    allowExternalAccess: true,
-    allowedDomains: [],
-    detectLocaleFromBrowser: true,
-    storeLocale: true,
-    locale: "en",
-    fallbackLocale: "en",
-    supportedLocales: [
-        "de",
-        "es",
-        "en",
-        "fr",
-        "it",
-        "ro",
-        "pt",
-        "pl"
-    ],
-    apiCatalogPriority: null,
-    useTileLayerAsFallback: false,
-    displayGeoTiffByDefault: false,
-    displayPreview: true,
-    displayOverview: true,
-    buildTileUrlTemplate: null,
-    getMapSourceOptions: null,
-    pathPrefix: "/",
-    historyMode: "history",
-    cardViewMode: "cards",
-    cardViewSort: "asc",
-    showKeywordsInItemCards: false,
-    showKeywordsInCatalogCards: false,
-    showThumbnailsAsAssets: false,
-    searchResultsPerPage: null,
-    itemsPerPage: null,
-    collectionsPerPage: null,
-    maxEntriesPerPage: 1000,
-    defaultThumbnailSize: null,
-    crossOriginMedia: null,
-    requestHeaders: {},
-    requestQueryParameters: {},
-    socialSharing: ['email', 'bsky', 'mastodon', 'x'],
-    preprocessSTAC: stac => {
-        if (stac.getBrowserPath() === '/') {
-            stac.title = TITLE;
-        }
-        return stac;
-    },
-    authConfig: {
-        // type: "openIdConnect",
-        // openIdConnectUrl:"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
-    },
-    crs: {},
-    footerLinks: null,
-    assetIcons: {
-        default: {
-            icon: 'BIconFileEarmark',
-            color: '#6c757d'
-        },
-        byMime: {
-            'application/x-ipynb+json': {
-                name: 'BIconBook',
-                color: '#f37726',
-                title: 'Jupyter Notebook'
-            }
-        },
-        byRole: {
-            preview: {
-                name: 'BIconEye',
-                color: '#198754'
-            }
-        }
+const TITLE = "Copernicus Data Space Ecosystem (CDSE) - STAC API";
+export default {
+  catalogUrl: "https://stac.dataspace.copernicus.eu/v1/",
+  catalogTitle: TITLE,
+  catalogTitleAfterImage: "STAC API",
+  catalogImage: "https://dataspace.copernicus.eu/themes/custom/copernicus/logo.svg",
+  allowExternalAccess: false, // Must be true if catalogUrl is not given
+  allowedDomains: [
+    "copernicus.eu"
+  ],
+  enforcedColorMode: "light",
+  detectLocaleFromBrowser: true,
+  storeLocale: true,
+  locale: "en",
+  fallbackLocale: "en",
+  supportedLocales: [
+    "de",
+    "es",
+    "en",
+    "fr",
+    "it",
+    "ro",
+    "ru",
+    "pt",
+    "pl",
+    "sv"
+  ],
+  apiCatalogPriority: null,
+  useTileLayerAsFallback: false,
+  displayGeoTiffByDefault: false,
+  displayPreview: true,
+  displayOverview: true,
+  displayOverviewsForChildren: false,
+  maxDisplayPixels: null,
+  buildTileUrlTemplate: null,
+  getMapSourceOptions: null,
+  getStacLayerOptions: null,
+  pathPrefix: "/",
+  historyMode: "history",
+  cardViewMode: "cards",
+  showFavorites: true,
+  defaultCollectionSort: null,
+  defaultItemSort: null,
+  showKeywordsInItemCards: false,
+  showKeywordsInCatalogCards: false,
+  preferredAssets: true,
+  showThumbnailsAsAssets: false,
+  searchResultsPerPage: null,
+  itemsPerPage: null,
+  collectionsPerPage: null,
+  maxEntriesPerPage: 1000,
+  defaultThumbnailSize: null,
+  crossOriginMedia: null,
+  requestHeaders: {},
+  requestQueryParameters: {},
+  socialSharing: ['email', 'bsky', 'mastodon', 'x'],
+  preprocessSTAC: (stac, state, getters) => {
+    if (getters.toBrowserPath(stac.getAbsoluteUrl()) === '/') {
+      stac.title = TITLE;
     }
+    return stac;
+  },
+  authConfig: {
+    type: "openIdConnect",
+    openIdConnectUrl:"https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
+  },
+  transactions: 'auto',
+  transactionsRequireLogin: true,
+  transactionsRequirePreflight: true,
+  crs: {},
+  footerLinks: [
+    {
+      label: 'Contact',
+      url: 'https://dataspace.copernicus.eu/about#contact-form'
+    },
+    {
+      label: 'Terms and conditions',
+      url: 'https://dataspace.copernicus.eu/terms-and-conditions'
+    },
+    {
+      label: 'Cookies policy',
+      url: 'https://dataspace.copernicus.eu/cookie-policy'
+    },
+    {
+      label: 'Privacy policy',
+      url: 'https://dataspace.copernicus.eu/privacy-policy'
+    }
+  ]
 };

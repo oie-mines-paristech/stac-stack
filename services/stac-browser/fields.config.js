@@ -1,5 +1,10 @@
 import { Registry } from '@radiantearth/stac-fields';
 
+// For details, please consult
+// https://github.com/radiantearth/stac-browser/blob/main/docs/metadata.md
+
+// ADD ADDITIONAL FIELDS AND EXTENSIONS HERE
+
 // Please consult https://github.com/radiantearth/stac-browser/blob/main/README.md#additional-metadata-fields for details.
 
 Registry.addExtension('eopf', 'ESA EO Processing Framework');
@@ -98,3 +103,16 @@ Registry.addMetadataField('statistics', {
     }
   }
 });
+
+/**
+ * Function that can be used to change the ignored fields in the metadata rendering.
+ * 
+ * @type {function|null}
+ * @param {STACObject|Object} object The entity for which the metadata is rendered.
+ * @param {string[]} fields The fields ignored by default.
+ * @param {string} type The type of the entity (e.g. `CatalogLike`, `Item`, `Asset`, `Link`, `Provider`).
+ * @returns {string[]} The fields to ignore in the metadata rendering.
+ */
+const ignoreMetadata = null;
+
+export { ignoreMetadata };

@@ -83,6 +83,9 @@ services:
       catalog_href: file:///catalog/catalog.json
       root_path: /api/
       app_port: "80"
+      # Root catalog title/description are read from catalog.json at runtime
+      # (chain: volumes/data/metadata.yml -> stac-generator -> catalog.json ->
+      # /api/ landing -> stac-browser). No hardcoded values here.
       app_host: "0.0.0.0"
     volumes:
       - ./volumes/catalog:/catalog:ro

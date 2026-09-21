@@ -8,12 +8,14 @@
 # (https://github.com/radiantearth/stac-browser/blob/main/config.schema.json)
 # plus the OIE extensions css, favicon, widgetConfigs and featuredCollections.
 
-# Title/tagline shown in the header, <title> and social-share meta tags.
+# Fallback name for the root catalog (used for <title>/share links when the
+# root catalog JSON has no title). The landing title and description come from
+# the root catalog metadata (STAC_FASTAPI_TITLE/_DESCRIPTION in docker-compose).
 catalogTitle: OIE - MinesParis PSL - STAC catalog
 # Short label shown next to the logo in the header.
-catalogTitleAfterImage: STAC Browser
+catalogTitleAfterImage:
 # Logo (under /branding/ so it is served by the browser container).
-catalogImage: /branding/logo.svg
+catalogImage: /branding/logo-oie.png
 # Favicon and extra stylesheet, injected into index.html at container start.
 favicon: /branding/favicon.svg
 css: /branding/org.css

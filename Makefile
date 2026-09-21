@@ -37,7 +37,6 @@ DEPLOY_DEST := $(DEPLOY_HOST):$(DEPLOY_PATH)/
 submodules:
 	@test -f services/zarr-viewer/package.json || (echo "Run: git submodule update --init --recursive" && exit 1)
 	@test -f services/stac-generator/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
-
 build: submodules
 	$(COMPOSE) down
 	$(COMPOSE) build

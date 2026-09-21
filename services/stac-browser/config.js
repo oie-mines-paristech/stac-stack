@@ -55,9 +55,9 @@ export default {
   requestQueryParameters: {},
   socialSharing: ['email', 'bsky', 'mastodon', 'x'],
   preprocessSTAC: (stac, state, getters) => {
-    if (getters.toBrowserPath(stac.getAbsoluteUrl()) === '/') {
-      // Title of the landing root follows the runtime catalogTitle so orgs
-      // can rebrand via SB_catalogTitle without rebuilding.
+    if (getters.toBrowserPath(stac.getAbsoluteUrl()) === '/' && !stac.getMetadata('title')) {
+      // Root title comes from the root catalog JSON (GET /api/) when present;
+      // fall back to the runtime catalogTitle (e.g. SB_catalogTitle) otherwise.
       stac.title = state.catalogTitle;
     }
     return stac;

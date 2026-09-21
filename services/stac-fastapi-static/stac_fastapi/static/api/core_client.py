@@ -137,6 +137,29 @@ def resolve(
     return object
 
 
+def _root_catalog_metadata(settings: Settings) -> Dict[str, str]:
+    """Read title/description from the static root catalog.
+
+    The landing page mirrors the catalog the generator produced from
+    `metadata.yml`, so the browser UI follows the chain
+    `metadata.yml -> catalog.json -> /api/`. Falls back to the Settings
+    stubs when the file is unavailable or has no title/description.
+    """
+    href = getattr(settings, "catalog_href", "")
+    if not isinstance(href, str) or not href.startswith("file://"):
+        return {}
+    try:
+        with open(file_uri_to_file_path(href), "rb") as fh:
+            catalog = orjson.loads(fh.read())
+    except Exception:
+        return {}
+    return {
+        key: catalog[key]
+        for key in ("title", "description")
+        if isinstance(catalog.get(key), str) and catalog.get(key)
+    }
+
+
 class CoreClient(BaseCoreClient):
 
     def landing_page(self, request: Request, **kwargs):
@@ -177,6 +200,10 @@ class CoreClient(BaseCoreClient):
                 "href": str(request.url_for("swagger_ui_html")),
             }
         ])
+
+        # Title/description come from the root catalog (metadata.yml), not from
+        # hardcoded API stubs, so the browse UI mirrors the catalog metadata.
+        landing_page.update(_root_catalog_metadata(settings))
 
         # Collections are exposed via the standard `data` link (/collections).
         # Do not also emit `child` links here: stac-browser loads both sources and

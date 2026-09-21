@@ -10,3 +10,11 @@
   --bs-link-hover-color-rgb: 18, 74, 136;
   --bs-focus-ring-color: rgba(26, 95, 180, 0.25);
 }
+
+.title .logo {
+  height: 7em !important;
+}
+
+.header-title span {
+  display:none !important;
+}

@@ -2,9 +2,10 @@
 "use strict";
 
 // OIE runtime for stac-browser v5 (stands in for the upstream nginx image).
-// Generates dist/runtime-config.js from SB_* env at container start and
-// serves the built SPA (with history-mode fallback). Branding and catalog
-// URL are injected at runtime, so the same image serves any org.
+// Generates runtime-config.js from SB_* env at container start and serves the
+// built SPA (with history-mode fallback). Branding and catalog URL are injected
+// at runtime, so the same image serves any org. Prod targets dist/, dev (vite)
+// targets public/ + the project-root index.html — see CONFIG_OUTPUT/INDEX_HTML.
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -12,10 +13,20 @@ const { spawn } = require("child_process");
 
 const ROOT = "/app";
 const DIST_DIR = process.env.STAC_DIST_DIR || path.join(ROOT, "dist");
-const CONFIG_OUTPUT = process.env.STAC_CONFIG_OUTPUT || path.join(DIST_DIR, "runtime-config.js");
 const SCHEMA_PATH = process.env.STAC_SCHEMA_PATH || "/etc/stac/config.schema.json";
 const BRANDING_DIR = process.env.STAC_BRANDING_DIR || "/branding";
 const SERVE_PORT = parseInt(process.env.SERVER_PORT || "8081", 10);
+
+// In production the generated config/branding land in dist/ (the built SPA that
+// this server serves). In dev the vite dev server serves the project root, so
+// the same content must be injected into ROOT/public/ and ROOT/index.html — the
+// dist copies would silently never be requested and the SPA would fall back to
+// the build-time defaults (catalogUrl = CDSE).
+const DEV = isDev();
+const CONFIG_OUTPUT = process.env.STAC_CONFIG_OUTPUT || (DEV
+  ? path.join(ROOT, "public", "runtime-config.js")
+  : path.join(DIST_DIR, "runtime-config.js"));
+const INDEX_HTML = process.env.STAC_INDEX_HTML || ((DEV ? ROOT : DIST_DIR) + "/index.html");
 
 // OIE runtime config extensions, not in the upstream schema. Accepted via SB_*
 // or branding/config.yaml, merged into the schema copy so they are typed too.
@@ -24,6 +35,10 @@ const EXTRA_SCHEMA = {
   // Helper: collection id(s) for the "En vedette" (Featured) slot on the
   // landing page. Derived into widgetConfigs when the latter is not set.
   featuredCollections: { type: ["array"] },
+  // Custom asset viewers: iframe/preview blocks added to asset browsing.
+  // List of {id, title, icon, match: {type, roles, key}, url, mode, height},
+  // see branding/config.yaml. Read by src/oie/assetViewers.js.
+  assetViewers: { type: ["array"] },
 };
 
 // Keys consumed directly by serve.js (not written into the runtime config).
@@ -144,9 +159,38 @@ function computeConfig() {
     };
   }
   delete config.featuredCollections;
+  resolveAssetViewerEnv(config);
   branding.cssList = String(branding.css || "").split(",").map((s) => s.trim()).filter(Boolean);
   branding.favicon = String(branding.favicon || "").trim();
   return { config, branding };
+}
+
+// In assetViewers query dicts, uppercase values are ENV var names (client has
+// no access to the server env). Resolve them here at container start and drop
+// the query param when the variable is unset/empty. Lowercase values (href,
+// asset attribute names) are resolved at runtime on each asset.
+function resolveAssetViewerEnv(config) {
+  const viewers = config.assetViewers;
+  if (!Array.isArray(viewers)) {
+    return;
+  }
+  for (const viewer of viewers) {
+    const query = viewer && viewer.query && typeof viewer.query === "object" ? viewer.query : null;
+    if (!query) {
+      continue;
+    }
+    for (const [name, spec] of Object.entries(query)) {
+      if (typeof spec !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(spec)) {
+        continue;
+      }
+      const value = process.env[spec];
+      if (value !== "" && value != null) {
+        query[name] = value;
+      } else {
+        delete query[name];
+      }
+    }
+  }
 }
 
 function writeConfig(config) {
@@ -158,7 +202,7 @@ function writeConfig(config) {
 // Inject CSS/favicon <link> tags from SB_css / SB_favicon into dist/index.html.
 // Keeps the image generic: each org's look is applied at container start.
 function injectBranding(branding, catalogTitle) {
-  const indexPath = path.join(DIST_DIR, "index.html");
+  const indexPath = INDEX_HTML;
   if (!fs.existsSync(indexPath)) return;
 
   const links = [];

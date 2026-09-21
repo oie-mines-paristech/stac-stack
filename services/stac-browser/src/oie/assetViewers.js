@@ -1,0 +1,127 @@
+// OIE: external config-driven asset viewers, injected at runtime via
+// window.STAC_BROWSER_CONFIG.assetViewers (branding/config.yaml or
+// SB_assetViewers). Kept out of the upstream components on purpose.
+
+const VIEWER_DEFAULTS = {
+  mode: 'inplace',
+  url: '/viewer/',
+  height: 480,
+  expand: false,
+  allowFullscreen: true,
+};
+
+export function getViewerConfigs() {
+  const browserConfig = (typeof window !== 'undefined' && window.STAC_BROWSER_CONFIG) || {};
+  const config = browserConfig.assetViewers;
+  if (!Array.isArray(config)) {
+    return [];
+  }
+  return config
+    .filter(viewer => viewer && typeof viewer === 'object')
+    .map(viewer => Object.assign({}, VIEWER_DEFAULTS, viewer));
+}
+
+function normalizeMediaType(type) {
+  if (typeof type !== 'string') {
+    return null;
+  }
+  return type.toLowerCase().split(';')[0].trim();
+}
+
+export function matchesViewer(viewer, asset) {
+  const match = viewer.match || {};
+  if (match.type !== undefined && match.type !== null) {
+    if (normalizeMediaType(asset.type) !== normalizeMediaType(String(match.type))) {
+      return false;
+    }
+  }
+  if (Array.isArray(match.roles)) {
+    const roles = Array.isArray(asset.roles) ? asset.roles : [];
+    for (const role of match.roles) {
+      if (!roles.includes(role)) {
+        return false;
+      }
+    }
+  }
+  if (match.key !== undefined && match.key !== null && asset.getKey() !== match.key) {
+    return false;
+  }
+  return true;
+}
+
+export function getViewersForAsset(asset, mode) {
+  return getViewerConfigs().filter(viewer => {
+    if (mode && viewer.mode !== mode) {
+      return false;
+    }
+    return matchesViewer(viewer, asset);
+  });
+}
+
+// Encode a substituted token value without escaping slashes, so relative
+// path-only hrefs (e.g. /data/foo.zarr) stay readable while ?, &, #, spaces
+// are still safe in a query-string context.
+function encodePathSafe(value) {
+  return encodeURIComponent(String(value)).replace(/%2F/gi, '/');
+}
+
+// Resolve a query parameter value spec against the runtime asset:
+//   "href"            → the asset's (projected) URL
+//   "attr.path"       → a (possibly dotted) attribute of the asset
+//   anything else     → used verbatim (already resolved by serve.js from ENV)
+// Uppercase specs are ENV var names and are resolved at container start by
+// serve.js — the client never sees them. Returns '' when nothing matches so
+// the caller can drop the parameter.
+function resolveQueryValue(spec, asset, href) {
+  if (typeof spec === 'string') {
+    if (spec === 'href' || spec === 'url') {
+      return href;
+    }
+    let obj = asset;
+    for (const part of spec.split('.')) {
+      if (obj === undefined || obj === null) {
+        return '';
+      }
+      obj = obj[part];
+    }
+    if (obj === undefined || obj === null) {
+      return '';
+    }
+    if (typeof obj === 'object') {
+      return JSON.stringify(obj);
+    }
+    return String(obj);
+  }
+  return spec === undefined || spec === null ? '' : String(spec);
+}
+
+export function buildViewerUrl(viewer, asset, projectUrl = null) {
+  const rawUrl = typeof asset.getAbsoluteUrl === 'function' ? asset.getAbsoluteUrl() : asset.href;
+  const href = projectUrl ? projectUrl(rawUrl) : rawUrl;
+  const query = viewer.query && typeof viewer.query === 'object' ? viewer.query : {};
+
+  const params = [];
+  for (const [name, spec] of Object.entries(query)) {
+    const value = resolveQueryValue(spec, asset, href);
+    if (value === '') {
+      continue; // Not found at runtime → drop the query param.
+    }
+    params.push(`${encodeURIComponent(name)}=${encodePathSafe(value)}`);
+  }
+
+  let url = String(viewer.url || '');
+  if (params.length > 0) {
+    url += (url.includes('?') ? '&' : '?') + params.join('&');
+  }
+  return url;
+}
+
+export function isImageIcon(icon) {
+  return typeof icon === 'string'
+    && (/^https?:\/\//.test(icon) || icon.startsWith('/') || icon.startsWith('./'));
+}
+
+export function viewerHeight(viewer) {
+  const parsed = parseInt(viewer.height, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : VIEWER_DEFAULTS.height;
+}

@@ -29,6 +29,9 @@ services:
       - ./services/stac-browser/fields.config.js:/app/fields.config.js
       - ./services/stac-browser/assetActions.config.js:/app/assetActions.config.js
       - ./services/stac-browser/linkActions.config.js:/app/linkActions.config.js
+      # Dev only: vite's publicDir serves /app/public, so expose the branding
+      # assets (/branding/*) through it. In prod serve.js statics /branding/.
+      - ./branding:/app/public/branding:ro
 
   zarr-viewer:
     environment:

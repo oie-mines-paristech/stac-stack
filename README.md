@@ -94,6 +94,41 @@ domaines autorisés, etc. Exemples :
 Pas de rebuild nécessaire : les options runtime écrase le build. Les couleurs nécessitent un
 fichier CSS monté (thème), non couvert par les ENV.
 
+### Visualisation d'assets custom (`assetViewers`)
+
+Le browser sait injecter des blocs de prévisualisation **iframe** (viewer Zarr, notebooks, …)
+pour les assets qui correspondent à un type MIME / rôle, sans toucher au code upstream. La
+liste des viewers est fournie par la config runtime (**`branding/config.yaml`**, clé
+`assetViewers`, ou `SB_assetViewers` en JSON) :
+
+```yaml
+assetViewers:
+  # Viewer Zarr embarqué (servi par nginx sur /viewer/).
+  - id: zarr
+    title: "Zarr viewer"
+    icon: "▦"                      # texte/emoji, ou URL (img) si commence par / ou http
+    match:
+      type: "application/vnd.zarr" # type MIME (paramètres ignorés)
+      roles: [data]                # rôles requis (tous)
+      # key: "data"                # clé d'asset exacte (optionnel)
+    url: "/viewer/"                # BASE de l'URL viewer (sans query params)
+    query:
+      url: href                    # valeur = "href" (URL asset), variable ENV
+                                   #   (majuscules, résolue au démarrage), ou
+                                   #   attribut d'asset (e.g. viewer:default_var)
+                                   #   — paramètre omis si valeur vide
+    mode: append                   # append = bloc dédié, inplace = dans le bloc de l'asset
+    height: 480                    # hauteur iframe (px)
+    expand: true                   # bloc ouvert par défaut (append) ; défaut false
+```
+
+Chaque entrée rend un bloc pour tout asset qui matche le `match`. Le mode `append` crée un
+nouvel accordéon (titre + icône, contrôlé par `expand`) ; `inplace` insère l'iframe à
+l'intérieur du bloc normal de l'asset. Un bloc est toujours rendu séparément par asset
+correspondant. Sous chaque iframe, deux actions (même look que les actions d'assets classiques) :
+passer en « full-tab » (l'iframe prend tout le viewport, bouton flottant pour sortir) et ouvrir
+le viewer dans un nouvel onglet.
+
 ### Mode développement
 
 Pour travailler sur **stac-generator**, **zarr-viewer** ou **stac-browser** sans rebuild d'image à chaque changement de code :

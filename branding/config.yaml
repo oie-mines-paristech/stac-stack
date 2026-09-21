@@ -6,7 +6,8 @@
 #
 # Supported keys: everything in services/stac-browser/config.schema.json
 # (https://github.com/radiantearth/stac-browser/blob/main/config.schema.json)
-# plus the OIE extensions css, favicon, widgetConfigs and featuredCollections.
+# plus the OIE extensions css, favicon, widgetConfigs, featuredCollections and
+# assetViewers.
 
 # Fallback name for the root catalog (used for <title>/share links when the
 # root catalog JSON has no title). The landing title and description come from
@@ -37,3 +38,53 @@ transactions: off
 #     - id: Featured
 #       props:
 #         entities: [fisheye]
+
+# ─ Custom asset viewers ──────────────────────────────────────────────────────
+# Injects an <iframe> block next to matching assets, without touching upstream
+# stac-browser code. Each entry applies to every asset that matches all given
+# criteria. Keys:
+#   title     Block heading.
+#   icon      Text/emoji rendered as-is, or an URL (starts with / or http) → <img>.
+#   match     Optional criteria, all must hold:
+#               type   asset media type (leading parameters are ignored)
+#               roles  list of roles the asset must have (all of them)
+#               key    exact asset key
+#   url       BASE URL of the viewer (no query). Query params are built from
+#             the `query` dict below.
+#   query     Query parameters for the iframe URL, as {name: value}. Each value
+#             is looked up in order of:
+#               #1 "href"                     → the asset's URL
+#               #2 UPPER_CASE_NAME            → an ENV var of the browser
+#                                                container (resolved at start)
+#               #3 any other string           → an attribute of the asset
+#                                                (dotted paths allowed), e.g.
+#                                                "viewer:default_var"
+#             A query param is silently DROPPED when its value is empty/unset
+#             at runtime (e.g. attribute missing on the asset).
+#   mode      "append"  → a new dedicated accordion block (title + icon header).
+#             "inplace" → the iframe is added inside the asset's own block.
+#   height    iframe height in px (default 480).
+#   expand    Whether the block is shown open by default (append mode, default false).
+#   allowFullscreen  iframe fullscreen permission (default true).
+#   sandbox   optional iframe sandbox attribute (e.g. "allow-scripts").
+#
+# Every block also shows two actions below the iframe, styled like the classic
+# asset actions: full-tab (overlay over the whole page) and open-in-new-tab.
+assetViewers:
+  # Zarr image cubes: embedded zarr-viewer, served by the nginx /viewer/ route.
+  - id: zarr
+    title: Zarr viewer
+    icon: "👁️‍🗨️"
+    match:
+      type: "application/vnd.zarr"
+      roles: [data]
+    url: "/viewer/"
+    query:
+      url: href
+      # Example: passthrough an optional per-asset attribute to the viewer.
+      variable: "viewer:variable"
+      datetime: "viewer:datetime"
+      bracket: "viewer:bracket"
+    mode: append
+    height: 480
+    expand: true

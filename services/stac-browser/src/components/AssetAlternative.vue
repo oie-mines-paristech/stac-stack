@@ -6,6 +6,10 @@
       <Description :description="asset.description" compact />
     </div>
     <MetadataGroups class="mt-4" :data="resolvedAsset" :ignoreFields="ignoredMetadataFields" title="" type="Asset" />
+    <AssetViewerFrame
+      v-for="viewer in viewers" :key="viewer.id"
+      :viewer="viewer" :asset="asset" class="mt-4"
+    />
   </div>
 </template>
 
@@ -19,12 +23,15 @@ import AuthUtils from './auth/utils';
 import { isObject, size } from 'stac-js/src/utils.js';
 import { Asset, STACReference } from 'stac-js';
 import { getIgnoredFields } from '../ignored-metadata.js';
+import AssetViewerFrame from '../oie/AssetViewerFrame.vue';
+import { getViewersForAsset } from '../oie/assetViewers.js';
 
 export default {
   name: 'AssetAlternative',
   components: {
     Description,
     HrefActions,
+    AssetViewerFrame,
     MetadataGroups: defineAsyncComponent(() => import('./MetadataGroups.vue'))
   },
   mixins: [
@@ -35,6 +42,10 @@ export default {
       type: Object,
       required: true
     },
+    definition: {
+      type: Boolean,
+      default: false
+    },
     shown: {
       type: Boolean,
       default: false
@@ -42,6 +53,9 @@ export default {
   },
   emits: ['show'],
   computed: {
+    viewers() {
+      return this.definition ? [] : getViewersForAsset(this.asset, 'inplace');
+    },
     ignoredMetadataFields() {
       return getIgnoredFields(this.asset);
     },

@@ -7,6 +7,10 @@
         :definition="definition" :shown="shownKeys.includes(asset.getKey())"
         :key="asset.getKey()" @show="show"
       />
+      <AssetViewerItem
+        v-for="item in viewerItems" :key="item.key"
+        :viewer="item.viewer" :asset="item.asset" :expand="item.expand"
+      />
     </b-accordion>
   </section>
 </template>
@@ -14,11 +18,13 @@
 <script>
 import { defineAsyncComponent } from 'vue';
 import { BAccordion } from 'bootstrap-vue-next';
+import { getViewersForAsset } from '../oie/assetViewers.js';
 
 export default {
   name: 'Assets',
   components: {
     Asset: defineAsyncComponent(() => import('./Asset.vue')),
+    AssetViewerItem: defineAsyncComponent(() => import('../oie/AssetViewerItem.vue')),
     BAccordion
   },
   props: {
@@ -67,6 +73,19 @@ export default {
         return true; // Expand asset if it's the only asset available and it is in an Item
       }
       return null; // Let asset decide (e.g. depending on roles)
+    },
+    viewerItems() {
+      if (this.definition) {
+        return [];
+      }
+      const items = [];
+      for (const asset of this.assets) {
+        for (const viewer of getViewersForAsset(asset, 'append')) {
+          const key = typeof asset.getKey === 'function' ? asset.getKey() : '';
+          items.push({ viewer, asset, key: `append-${viewer.id}-${key}`, expand: viewer.expand === true });
+        }
+      }
+      return items;
     }
   },
   methods: {

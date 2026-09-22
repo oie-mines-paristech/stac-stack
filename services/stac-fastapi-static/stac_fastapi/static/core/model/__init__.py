@@ -4,6 +4,11 @@ from .cql2 import (
     make_match_collection_cql2,
 )
 
+from .free_text import (
+    make_match_item_free_text,
+    make_match_collection_free_text,
+)
+
 from .links import (
     get_self_href,
     get_item_hrefs,

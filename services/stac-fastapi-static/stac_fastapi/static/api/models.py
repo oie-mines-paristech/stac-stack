@@ -135,18 +135,28 @@ class FilterExtension(BaseModel):
         return data
 
 
-class SearchItems(Search, PaginationExtension, FilterExtension):
+class FreeTextMixin(BaseModel):
+    # Basic free-text search: a case-insensitive, comma-separated list of terms
+    # (OR semantics) matched against the STAC metadata.
+    # https://github.com/stac-api-extensions/freetext-search
+    q: Optional[List[str]] = Field(
+        None,
+        description="Parameter to perform free-text queries against STAC metadata.",
+    )
+
+
+class SearchItems(Search, PaginationExtension, FilterExtension, FreeTextMixin):
     pass
 
 
-class SearchCollections(Search, PaginationExtension, FilterExtension):
+class SearchCollections(Search, PaginationExtension, FilterExtension, FreeTextMixin):
     collections: ClassVar[None]
     ids: ClassVar[None]
 
     intersects: ClassVar[None]
 
 
-class SearchCollectionItems(Search, PaginationExtension, FilterExtension):
+class SearchCollectionItems(Search, PaginationExtension, FilterExtension, FreeTextMixin):
     collections: ClassVar[None]
     ids: ClassVar[None]
 

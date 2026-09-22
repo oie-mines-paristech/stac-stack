@@ -43,6 +43,18 @@ import { getStacObjectsForEvent, getStyle } from 'ol-stac/util.js';
 import { STACReference } from 'stac-js';
 import MapUtils from './maps/mapUtils.js';
 import GeoJSON from 'ol/format/GeoJSON.js';
+import Icon from 'ol/style/Icon.js';
+import markerUrl from '../assets/marker.svg';
+
+// Classic map pin (Google Maps style) for point geometries, anchored at the tip.
+// Only the `image`, so polygons keep the regular fill/stroke footprint style.
+// Shared by the entity footprint and its children, so items look the same on
+// the collection map and on their own map.
+const boundsStyle = getStyle('#3399CC', 3);
+boundsStyle.setImage(new Icon({
+  src: markerUrl,
+  anchor: [0.5, 1]
+}));
 
 const selectStyle = getStyle('#ff0000', 2, null);
 let mapId = 0;
@@ -205,7 +217,9 @@ export default {
         assets: this.assets || null,
         displayWebMapLink: true,
         disableMigration: true,
-        childrenOptions: this.childrenOptions
+        childrenOptions: this.childrenOptions,
+        boundsStyle,
+        collectionStyle: boundsStyle
       });
       if (this.ignoreDisplayLimit) {
         options.maxDisplayPixels = Infinity;

@@ -1,16 +1,23 @@
 <template>
   <div class="asset-alternative">
-    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth">
+    <HrefActions v-if="!hideActions" isAsset :data="asset" :shown="shown" @show="show" :auth="auth">
       <template #extra-actions>
         <AssetViewerActions
-          v-for="(viewer, i) in viewers" :key="viewer.id"
+          v-for="(viewer, i) in actionViewers" :key="viewer.id"
           :viewer="viewer" :asset="asset" :separated="i === 0"
           @update:fullscreen="fullscreen[viewer.id] = $event"
         />
       </template>
     </HrefActions>
-    <div class="mt-4" v-if="asset.description">
-      <Description :description="asset.description" compact />
+    <div v-else-if="actionViewers.length">
+      <AssetViewerActions
+        v-for="viewer in actionViewers" :key="viewer.id"
+        :viewer="viewer" :asset="asset"
+        @update:fullscreen="fullscreen[viewer.id] = $event"
+      />
+    </div>
+    <div class="mt-4" v-if="description">
+      <Description :description="description" compact />
     </div>
     <MetadataGroups class="mt-4" :data="resolvedAsset" :ignoreFields="ignoredMetadataFields" title="" type="Asset" />
     <AssetViewerFrame
@@ -67,6 +74,23 @@ export default {
   computed: {
     viewers() {
       return this.definition ? [] : getViewersForAsset(this.asset, 'inplace');
+    },
+    // Viewers whose own (iframe) buttons are kept.
+    actionViewers() {
+      return this.viewers.filter(viewer => viewer.hideViewerActions !== true);
+    },
+    // The asset's inherited action buttons are shared; the first in-place
+    // viewer decides (mirrors how its icon/roles are used by Asset.vue).
+    hideActions() {
+      return this.viewers.length > 0 && this.viewers[0].hideActions === true;
+    },
+    description() {
+      // Viewer override, else the asset description (default).
+      const override = this.viewers.find(viewer => typeof viewer.description === 'string' && viewer.description);
+      if (override) {
+        return override.description;
+      }
+      return typeof this.asset.description === 'string' ? this.asset.description : '';
     },
     ignoredMetadataFields() {
       return getIgnoredFields(this.asset);

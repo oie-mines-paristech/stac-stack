@@ -81,13 +81,22 @@ transactions: off
 #   expand    Whether the block is shown open by default (append mode, default false).
 #   allowFullscreen  iframe fullscreen permission (default true).
 #   sandbox   optional iframe sandbox attribute (e.g. "allow-scripts").
+#   hideActions       Hide the asset's own (inherited) action buttons — download,
+#                     copy URL, show on map, plugin actions (default false).
+#   hideViewerActions Hide the viewer's buttons — fullscreen, open in new tab
+#                     (default false).
+#   description       Text shown between the action buttons and the iframe,
+#                     overriding the asset description (default: asset's own).
 #
 # Every block also shows two actions below the iframe, styled like the classic
 # asset actions: full-tab (overlay over the whole page) and open-in-new-tab.
+# Both can be hidden with hideViewerActions; the inherited asset buttons with
+# hideActions.
 assetViewers:
   # Zarr image cubes: embedded zarr-viewer, served by the nginx /viewer/ route.
   - id: zarr
     title: Zarr preview
+    description: The interface below provides a live overview of the data in your browser.
     icon: "👁️"
     match:
       type: "application/vnd.zarr"
@@ -109,6 +118,7 @@ assetViewers:
   # whatever its key or roles.
   - id: notebook
     title: Notebook preview
+    description: This notebook demonstrate how to access and manipulate the data with Python.
     icon: "📖"
     roles : ["notebook"]
     match:
@@ -117,4 +127,24 @@ assetViewers:
     query:
       url: href
     mode: inplace
+    height: 640
+
+  # Zarr subset download: pick variables/ranges and stream a ZIP of the selected
+  # chunks, served by the nginx /zarr-subset/ route (FastAPI + mod_zip). The UI
+  # derives the dataset name from the asset href (its last path segment) and
+  # resolves its own API/download URLs against the /zarr-subset/ base path, so
+  # no extra STAC metadata is needed.
+  - id: zarr-subset
+    title: Zarr subset
+    hideActions: true
+    hideViewerActions: true
+    description: Use the form below to select a subset of data and download it as zipped zarr archive.
+    icon: "📦"
+    match:
+      type: "application/vnd.zarr"
+      roles: [data]
+    url: "/zarr-subset/"
+    query:
+      url: href
+    mode: append
     height: 640

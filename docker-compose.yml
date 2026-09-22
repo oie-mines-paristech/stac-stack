@@ -58,6 +58,7 @@ services:
     depends_on:
       - static-api
       - browser
+      - zarr-subset-zip
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
@@ -81,6 +82,24 @@ services:
     environment:
       DEV: "0"
 
+  # Zarr-subset-zip API: builds a mod_zip manifest for a subset of a Zarr v3
+  # store addressed by its external URI (asset href). mod_zip itself runs in the
+  # shared nginx (dynamic module), so there is no dedicated nginx container.
+  # The whole data tree is mounted at the same path nginx serves it from (/data),
+  # so a deep store URI (e.g. /data/fisheye/ikarus) resolves 1:1.
+  zarr-subset-zip:
+    build:
+      context: ./services/zarr-subset-zip
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      ZARR_ROOT: /data
+      ZARR_URI_PREFIX: /data
+      ZARR_CACHE: /tmp/cache
+    volumes:
+      - ./volumes/data:/data:ro
+      - zarr-subset-cache:/tmp/cache
+
   static-api:
     build: ./services/stac-fastapi-static
     restart: unless-stopped
@@ -101,3 +120,4 @@ services:
 volumes:
   zarr-viewer-static:
   notebook-viewer-static:
+  zarr-subset-cache:

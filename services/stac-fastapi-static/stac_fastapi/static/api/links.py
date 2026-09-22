@@ -125,3 +125,20 @@ class LinksBuilder():
         )
 
         return self
+
+    def build_items_link(self, request: Request, collection_id: str) -> Self:
+        base_url = get_base_url(request)
+
+        self._links.append(
+            Link(
+                rel=Relations.items.value,
+                type=MimeTypes.geojson,
+                title="Items",
+                href=urljoin(
+                    base_url,
+                    f"collections/{collection_id}/items"
+                ),
+            )
+        )
+
+        return self

@@ -23,14 +23,23 @@
       </span>
       <AssetBadges :asset="asset" :shown="shown" :extra-roles="viewerRoles" />
     </template>
-    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth" class="mb-3">
+    <HrefActions v-if="!viewer.hideActions" isAsset :data="asset" :shown="shown" @show="show" :auth="auth" class="mb-3">
       <template #extra-actions>
         <AssetViewerActions
+          v-if="!viewer.hideViewerActions"
           :viewer="viewer" :asset="asset" :separated="true"
           @update:fullscreen="fullscreen = $event"
         />
       </template>
     </HrefActions>
+    <AssetViewerActions
+      v-else-if="!viewer.hideViewerActions"
+      :viewer="viewer" :asset="asset" class="mb-3"
+      @update:fullscreen="fullscreen = $event"
+    />
+    <div v-if="description" class="mb-3">
+      <Description :description="description" compact />
+    </div>
     <AssetViewerFrame
       :viewer="viewer" :asset="asset" :show-title="false"
       v-model:fullscreen="fullscreen"
@@ -43,6 +52,7 @@ import { BAccordionItem } from 'bootstrap-vue-next';
 import AssetBadges from '../components/AssetBadges.vue';
 import AssetViewerFrame from './AssetViewerFrame.vue';
 import AssetViewerActions from './AssetViewerActions.vue';
+import Description from '../components/Description.vue';
 import HrefActions from '../components/HrefActions.vue';
 import AuthUtils from '../components/auth/utils';
 import { isImageIcon } from './assetViewers.js';
@@ -53,6 +63,7 @@ export default {
     AssetBadges,
     AssetViewerFrame,
     AssetViewerActions,
+    Description,
     HrefActions,
     BAccordionItem
   },
@@ -97,6 +108,13 @@ export default {
     },
     auth() {
       return AuthUtils.resolveAuth(this.asset);
+    },
+    description() {
+      // Viewer override, else the asset description (default).
+      if (typeof this.viewer.description === 'string' && this.viewer.description) {
+        return this.viewer.description;
+      }
+      return typeof this.asset.description === 'string' ? this.asset.description : '';
     }
   },
   created() {

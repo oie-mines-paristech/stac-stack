@@ -29,6 +29,11 @@ from .filter_cql2 import (
     make_filter_items_cql2
 )
 
+from .filter_free_text import (
+    make_filter_collections_free_text,
+    make_filter_items_free_text
+)
+
 from .filter_depth import (
     make_filter_depth,
 )

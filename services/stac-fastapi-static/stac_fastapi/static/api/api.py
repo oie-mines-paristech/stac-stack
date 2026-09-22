@@ -27,7 +27,11 @@ from stac_fastapi.extensions.core import (
     CollectionSearchExtension,
     SearchFilterExtension,
     CollectionSearchFilterExtension,
-    ItemCollectionFilterExtension
+    ItemCollectionFilterExtension,
+    FreeTextExtension,
+)
+from stac_fastapi.extensions.core.free_text import (
+    FreeTextConformanceClasses,
 )
 from stac_fastapi.api.models import (
     create_get_request_model,
@@ -106,10 +110,22 @@ async def lifespan(app: FastAPI):
 def make_api(settings: Settings):
     extensions = []
 
+    # Free-text search (q parameter), one conformance class per endpoint context
+    search_free_text_extension = FreeTextExtension(
+        conformance_classes=[FreeTextConformanceClasses.SEARCH]
+    )
+    collections_free_text_extension = FreeTextExtension(
+        conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]
+    )
+    items_free_text_extension = FreeTextExtension(
+        conformance_classes=[FreeTextConformanceClasses.ITEMS]
+    )
+
     # /search extensions
     extensions.extend(search_extensions := [
         TokenPaginationExtension(),
-        SearchFilterExtension(client=FiltersClient())
+        SearchFilterExtension(client=FiltersClient()),
+        search_free_text_extension,
     ])
 
     # /collections extensions
@@ -117,11 +133,13 @@ def make_api(settings: Settings):
         TokenPaginationExtension(),
         CollectionSearchFilterExtension(client=FiltersClient())
     ]))
+    extensions.append(collections_free_text_extension)
 
     # /collections/{collectionId}/items extensions
     extensions.extend(collections_items_extensions := [
         TokenPaginationExtension(),
-        ItemCollectionFilterExtension(client=FiltersClient())
+        ItemCollectionFilterExtension(client=FiltersClient()),
+        items_free_text_extension,
     ])
 
     api = StacApi(
@@ -148,7 +166,10 @@ def make_api(settings: Settings):
             extensions=collections_items_extensions,
             request_type="GET",
         ),
-        collections_get_request_model=create_get_request_model([collection_search_extension]),
+        collections_get_request_model=create_get_request_model([
+            collection_search_extension,
+            collections_free_text_extension,
+        ]),
         # search_post_request_model=object,
         # search_get_request_model=EmptyRequest,
         # items_get_request_model=EmptyRequest,

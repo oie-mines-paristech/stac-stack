@@ -61,6 +61,10 @@ from .filter_cql2 import (
     make_filter_collections_cql2,
     make_filter_items_cql2
 )
+from .filter_free_text import (
+    make_filter_collections_free_text,
+    make_filter_items_free_text
+)
 from .filter_depth import (
     make_filter_depth
 )
@@ -118,6 +122,7 @@ def search_items(
     walk_marker: Optional[WalkMarker] = None,
     limit: Optional[int] = 10,
     filter: Optional[Union[str, Dict]] = None,
+    q: Optional[List[str]] = None,
     *,
     settings: ClientSettings,
     session: Session
@@ -159,7 +164,8 @@ def search_items(
                 bbox=bbox,
                 geometry=intersects
             ) if bbox is not None or intersects is not None else None,
-            make_filter_items_cql2(filter) if filter is not None else None
+            make_filter_items_cql2(filter) if filter is not None else None,
+            make_filter_items_free_text(q) if q else None
         )
 
         if collections:
@@ -218,6 +224,7 @@ def search_collections(
     bbox: Optional[BBox] = None,
     datetime: Optional[Datetime] = None,
     filter: Optional[Union[str, Dict]] = None,
+    q: Optional[List[str]] = None,
     *,
     settings: ClientSettings,
     session: Session
@@ -235,7 +242,8 @@ def search_collections(
         ) if datetime is not None and datetime != (None, None) else None,
         make_filter_collections_cql2(
             filter
-        ) if filter is not None else None
+        ) if filter is not None else None,
+        make_filter_collections_free_text(q) if q else None
     )(
         walk_collections(
             settings.catalog_href,
@@ -277,6 +285,7 @@ def search_collection_items(
     limit: int = 10,
     walk_marker: Optional[WalkMarker] = None,
     filter: Optional[Union[str, Dict]] = None,
+    q: Optional[List[str]] = None,
     *,
     settings: ClientSettings,
     session: Session
@@ -303,7 +312,8 @@ def search_collection_items(
             bbox=bbox,
             geometry=intersects
         ) if bbox is not None or intersects is not None else None,
-        make_filter_items_cql2(filter) if filter is not None else None
+        make_filter_items_cql2(filter) if filter is not None else None,
+        make_filter_items_free_text(q) if q else None
     )(
         walk(
             collection_walk_result,

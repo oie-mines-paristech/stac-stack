@@ -10,7 +10,7 @@ from typing import (
 )
 
 from os import path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import orjson
 from orjson import JSONDecodeError
@@ -43,7 +43,13 @@ from stac_fastapi.static.core.requests import (
 )
 
 
-def _rewrite_catalog_file_href(href: str, *, catalog_dir: str, base_api_href: str) -> str:
+def _rewrite_catalog_file_href(
+    href: str,
+    *,
+    catalog_dir: str,
+    base_api_href: str,
+    root_catalog_file: Optional[str] = None,
+) -> str:
     # Only rewrite file:// paths inside the catalog directory.
     # Path-absolute asset URLs (/stac/data/...) and file:///stac/... (from a bad
     # urljoin) must be left unchanged.
@@ -54,6 +60,12 @@ def _rewrite_catalog_file_href(href: str, *, catalog_dir: str, base_api_href: st
     rel = path.relpath(file_path, catalog_dir)
     if rel.startswith(".."):
         return href
+
+    # The root catalog has no file URL: it is exposed as the API landing page,
+    # so that navigation from a collection's parent link reaches the API root
+    # (whose children are the API collections) instead of the raw catalog file.
+    if root_catalog_file is not None and file_path == root_catalog_file:
+        return base_api_href
 
     return urljoin(base_api_href, rel)
 
@@ -98,6 +110,33 @@ get_collection = wrap_error(BadStacObjectFilterError, status_code=400)(_get_coll
 get_item = wrap_error(BadStacObjectFilterError, status_code=400)(_get_item)
 
 
+def _canonical_api_href(
+    link,
+    object: Catalog | Collection | Item,
+    base_api_href: str,
+) -> Optional[str]:
+    """Returns the canonical API URL for a navigation link, or None.
+
+    The catalog is also served as plain files (StaticFiles), so links between
+    STAC entities would otherwise point into the file tree (e.g.
+    ``/api/<collection>/collection.json``). Those URLs expose the raw JSON
+    without the API links (items link, queryables, …) and break navigation in
+    stac-browser. Rewrite the navigation links to the API routes so that the
+    browser always stays on the API endpoints.
+    """
+    rel = link.rel
+    if rel == "root":
+        return base_api_href
+    if isinstance(object, Item) and rel in ("parent", "collection"):
+        if object.collection:
+            return urljoin(base_api_href, f"collections/{object.collection}")
+    elif isinstance(object, Collection) and rel == "item":
+        item_id = path.splitext(path.basename(urlparse(link.href).path))[0]
+        if item_id:
+            return urljoin(base_api_href, f"collections/{object.id}/items/{item_id}")
+    return None
+
+
 @wrap_error(BadWalkResultError, status_code=500)
 def resolve(
     result: WalkResult,
@@ -116,13 +155,15 @@ def resolve(
         pre_resolve(object)
 
     if catalog_is_file:
-        catalog_dir = path.dirname(file_uri_to_file_path(catalog_href))
+        root_catalog_file = file_uri_to_file_path(catalog_href)
+        catalog_dir = path.dirname(root_catalog_file)
 
         for link in object.links.link_iterator():
-            link.href = _rewrite_catalog_file_href(
+            link.href = _canonical_api_href(link, object, base_api_href) or _rewrite_catalog_file_href(
                 link.href,
                 catalog_dir=catalog_dir,
                 base_api_href=base_api_href,
+                root_catalog_file=root_catalog_file,
             )
             link.title = link.title if link.title is not None else link.rel.capitalize()
 
@@ -132,9 +173,25 @@ def resolve(
                     asset.href,
                     catalog_dir=catalog_dir,
                     base_api_href=base_api_href,
+                    root_catalog_file=root_catalog_file,
                 )
 
     return object
+
+
+def add_collection_links(collection: Collection, request: Request) -> None:
+    """Add the API links that stac-browser expects to a collection response.
+
+    Mirrors a standard STAC API: without the `items` link, stac-browser only
+    sees the individual `item` links and never loads the item list, so it can't
+    show item footprints (e.g. point markers) on the collection map.
+    """
+    for link in (
+        LinksBuilder()
+        .build_queryables_link(request, collection_id=collection.id)
+        .build_items_link(request, collection_id=collection.id)._links
+    ):
+        collection.links.append(link)
 
 
 def _root_catalog_metadata(settings: Settings) -> Dict[str, str]:
@@ -230,6 +287,7 @@ class CoreClient(BaseCoreClient):
             walk_marker=query.walk_marker,
             limit=query.limit,
             filter=query.filter,
+            q=query.q,
             settings=settings,
             session=session
         )
@@ -301,6 +359,7 @@ class CoreClient(BaseCoreClient):
                 intersects=orjson.loads(kwargs["intersects"]) if kwargs["intersects"] else None,
                 datetime=kwargs["datetime"],
                 limit=kwargs["limit"],
+                q=kwargs.get("q"),
             )
         except (ValidationError, JSONDecodeError) as error:
             raise HTTPException(status_code=400, detail=error) from error
@@ -370,7 +429,8 @@ class CoreClient(BaseCoreClient):
                 token=kwargs["token"],
                 bbox=kwargs["bbox"],
                 datetime=kwargs["datetime"],
-                limit=kwargs["limit"]
+                limit=kwargs["limit"],
+                q=kwargs.get("q"),
             )
         except (ValidationError, JSONDecodeError) as error:
             raise HTTPException(status_code=400, detail=error) from error
@@ -381,6 +441,7 @@ class CoreClient(BaseCoreClient):
             bbox=query.bbox,
             datetime=(query.start_date, query.end_date),
             filter=query.filter,
+            q=query.q,
             session=session,
             settings=settings
         )
@@ -395,9 +456,7 @@ class CoreClient(BaseCoreClient):
                         base_api_href=base_api_href,
                         catalog_is_file=catalog_is_file,
                         catalog_href=settings.catalog_href,
-                        pre_resolve=lambda collection: collection.links.append(
-                            LinksBuilder().build_queryables_link(request, collection_id=collection.id)._links[0]
-                        )
+                        pre_resolve=lambda collection: add_collection_links(collection, request)
                     )
                     for walk_result
                     in page.page
@@ -444,7 +503,8 @@ class CoreClient(BaseCoreClient):
                 collection_walk_result,
                 base_api_href=base_api_href,
                 catalog_is_file=catalog_is_file,
-                catalog_href=settings.catalog_href
+                catalog_href=settings.catalog_href,
+                pre_resolve=lambda collection: add_collection_links(collection, request)
             ).model_dump()
 
     def item_collection(
@@ -479,7 +539,8 @@ class CoreClient(BaseCoreClient):
                 bbox=kwargs["bbox"],
                 datetime=kwargs["datetime"],
                 limit=kwargs["limit"],
-                collection_id=kwargs["collection_id"]
+                collection_id=kwargs["collection_id"],
+                q=kwargs.get("q"),
             )
         except (ValidationError, JSONDecodeError) as error:
             raise HTTPException(status_code=400, detail=error) from error
@@ -493,6 +554,7 @@ class CoreClient(BaseCoreClient):
                 limit=query.limit,
                 walk_marker=query.walk_marker,
                 filter=query.filter,
+                q=query.q,
                 session=session,
                 settings=settings,
             )

@@ -4,3 +4,6 @@
 [submodule "services/stac-generator"]
 	path = services/stac-generator
 	url = git@git.sophia.minesparis.psl.eu:oie/stac-generator.git
+[submodule "services/zarr-subset-zip"]
+	path = services/zarr-subset-zip
+	url = git@git.sophia.minesparis.psl.eu:oie/zarr-subset-zip.git

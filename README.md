@@ -129,6 +129,13 @@ correspondant. Sous chaque iframe, deux actions (même look que les actions d'as
 passer en « full-tab » (l'iframe prend tout le viewport, bouton flottant pour sortir) et ouvrir
 le viewer dans un nouvel onglet.
 
+En plus du viewer Zarr, un second bloc **`zarr-subset`** (icône 📦) permet de sélectionner des
+variables et des plages, puis de télécharger un ZIP du sous-ensemble (FastAPI + mod_zip, servi
+par nginx sur `/zarr-subset/`). Le service reçoit l'`href` de l'asset comme **URI** (chemin
+externe, profondeur libre) et le résout entre le point de montage HTTP (`ZARR_URI_PREFIX`) et
+le bind-mount interne (`ZARR_ROOT`) : aucune métadonnée STAC supplémentaire n'est nécessaire.
+Voir [`services/zarr-subset-zip`](services/zarr-subset-zip) (sous-module OIE).
+
 ### Mode développement
 
 Pour travailler sur **stac-generator**, **zarr-viewer** ou **stac-browser** sans rebuild d'image à chaque changement de code :
@@ -164,6 +171,9 @@ Toutes les images de base sont **pinnées par digest SHA256** dans leur `Dockerf
   docker inspect --format '{{index .RepoDigests 0}}' hakwerk/nginx-dav:latest
   ```
 - l'ancien nginx custom (compilé en local) et le source vendored `dav-ext/` ont été retirés.
+- `nginx` embarque aussi **mod_zip** (flux ZIP), compilé en **module dynamique** contre la
+  version exacte de nginx de l'image de base au build (`services/nginx/Dockerfile`) — pas de
+  conteneur nginx dédié côté `zarr-subset-zip`.
 
 ### Audit des images (état au 2026-09-16)
 
@@ -174,6 +184,7 @@ Toutes les images de base sont **pinnées par digest SHA256** dans leur `Dockerf
 | `zarr-viewer` | `node:22-alpine` | ✅ | — |
 | `stac-generator` | `python:3.12-slim` | ✅ | — |
 | `static-api` (2 étages) | `python:3.12-alpine` | ✅ | uv installé **depuis PyPI `uv==0.12.15` pinné** au lieu du script `astral.sh` (trou de supply chain corrigé) |
+| `zarr-subset-zip` | `python:3.12-slim` | ✅ | API FastAPI (sous-module OIE) ; mod_zip chargé dans `nginx` |
 
 **Re-pin après bump** (routine à chaque mise à jour d'une image) : modifier la version dans le `FROM`, puis `docker inspect --format '{{index .RepoDigests 0}}' <image>` et reporter le digest dans le `@sha256:` du `FROM`.
 

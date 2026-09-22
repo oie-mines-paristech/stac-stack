@@ -14,6 +14,15 @@ const VIEWER_DEFAULTS = {
   // header and `window.self !== window.top`, but a plain param is what a
   // viewer URL can carry. Set to false to omit it.
   embed: true,
+  // Hide the asset's own (inherited) action buttons — download, copy URL,
+  // show on map, plugin actions. The viewer keeps its own buttons unless
+  // `hideViewerActions` is also set.
+  hideActions: false,
+  // Hide the viewer's buttons (fullscreen, open in a new tab).
+  hideViewerActions: false,
+  // Optional text shown between the action buttons and the iframe, overriding
+  // the asset description (which is the default when this is unset).
+  description: '',
 };
 
 export function getViewerConfigs() {

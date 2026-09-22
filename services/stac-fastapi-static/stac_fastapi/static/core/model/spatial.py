@@ -23,7 +23,8 @@ from ..errors import (
 
 from ..lib.geometries_intersect import (
     geometries_intersect,
-    bbox_intersect
+    bbox_intersect,
+    to_2d_bbox
 )
 
 
@@ -75,7 +76,7 @@ def get_collection_geometry(collection: Collection) -> shapely.Polygon | None:
         return None
     else:
         return shapely.union_all([
-            shapely.box(*bbox)
+            shapely.box(*to_2d_bbox(bbox))
             for bbox
             in bboxes[1:]
         ])
@@ -98,7 +99,7 @@ def make_match_spatial_extent(
                     f"Bad geometry : {str(error)}"
                 ) from error
         else:
-            geometry = shapely.box(*bbox)
+            geometry = shapely.box(*to_2d_bbox(bbox))
 
         if bbox is None:
             bbox = shapely.bounds(geometry)

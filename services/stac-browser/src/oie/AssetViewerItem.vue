@@ -21,20 +21,39 @@
         <span v-else class="asset-viewer-item-icon">{{ viewer.icon }}</span>
         <span class="title">{{ viewer.title }}</span>
       </span>
+      <AssetBadges :asset="asset" :shown="shown" :extra-roles="viewerRoles" />
     </template>
-    <AssetViewerFrame :viewer="viewer" :asset="asset" :show-title="false" />
+    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth" class="mb-3">
+      <template #extra-actions>
+        <AssetViewerActions
+          :viewer="viewer" :asset="asset" :separated="true"
+          @update:fullscreen="fullscreen = $event"
+        />
+      </template>
+    </HrefActions>
+    <AssetViewerFrame
+      :viewer="viewer" :asset="asset" :show-title="false"
+      v-model:fullscreen="fullscreen"
+    />
   </b-accordion-item>
 </template>
 
 <script>
 import { BAccordionItem } from 'bootstrap-vue-next';
+import AssetBadges from '../components/AssetBadges.vue';
 import AssetViewerFrame from './AssetViewerFrame.vue';
+import AssetViewerActions from './AssetViewerActions.vue';
+import HrefActions from '../components/HrefActions.vue';
+import AuthUtils from '../components/auth/utils';
 import { isImageIcon } from './assetViewers.js';
 
 export default {
   name: 'AssetViewerItem',
   components: {
+    AssetBadges,
     AssetViewerFrame,
+    AssetViewerActions,
+    HrefActions,
     BAccordionItem
   },
   props: {
@@ -49,11 +68,17 @@ export default {
     expand: {
       type: Boolean,
       default: false
+    },
+    shown: {
+      type: Boolean,
+      default: false
     }
   },
+  emits: ['show'],
   data() {
     return {
-      expanded: false
+      expanded: false,
+      fullscreen: false
     };
   },
   computed: {
@@ -66,6 +91,12 @@ export default {
     },
     isImageIcon() {
       return isImageIcon(this.viewer.icon);
+    },
+    viewerRoles() {
+      return Array.isArray(this.viewer.roles) ? this.viewer.roles : [];
+    },
+    auth() {
+      return AuthUtils.resolveAuth(this.asset);
     }
   },
   created() {
@@ -79,6 +110,9 @@ export default {
     collapseToggled(isVisible) {
       const event = isVisible ? 'openCollapsible' : 'closeCollapsible';
       this.$store.commit(event, { type: this.type, uid: this.uid });
+    },
+    show() {
+      this.$emit('show', ...arguments);
     }
   }
 };

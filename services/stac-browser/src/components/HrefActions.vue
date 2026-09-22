@@ -22,6 +22,7 @@
         <component v-if="action.icon" :is="action.icon" class="me-1" />
         {{ action.text }}
       </b-button>
+      <slot name="extra-actions" />
     </b-button-group>
 
     <b-popover

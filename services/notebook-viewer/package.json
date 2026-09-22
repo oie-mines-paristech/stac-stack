@@ -1,0 +1,22 @@
+{
+  "name": "notebook-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Minimal Jupyter notebook preview, opened via ?url=",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "ansi_up": "^6.0.2",
+    "dompurify": "^3.0.8",
+    "marked": "^11.1.1",
+    "notebookjs": "^0.8.3"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
+  }
+}

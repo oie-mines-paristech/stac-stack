@@ -65,11 +65,19 @@ services:
       - ./volumes/data:/dav/data:rw
       - ./volumes/catalog:/dav/catalog:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro
+      - notebook-viewer-static:/usr/share/nginx/html/notebook-viewer:ro
 
   zarr-viewer:
     build: ./services/zarr-viewer
     volumes:
       - zarr-viewer-static:/out
+    environment:
+      DEV: "0"
+
+  notebook-viewer:
+    build: ./services/notebook-viewer
+    volumes:
+      - notebook-viewer-static:/out
     environment:
       DEV: "0"
 
@@ -92,3 +100,4 @@ services:
 
 volumes:
   zarr-viewer-static:
+  notebook-viewer-static:

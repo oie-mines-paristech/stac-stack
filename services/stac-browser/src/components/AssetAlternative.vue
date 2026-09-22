@@ -1,29 +1,38 @@
 <template>
   <div class="asset-alternative">
-    <h4 class="mb-4" v-html="fileFormat" />
-    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth" />
+    <HrefActions isAsset :data="asset" :shown="shown" @show="show" :auth="auth">
+      <template #extra-actions>
+        <AssetViewerActions
+          v-for="(viewer, i) in viewers" :key="viewer.id"
+          :viewer="viewer" :asset="asset" :separated="i === 0"
+          @update:fullscreen="fullscreen[viewer.id] = $event"
+        />
+      </template>
+    </HrefActions>
     <div class="mt-4" v-if="asset.description">
       <Description :description="asset.description" compact />
     </div>
     <MetadataGroups class="mt-4" :data="resolvedAsset" :ignoreFields="ignoredMetadataFields" title="" type="Asset" />
     <AssetViewerFrame
       v-for="viewer in viewers" :key="viewer.id"
-      :viewer="viewer" :asset="asset" class="mt-4"
+      :viewer="viewer" :asset="asset"
+      :show-title="false"
+      v-model:fullscreen="fullscreen[viewer.id]"
+      class="mt-4"
     />
   </div>
 </template>
 
 <script>
 import { defineAsyncComponent } from 'vue';
-import { formatMediaType } from '@radiantearth/stac-fields/formatters';
 import Description from './Description.vue';
 import HrefActions from './HrefActions.vue';
-import StacFieldsMixin from './StacFieldsMixin';
 import AuthUtils from './auth/utils';
 import { isObject, size } from 'stac-js/src/utils.js';
 import { Asset, STACReference } from 'stac-js';
 import { getIgnoredFields } from '../ignored-metadata.js';
 import AssetViewerFrame from '../oie/AssetViewerFrame.vue';
+import AssetViewerActions from '../oie/AssetViewerActions.vue';
 import { getViewersForAsset } from '../oie/assetViewers.js';
 
 export default {
@@ -32,11 +41,9 @@ export default {
     Description,
     HrefActions,
     AssetViewerFrame,
+    AssetViewerActions,
     MetadataGroups: defineAsyncComponent(() => import('./MetadataGroups.vue'))
   },
-  mixins: [
-    StacFieldsMixin({ formatMediaType })
-  ],
   props: {
     asset: {
       type: Object,
@@ -52,6 +59,11 @@ export default {
     }
   },
   emits: ['show'],
+  data() {
+    return {
+      fullscreen: {}
+    };
+  },
   computed: {
     viewers() {
       return this.definition ? [] : getViewersForAsset(this.asset, 'inplace');
@@ -66,12 +78,6 @@ export default {
         return asset;
       }
       return this.asset;
-    },
-    fileFormat() {
-      if (typeof this.asset.type === "string" && this.asset.type.length > 0) {
-        return this.formatMediaType(this.asset.type);
-      }
-      return null;
     },
     auth() {
       return AuthUtils.resolveAuth(this.asset);

@@ -96,7 +96,7 @@ $link-hover-color: darken($link-color, 20%);
 // Main/top header of the website
 $header: $primary;
 $header-background: var(--sb-header);
-$header-position: sticky; // sticky or static
+$header-position: static; // sticky or static
 $header-font-size: 1.5rem;
 $header-font-weight: 600;
 $header-text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);

@@ -8,6 +8,12 @@ const VIEWER_DEFAULTS = {
   height: 480,
   expand: false,
   allowFullscreen: true,
+  // Add `embed=1` to the iframe URL so viewers can adapt their chrome (hide
+  // download buttons, standalone headers, …). There is no standard query
+  // param for this; the reliable signals are the `Sec-Fetch-Dest: iframe`
+  // header and `window.self !== window.top`, but a plain param is what a
+  // viewer URL can carry. Set to false to omit it.
+  embed: true,
 };
 
 export function getViewerConfigs() {
@@ -107,6 +113,9 @@ export function buildViewerUrl(viewer, asset, projectUrl = null) {
       continue; // Not found at runtime → drop the query param.
     }
     params.push(`${encodeURIComponent(name)}=${encodePathSafe(value)}`);
+  }
+  if (viewer.embed !== false) {
+    params.push('embed=1');
   }
 
   let url = String(viewer.url || '');

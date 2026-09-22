@@ -10,20 +10,6 @@
       <span v-else class="asset-viewer-icon">{{ viewer.icon }}</span>
       {{ viewer.title }}
     </h5>
-    <div v-if="!fullscreen" class="asset-viewer-buttons">
-      <b-button-group size="sm">
-        <b-button variant="primary" class="asset-viewer-btn" :title="$t('fullscreen.show')" @click="fullscreen = true">
-          <b-icon-fullscreen />
-        </b-button>
-        <b-button
-          variant="primary" class="asset-viewer-btn"
-          tag="a" :href="src" target="_blank" rel="noopener noreferrer"
-          :title="$t('open')"
-        >
-          <b-icon-box-arrow-up-right />
-        </b-button>
-      </b-button-group>
-    </div>
     <iframe
       v-if="src"
       class="asset-viewer-iframe"
@@ -39,7 +25,7 @@
       variant="primary"
       class="asset-viewer-fullscreen-exit"
       :title="$t('fullscreen.exit')"
-      @click="fullscreen = false"
+      @click="toggleFullscreen(false)"
     >
       <b-icon-fullscreen-exit />
     </b-button>
@@ -68,13 +54,13 @@ export default {
     showTitle: {
       type: Boolean,
       default: true
+    },
+    fullscreen: {
+      type: Boolean,
+      default: false
     }
   },
-  data() {
-    return {
-      fullscreen: false
-    };
-  },
+  emits: ['update:fullscreen'],
   computed: {
     ...mapGetters(['getRequestUrl']),
     src() {
@@ -91,6 +77,11 @@ export default {
     },
     allowFeatures() {
       return this.viewer.allowFullscreen ? 'fullscreen' : undefined;
+    }
+  },
+  methods: {
+    toggleFullscreen(value) {
+      this.$emit('update:fullscreen', value);
     }
   }
 };
@@ -123,16 +114,6 @@ export default {
     background: #fff;
   }
 
-  .asset-viewer-buttons {
-    margin-bottom: 0.5rem;
-    display: flex;
-    justify-content: flex-start;
-
-    .asset-viewer-btn {
-      line-height: 1;
-    }
-  }
-
   // "Full-tab" mode: take over the whole viewport without reloading the
   // iframe (the same element is just reflowed into a fixed overlay).
   &.asset-viewer-fullscreen {
@@ -154,10 +135,6 @@ export default {
     .asset-viewer-iframe {
       flex: 1 1 auto;
       height: auto !important;
-    }
-
-    .asset-viewer-buttons {
-      display: none;
     }
 
     .asset-viewer-fullscreen-exit {

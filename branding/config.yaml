@@ -21,7 +21,10 @@ catalogImage: /branding/logo-oie.png
 favicon: /branding/favicon.svg
 css: /branding/org.css
 # Footer links as a list of {label, url}. Empty list hides the footer nav.
-footerLinks: []
+footerLinks:
+  - {label: webservice-energy.org , url: https://www.webservice-energy.org/}
+  - {label: OIE , url: https://www.oie.minesparis.psl.eu/Accueil/}
+
 # Disable the CDSE OIDC login ("Connexion") and transactional editing.
 authConfig: null
 transactions: off
@@ -45,6 +48,8 @@ transactions: off
 # criteria. Keys:
 #   title     Block heading.
 #   icon      Text/emoji rendered as-is, or an URL (starts with / or http) → <img>.
+#   roles     Extra roles merged into the block's badges (appended after the
+#             asset's own roles, each only if not already present).
 #   match     Optional criteria, all must hold:
 #               type   asset media type (leading parameters are ignored)
 #               roles  list of roles the asset must have (all of them)
@@ -61,9 +66,18 @@ transactions: off
 #                                                "viewer:default_var"
 #             A query param is silently DROPPED when its value is empty/unset
 #             at runtime (e.g. attribute missing on the asset).
-#   mode      "append"  → a new dedicated accordion block (title + icon header).
-#             "inplace" → the iframe is added inside the asset's own block.
+#   mode      "append"  → a new dedicated accordion block: the viewer title and
+#                         icon on the left, the asset's badges repeated on the
+#                         right, and the asset's own action buttons repeated
+#                         above the iframe (no metadata/description).
+#             "inplace" → the iframe is added inside the asset's own block. No
+#                         intermediate title is shown (the asset's own title is
+#                         used); `icon` is shown next to it in the block header,
+#                         and the two actions (fullscreen, open) are added to the
+#                         asset's own action button group.
 #   height    iframe height in px (default 480).
+#   embed     add `embed=1` to the iframe URL so the viewer can drop its
+#             standalone chrome (default true). Set false to omit.
 #   expand    Whether the block is shown open by default (append mode, default false).
 #   allowFullscreen  iframe fullscreen permission (default true).
 #   sandbox   optional iframe sandbox attribute (e.g. "allow-scripts").
@@ -73,12 +87,13 @@ transactions: off
 assetViewers:
   # Zarr image cubes: embedded zarr-viewer, served by the nginx /viewer/ route.
   - id: zarr
-    title: Zarr viewer
-    icon: "👁️‍🗨️"
+    title: Zarr preview
+    icon: "👁️"
     match:
       type: "application/vnd.zarr"
       roles: [data]
     url: "/viewer/"
+    roles: ["preview"]
     query:
       url: href
       # Example: passthrough an optional per-asset attribute to the viewer.
@@ -88,3 +103,18 @@ assetViewers:
     mode: append
     height: 480
     expand: true
+
+  # Jupyter notebooks: in-place preview, served by the nginx /notebook-viewer/
+  # route. Matches every asset whose media type is the standard ipynb one,
+  # whatever its key or roles.
+  - id: notebook
+    title: Notebook preview
+    icon: "📖"
+    roles : ["notebook"]
+    match:
+      type: "application/x-ipynb+json"
+    url: "/notebook-viewer/"
+    query:
+      url: href
+    mode: inplace
+    height: 640

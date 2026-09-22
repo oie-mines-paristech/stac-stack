@@ -48,5 +48,21 @@ services:
       retries: 30
       start_period: 120s
 
+  notebook-viewer:
+    environment:
+      DEV: "1"
+    restart: unless-stopped
+    volumes:
+      - ./services/notebook-viewer:/app
+      - notebook-viewer-node-modules:/app/node_modules
+      - notebook-viewer-static:/out
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /out/index.html"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 120s
+
 volumes:
   zarr-viewer-node-modules:
+  notebook-viewer-node-modules:

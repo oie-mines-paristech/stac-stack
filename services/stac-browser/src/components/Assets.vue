@@ -10,6 +10,8 @@
       <AssetViewerItem
         v-for="item in viewerItems" :key="item.key"
         :viewer="item.viewer" :asset="item.asset" :expand="item.expand"
+        :shown="shownKeys.includes(item.asset.getKey())"
+        @show="show"
       />
     </b-accordion>
   </section>

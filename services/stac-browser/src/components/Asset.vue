@@ -12,18 +12,16 @@
           <b-icon-chevron-down v-if="expanded" />
           <b-icon-chevron-right v-else />
         </span>
+        <img
+          v-if="isImageViewerIcon"
+          :src="viewerIcon"
+          alt=""
+          class="asset-viewer-icon img-fluid"
+        >
+        <span v-else-if="viewerIcon" class="asset-viewer-icon">{{ viewerIcon }}</span>
         <span class="title" :title="title">{{ title }}</span>
       </span>
-      <div class="badges ms-1">
-        <b-badge v-if="shown" variant="success" class="shown" :title="$t('assets.currentlyShown')">
-          <b-icon-check /> {{ $t('assets.shown') }}
-        </b-badge>
-        <b-badge v-if="asset.deprecated" variant="warning" class="deprecated">{{ $t('deprecated') }}</b-badge>
-        <template v-if="Array.isArray(asset.roles)">
-          <b-badge v-for="role in sortedRoles" :key="role" :variant="role === 'data' ? 'primary' : 'secondary'" class="role" :title="displayRole(role)">{{ displayRole(role) }}</b-badge>
-        </template>
-        <b-badge v-if="shortFileFormat" variant="dark" class="format" :title="fileFormat"><span v-html="shortFileFormat" /></b-badge>
-      </div>
+      <AssetBadges :asset="asset" :shown="shown" :extra-roles="viewerRoles" />
     </template>
    
     <template v-if="hasAlternatives">
@@ -44,24 +42,22 @@
 
 <script>
 import { defineAsyncComponent } from 'vue';
-import { formatMediaType } from '@radiantearth/stac-fields/formatters';
 import { mapState } from 'vuex';
-import StacFieldsMixin from './StacFieldsMixin';
 import { isObject, size } from 'stac-js/src/utils.js';
 import { BCard, BTab, BTabs, BAccordionItem } from 'bootstrap-vue-next';
+import AssetBadges from './AssetBadges.vue';
+import { getViewersForAsset, isImageIcon } from '../oie/assetViewers.js';
 
 export default {
   name: 'Asset',
   components: {
     AssetAlternative: defineAsyncComponent(() => import('./AssetAlternative.vue')),
+    AssetBadges,
     BCard,
     BTab,
     BTabs,
     BAccordionItem
   },
-  mixins: [
-    StacFieldsMixin({ formatMediaType })
-  ],
   props: {
     asset: {
       type: Object,
@@ -98,20 +94,28 @@ export default {
     title() {
       return this.asset.title || this.asset.getKey();
     },
+    // First in-place viewer for this asset. Its icon is shown next to the block
+    // title (same placement as in append mode); the viewer's own title is not
+    // used in-place (the asset title is), and its extra roles are merged into
+    // the block badges.
+    inplaceViewer() {
+      if (this.definition) {
+        return null;
+      }
+      const viewers = getViewersForAsset(this.asset, 'inplace');
+      return viewers.length > 0 ? viewers[0] : null;
+    },
+    viewerIcon() {
+      return this.inplaceViewer ? this.inplaceViewer.icon : null;
+    },
+    isImageViewerIcon() {
+      return isImageIcon(this.viewerIcon);
+    },
+    viewerRoles() {
+      return this.inplaceViewer && Array.isArray(this.inplaceViewer.roles) ? this.inplaceViewer.roles : [];
+    },
     mainTabId() {
       return `${this.uid}-main`;
-    },
-    fileFormat() {
-      if (typeof this.asset.type === "string" && this.asset.type.length > 0) {
-        return this.formatMediaType(this.asset.type);
-      }
-      return null;
-    },
-    shortFileFormat() {
-      if (typeof this.asset.type === "string" && this.asset.type.length > 0) {
-        return this.formatMediaType(this.asset.type, null, {shorten: true});
-      }
-      return null;
     },
     alternatives() {
       if (!isObject(this.asset.alternate)) {
@@ -127,21 +131,6 @@ export default {
     },
     hasAlternatives() {
       return size(this.alternatives) > 0;
-    },
-    sortedRoles() {
-      if (!Array.isArray(this.asset.roles)) {
-        return [];
-      }
-      // Sort roles with 'data' first, then alphabetically (case-insensitive)
-      return [...this.asset.roles].sort((a, b) => {
-        if (a === 'data') {
-          return -1;
-        }
-        if (b === 'data') {
-          return 1;
-        }
-        return a.toLowerCase().localeCompare(b.toLowerCase(), undefined, { sensitivity: 'base' });
-      });
     },
     preferredTabId() {
       if (!this.hasAlternatives) {
@@ -207,13 +196,6 @@ export default {
     getAlternativeTabId(key) {
       return `${this.uid}-alt-${String(key).toLowerCase().replace(/[^\w]/g, '-')}`;
     },
-    displayRole(role) {
-      let key = `assets.role.${role}`;
-      if (this.$te(key)) {
-        return this.$t(key);
-      }
-      return role;
-    },
     collapseToggled(isVisible) {
       let event = isVisible ? 'openCollapsible' : 'closeCollapsible';
       this.$store.commit(event, {type: this.type, uid: this.uid});
@@ -229,6 +211,16 @@ export default {
 #stac-browser .asset {
   .asset-body {
     padding: 0;
+  }
+
+  .asset-viewer-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    line-height: 1.1rem;
+    text-align: center;
+    display: inline-block;
+    flex: 0 0 auto;
+    margin-right: 0.25rem;
   }
 
   .metadata {

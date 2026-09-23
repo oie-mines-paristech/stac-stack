@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # OIE build of stac-browser (upstream CDSE v5.x tree, runtime unchanged).
 #
 # Kept alongside the upstream Dockerfile (nginx) so we never touch theirs.
@@ -10,27 +11,41 @@ ARG DYNAMIC_CONFIG=true
 ARG historyMode="history"
 ARG SB_CONFIG=""
 
-FROM node:lts-alpine AS build
+# Shared dependency layer. Both the production bundle (`build`) and the dev
+# server (`dev`) need node_modules, so it is installed once here, before any
+# source is copied: a source edit never reinstalls dependencies.
+FROM node:lts-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# Production bundle. `npm run build` is the only reason this stage exists, so
+# the dev stage must NOT inherit from it (it would build the SPA for nothing).
+FROM deps AS build
 ARG DYNAMIC_CONFIG
 ARG historyMode
 ARG SB_CONFIG
 ENV DYNAMIC_CONFIG="${DYNAMIC_CONFIG}"
 ENV SB_historyMode="${historyMode}"
 ENV SB_CONFIG="${SB_CONFIG}"
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
 COPY . .
 RUN [ "${DYNAMIC_CONFIG}" == "true" ] && sed -i 's/<!--RC//;s/RC-->//' index.html
 RUN npm run build
 
 # Dev: source + node_modules + vite dev server, launched by serve.js when DEV=1.
-FROM build AS dev
+# Source is bind-mounted by docker-compose.dev.yml (no production build here),
+# but index.html/public/config.schema.json must still live in the image.
+FROM deps AS dev
+ARG DYNAMIC_CONFIG
 ENV NODE_PATH=/app/node_modules
-RUN npm install --no-save yaml@2
-COPY --from=build /app/config.schema.json /etc/stac/config.schema.json
-COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js
+COPY . .
+# Same runtime-config injection as the production build: uncomment the
+# <base>/runtime-config.js block so the SPA picks up SB_* + branding/config.yaml
+# instead of falling back to the build-time CDSE defaults.
+RUN [ "${DYNAMIC_CONFIG}" == "true" ] && sed -i 's/<!--RC//;s/RC-->//' index.html
+RUN --mount=type=cache,target=/root/.npm npm install --no-save yaml@2
+COPY config.schema.json /etc/stac/config.schema.json
+COPY docker/serve.js /usr/local/bin/serve.js
 EXPOSE 8081
 ENTRYPOINT ["node", "/usr/local/bin/serve.js"]
 
@@ -38,7 +53,7 @@ FROM node:lts-alpine
 WORKDIR /app
 COPY --from=build /app/package*.json ./
 ENV NODE_PATH=/app/node_modules
-RUN npm install --no-save yaml@2
+RUN --mount=type=cache,target=/root/.npm npm install --no-save yaml@2
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/config.schema.json /etc/stac/config.schema.json
 COPY --from=build /app/docker/serve.js /usr/local/bin/serve.js

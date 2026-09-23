@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 ARG PYTHON_VERSION=3.12
 # Pinned by digest (python:3.12-alpine at pin time). Re-pin on bump: bump the
 # version, then docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine.
@@ -7,14 +8,16 @@ FROM python:${PYTHON_VERSION}-alpine${PYTHON_DIGEST} AS build
 
 # uv is installed from PyPI (pinned version), NOT from a downloaded install
 # script — the astral.sh installer is an unpinned remote-execution hole.
-RUN pip --no-cache-dir install uv==0.12.15
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install uv==0.12.15
 
 WORKDIR /app
 
 COPY ./pyproject.toml ./pyproject.toml
 COPY ./uv.lock ./uv.lock
 
-RUN uv sync --compile --locked --no-cache --no-install-project --no-default-groups
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --compile --locked --no-install-project --no-default-groups
 
 FROM python:${PYTHON_VERSION}-alpine${PYTHON_DIGEST}
 

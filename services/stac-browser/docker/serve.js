@@ -330,10 +330,42 @@ function serveDev() {
   child.on("exit", (code) => process.exit(code || 0));
 }
 
-const { config, branding } = computeConfig();
-writeConfig(config);
-injectBranding(branding, config.catalogTitle);
+function apply() {
+  const { config, branding } = computeConfig();
+  writeConfig(config);
+  injectBranding(branding, config.catalogTitle);
+}
+
+// Dev only: re-read branding/config.yaml when it changes on the host, so an
+// edit is applied without restarting the container. The regenerated
+// public/runtime-config.js is watched by vite, which full-reloads the SPA.
+function watchBranding() {
+  const candidates = [];
+  if (process.env.STAC_BRANDING_CONFIG) candidates.push(process.env.STAC_BRANDING_CONFIG);
+  candidates.push(
+    path.join(BRANDING_DIR, "config.yaml"),
+    path.join(BRANDING_DIR, "config.yml"),
+    path.join(BRANDING_DIR, "config.json"),
+  );
+  const watched = new Set(candidates.map((f) => path.basename(f)));
+  for (const dir of new Set(candidates.map((f) => path.dirname(path.resolve(f))))) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      fs.watch(dir, (event, filename) => {
+        if (filename && watched.has(filename)) {
+          console.log(`[serve] branding config changed: ${path.join(dir, filename)}`);
+          apply();
+        }
+      });
+    } catch (err) {
+      console.warn(`[serve] cannot watch ${dir}: ${err.message}`);
+    }
+  }
+}
+
+apply();
 if (isDev()) {
+  watchBranding();
   serveDev();
 } else {
   serveStatic();

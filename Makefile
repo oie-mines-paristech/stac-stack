@@ -7,7 +7,7 @@
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
 #   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
+.PHONY: build rebuild up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
@@ -38,7 +38,15 @@ submodules:
 	@test -f services/zarr-viewer/package.json || (echo "Run: git submodule update --init --recursive" && exit 1)
 	@test -f services/stac-generator/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
 	@test -f services/zarr-subset-zip/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
+# BuildKit skips services whose build context did not change, so a plain
+# `make build` only rebuilds what you touched. Running containers are left
+# alone (no needless down/up); use SERVICE to force a subset, e.g.
+#   make build SERVICE="browser"
 build: submodules
+	$(COMPOSE) build $(SERVICE)
+
+# Full rebuild that also stops the stack first.
+rebuild: submodules
 	$(COMPOSE) down
 	$(COMPOSE) build
 

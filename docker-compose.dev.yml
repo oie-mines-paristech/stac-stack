@@ -9,6 +9,8 @@ services:
       - ./services/stac-generator/schemas:/app/schemas
     environment:
       WATCH_DEBOUNCE: "2"
+      # Reload generate-stac when a .py source file changes (see entrypoint.sh).
+      DEV: "1"
 
   browser:
     build:
@@ -29,6 +31,13 @@ services:
       - ./services/stac-browser/fields.config.js:/app/fields.config.js
       - ./services/stac-browser/assetActions.config.js:/app/assetActions.config.js
       - ./services/stac-browser/linkActions.config.js:/app/linkActions.config.js
+      - ./services/stac-browser/basemaps.config.js:/app/basemaps.config.js
+      - ./services/stac-browser/codeGenerators.config.js:/app/codeGenerators.config.js
+      - ./services/stac-browser/relationTypes.config.js:/app/relationTypes.config.js
+      - ./services/stac-browser/stacActions.config.js:/app/stacActions.config.js
+      - ./services/stac-browser/widgets.config.js:/app/widgets.config.js
+      # vite restarts itself when its config changes, so mount it too.
+      - ./services/stac-browser/vite.config.js:/app/vite.config.js
       # Dev only: vite's publicDir serves /app/public, so expose the branding
       # assets (/branding/*) through it. In prod serve.js statics /branding/.
       - ./branding:/app/public/branding:ro

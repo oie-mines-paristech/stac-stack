@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # nginx with WebDAV (PROPFIND/LOCK/UNLOCK via arut/nginx-dav-ext-module) and
 # mod_zip (evanmiller/mod_zip, ZIP streaming), based on the THIRD-PARTY image
 # hakwerk/nginx-dav (official nginx + static dav-ext).
@@ -18,11 +19,12 @@ FROM hakwerk/nginx-dav:latest@sha256:af0c4200dcc7e9e5e5dec438e2f90cb14b7c412155c
 # the base image (read from `nginx -v`, so a base bump cannot desync the ABI).
 # `--with-compat` on both sides is what makes the dynamic load work; building a
 # module against a different nginx build fails with "not binary compatible".
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        build-essential ca-certificates curl libpcre2-dev zlib1g-dev libssl-dev; \
-    rm -rf /var/lib/apt/lists/*
+        build-essential ca-certificates curl libpcre2-dev zlib1g-dev libssl-dev
 
 RUN set -eux; \
     NGINX_VERSION="$(nginx -v 2>&1 | sed -E 's#.*nginx/([0-9.]+).*#\1#')"; \

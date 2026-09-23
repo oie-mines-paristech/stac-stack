@@ -109,7 +109,8 @@ export default defineConfig(async ({ mode }) => {
     base: dynamicConfig ? "./" : config.pathPrefix,
     build: {
       sourcemap: mode !== "minimal",
-      rollupOptions: {
+      // Vite 8: Rollup was replaced by Rolldown; the option was renamed.
+      rolldownOptions: {
         external: ["fs/promises"],
       },
     },

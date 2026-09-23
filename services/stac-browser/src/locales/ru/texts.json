@@ -58,7 +58,8 @@
   "cancel": "Отмена",
   "catalog": {
     "license": "Лицензия",
-    "temporalExtent": "Временной охват"
+    "temporalExtent": "Временной охват",
+    "temporalResolution": "Временное разрешение"
   },
   "catalogs": {
     "filterByTitle": "Фильтровать каталоги по названию",

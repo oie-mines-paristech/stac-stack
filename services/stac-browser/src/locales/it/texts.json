@@ -58,7 +58,8 @@
   "cancel": "Annulla",
   "catalog": {
     "license": "Licenza",
-    "temporalExtent": "Estensione temporale"
+    "temporalExtent": "Estensione temporale",
+    "temporalResolution": "Risoluzione temporale"
   },
   "catalogs": {
     "filterByTitle": "Filtra i cataloghi per titolo",

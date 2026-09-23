@@ -40,7 +40,8 @@
   "cancel": "キャンセル",
   "catalog": {
     "license": "ライセンス",
-    "temporalExtent": "時刻の範囲"
+    "temporalExtent": "時刻の範囲",
+    "temporalResolution": "時間分解能"
   },
   "catalogs": {
     "filterByTitle": "カタログをフィルタ (タイトル)",

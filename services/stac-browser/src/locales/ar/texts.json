@@ -58,7 +58,8 @@
   "cancel": "إلغاء",
   "catalog": {
     "license": "الترخيص",
-    "temporalExtent": "النطاق الزمني"
+    "temporalExtent": "النطاق الزمني",
+    "temporalResolution": "الدقة الزمنية"
   },
   "catalogs": {
     "filterByTitle": "تصفية الكتالوجات حسب العنوان",

@@ -58,7 +58,8 @@
   "cancel": "Anulare",
   "catalog": {
     "license": "Licență",
-    "temporalExtent": "Interval de timp"
+    "temporalExtent": "Interval de timp",
+    "temporalResolution": "Rezoluție temporală"
   },
   "catalogs": {
     "filterByTitle": "Filtrați cataloagele după titlu",

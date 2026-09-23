@@ -21,6 +21,10 @@
               <b-col md="4" class="label">{{ $t('catalog.temporalExtent') }}</b-col>
               <b-col md="8" class="value"><span v-html="temporalExtents" /></b-col>
             </b-row>
+            <b-row v-if="temporalResolution">
+              <b-col md="4" class="label">{{ $t('catalog.temporalResolution') }}</b-col>
+              <b-col md="8" class="value"><span v-html="temporalResolution" /></b-col>
+            </b-row>
           </section>
           <LinkList v-if="linkPosition === 'left'" :title="$t('additionalResources')" :links="additionalLinks" />
         </section>
@@ -79,7 +83,7 @@ import Items from '../components/Items.vue';
 import ReadMore from "../components/ReadMore.vue";
 import ShowAssetLinkMixin from '../components/ShowAssetLinkMixin';
 import StacFieldsMixin from '../components/StacFieldsMixin';
-import { formatLicense, formatTemporalExtents } from '@radiantearth/stac-fields/formatters';
+import { formatDuration, formatLicense, formatTemporalExtents } from '@radiantearth/stac-fields/formatters';
 import Utils from '../utils';
 import { hasText, isObject, size } from 'stac-js/src/utils.js';
 import { addSchemaToDocument, createCatalogSchema } from '../schema-org';
@@ -112,7 +116,7 @@ export default defineComponent({
   },
   mixins: [
     ShowAssetLinkMixin,
-    StacFieldsMixin({ formatLicense, formatTemporalExtents }),
+    StacFieldsMixin({ formatDuration, formatLicense, formatTemporalExtents }),
     DeprecationMixin
   ],
   data() {
@@ -185,6 +189,18 @@ export default defineComponent({
         return this.formatTemporalExtents(extents);
       }
       return null;
+    },
+    temporalResolution() {
+      const cube = this.data && isObject(this.data['cube:dimensions']) ? this.data['cube:dimensions'] : null;
+      if (!cube) {
+        return null;
+      }
+      const dim = Object.values(cube).find((d) => isObject(d) && d.type === 'temporal');
+      const step = dim && typeof dim.step === 'string' ? dim.step : null;
+      if (!step) {
+        return null;
+      }
+      return this.formatDuration(step);
     },
     hasItemAssets() {
       return this.itemAssets.length > 0;

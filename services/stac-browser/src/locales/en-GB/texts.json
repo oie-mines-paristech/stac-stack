@@ -13,7 +13,9 @@
     "button": {},
     "schemeTypes": {}
   },
-  "catalog": {},
+  "catalog": {
+    "temporalResolution": "Temporal Resolution"
+  },
   "catalogs": {
     "filterByTitle": "Filter catalogues by title",
     "filterByTitleAndMore": "Filter catalogues by title, description or keywords",

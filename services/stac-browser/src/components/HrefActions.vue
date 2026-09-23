@@ -10,7 +10,7 @@
         <b-icon-download v-else />
         {{ buttonText }}
       </b-button>
-      <CopyButton variant="primary" :copyText="href" :title="href">
+      <CopyButton variant="primary" :copyText="copyUrl" :title="copyUrl">
         {{ copyButtonText }}
       </CopyButton>
       <b-button v-if="hasShowButton && !requiresAuth" @click="show" variant="primary">
@@ -48,7 +48,7 @@ import { mapGetters, mapState } from 'vuex';
 import AssetActions from '../../assetActions.config';
 import LinkActions from '../../linkActions.config';
 import AuthUtils from './auth/utils';
-import { browserProtocols } from 'stac-js/src/http';
+import { browserProtocols, toAbsolute } from 'stac-js/src/http';
 import { imageMediaTypes, geojsonMediaType, wozMediaTypes, zarrMediaTypes } from 'stac-js/src/mediatypes';
 import { getGeoZarrSourceOptionsFromAsset } from 'ol-stac/util.js';
 
@@ -231,6 +231,16 @@ export default {
         return null;
       }
       return this.getRequestUrl(this.data.getAbsoluteUrl());
+    },
+    // The copy button must expose a shareable full URL. With a path-absolute
+    // catalogUrl (e.g. "/api/") `href` stays origin-relative (e.g.
+    // "/data/foo"), so resolve it against the page origin. Non-relative
+    // URIs (http(s), s3, …) and download/other actions are left untouched.
+    copyUrl() {
+      if (typeof this.href !== 'string') {
+        return this.href;
+      }
+      return toAbsolute(this.href, window.location.origin);
     },
     from() {
       return this.protocolName(this.protocol);

@@ -53,6 +53,27 @@ test.describe('Collection Metadata', () => {
     await expect(page.getByText(new RegExp(start))).toBeVisible();
   });
 
+  test('Catalog - renders temporal resolution from the datacube temporal step', async ({ page, worker }) => {
+    const { catalog, collection } = createStaticCatalog();
+    // The datacube temporal dimension may use any name ("time", "t", ...); the
+    // UI must pick the dimension whose type is "temporal".
+    collection.setMetadata({
+      'cube:dimensions': {
+        y: { type: 'spatial', axis: 'y' },
+        t: { type: 'temporal', step: 'P1D' },
+        x: { type: 'spatial', axis: 'x' },
+      }
+    });
+    await catalog.createServer(worker);
+
+    await page.goto(collection.getBrowserPath());
+    await waitForBrowserReady(page);
+
+    const row = page.locator('section.metadata .row', { hasText: 'Temporal Resolution' });
+    await expect(row).toBeVisible();
+    await expect(row.locator('.value')).toContainText('1 day');
+  });
+
   // Regression test for https://github.com/radiantearth/stac-browser/issues/954
   // An open-ended temporal extent ("{0} until present") dropped its start date in
   // non-English languages because interpolation values were passed to vue-i18n as

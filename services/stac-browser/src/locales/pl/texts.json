@@ -58,7 +58,8 @@
   "cancel": "Anuluj",
   "catalog": {
     "license": "Licencja",
-    "temporalExtent": "Okres ważności"
+    "temporalExtent": "Okres ważności",
+    "temporalResolution": "Rozdzielczość czasowa"
   },
   "catalogs": {
     "filterByTitle": "Filtruj katalogi wedug nazwy",

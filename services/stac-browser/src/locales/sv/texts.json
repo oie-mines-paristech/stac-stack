@@ -58,7 +58,8 @@
   "cancel": "Avbryt",
   "catalog": {
     "license": "Licens",
-    "temporalExtent": "Tidsmässig utsträckning"
+    "temporalExtent": "Tidsmässig utsträckning",
+    "temporalResolution": "Tidsupplösning"
   },
   "catalogs": {
     "filterByTitle": "Filtrera kataloger efter titel",

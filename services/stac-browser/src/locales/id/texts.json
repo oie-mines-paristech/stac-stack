@@ -58,7 +58,8 @@
   "cancel": "Batal",
   "catalog": {
     "license": "Lisensi",
-    "temporalExtent": "Cakupan Temporal"
+    "temporalExtent": "Cakupan Temporal",
+    "temporalResolution": "Resolusi temporal"
   },
   "catalogs": {
     "filterByTitle": "Filter katalog berdasarkan judul",

@@ -141,11 +141,12 @@ assetViewers:
   # resolves its own API/download URLs against the /zarr-subset/ base path, so
   # no extra STAC metadata is needed.
   - id: zarr-subset
-    title: Download zipped zarr subset
+    title: Download ZIP subset
     hideActions: true
     hideViewerActions: true
     description: Use the form below to select a subset of data and download it as zipped zarr archive.
     icon: "📦"
+    roles: ["data", "subset", "zip"]
     match:
       type: "application/vnd.zarr"
       roles: [data]

@@ -7,7 +7,7 @@
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
 #   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build rebuild up down dev dev-up sync sync-dry sync-code deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
+.PHONY: build rebuild up down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
@@ -80,6 +80,13 @@ sync-dry:
 sync-code:
 	@echo "Deploy: $(env) → $(DEPLOY_DEST)"
 	rsync -avh --delete $(RSYNC_EXCLUDES) ./ '$(DEPLOY_DEST)'
+
+# Sync sources then rebuild/restart the remote stack over SSH.
+#   make deploy            → prod (host $(DEPLOY_HOST))
+#   make deploy env=dev    → dev host
+deploy: sync-code
+	@echo "Remote $(DEPLOY_HOST): down / build / up"
+	ssh $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && docker compose down && docker compose build && docker compose up -d'
 
 # Prod (stac) runs inside systemd-nspawn; Docker needs session keyrings (keyctl).
 deploy-check:

@@ -142,7 +142,7 @@ assetViewers:
     icon: "📦"
     match:
       type: "application/vnd.zarr"
-      roles: ["zip", "subset", "download"]
+      roles: [data]
     url: "/zarr-subset/"
     query:
       url: href

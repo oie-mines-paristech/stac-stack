@@ -199,7 +199,12 @@ function writeConfig(config) {
   console.log(`[serve] wrote ${CONFIG_OUTPUT}`);
 }
 
-// Inject CSS/favicon <link> tags from SB_css / SB_favicon into dist/index.html.
+// Injected branding block is delimited so re-applying (dev config watcher)
+// replaces it instead of stacking duplicate <link> tags.
+const BRANDING_MARK = "<!--OIE-BRANDING-->";
+const BRANDING_END = "<!--/OIE-BRANDING-->";
+
+// Inject CSS/favicon <link> tags from SB_css / SB_favicon into index.html.
 // Keeps the image generic: each org's look is applied at container start.
 function injectBranding(branding, catalogTitle) {
   const indexPath = INDEX_HTML;
@@ -212,21 +217,38 @@ function injectBranding(branding, catalogTitle) {
   if (branding.favicon) {
     links.push(`<link rel="icon" href="${branding.favicon}">`);
   }
-  if (!links.length) return;
 
-  const html = fs.readFileSync(indexPath, "utf8");
-  let updated = html.replace(/<\/head>\s*/, links.join("\n    ") + "\n  </head>");
-  // Static og:site_name in the built index.html carries the org defaults;
-  // rebrand it from the runtime title so social shares don't leak the other org.
+  let html = fs.readFileSync(indexPath, "utf8");
+  const original = html;
+
+  // Static og:site_name in index.html carries the org defaults; rebrand it from
+  // the runtime title so social shares don't leak the other org. Match the
+  // content attribute only: in dev the value is still an EJS placeholder
+  // ("<%- catalogTitle %>") whose ">" would end a [^>]* match mid-tag and leave
+  // a stray ">" that breaks the <head> parsing (dropping the injected links).
   if (catalogTitle) {
-    updated = updated.replace(
-      /<meta[^>]*name="og:site_name"[^>]*>/,
-      `<meta name="og:site_name" content="${catalogTitle}">`,
+    html = html.replace(
+      /(<meta[^>]*name="og:site_name"[^>]*content=")[^"]*(")/,
+      `$1${catalogTitle}$2`,
     );
   }
-  if (updated !== html) {
-    fs.writeFileSync(indexPath, updated);
-    console.log(`[serve] injected branding links: ${links.join(" ")}`);
+
+  // Idempotent: replace a previously injected block, else insert before </head>.
+  const blockRe = /[ \t]*<!--OIE-BRANDING-->[\s\S]*?<!--\/OIE-BRANDING-->[ \t]*\n?/;
+  const block = links.length
+    ? `${BRANDING_MARK}\n    ${links.join("\n    ")}\n    ${BRANDING_END}\n  `
+    : "";
+  if (blockRe.test(html)) {
+    html = html.replace(blockRe, block);
+  } else if (links.length) {
+    html = html.replace(/<\/head>\s*/, `${block}</head>`);
+  }
+
+  if (html !== original) {
+    fs.writeFileSync(indexPath, html);
+    if (links.length) {
+      console.log(`[serve] injected branding links: ${links.join(" ")}`);
+    }
   }
 }
 

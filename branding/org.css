@@ -1,7 +1,9 @@
 /* OIE branding overlay for stac-browser.
    Injected at container start by docker/serve.js (<link rel="stylesheet">),
-   loaded from SB_css env. Overrides bootstrap/stac-browser CSS variables. */
-:root {
+   loaded from SB_css env. Overrides bootstrap/stac-browser CSS variables.
+   `html:root` (not `:root`) raises specificity so the overrides win even in
+   dev, where Vite injects Bootstrap's own `:root` variables after this file. */
+html:root {
   --bs-primary: #1a5fb4;
   --bs-primary-rgb: 26, 95, 180;
   --bs-link-color: #1a5fb4;

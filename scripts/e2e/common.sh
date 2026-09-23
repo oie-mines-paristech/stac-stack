@@ -64,8 +64,10 @@ assert_browser() {
   html="$(curl -fsS "${browser_url}")"
   [[ "$html" == *"STAC"* ]] || fail "Page browser inattendue: ${browser_url}"
 
-  config="$(curl -fsS "${browser_url%/}/config.js")"
-  [[ "$config" == *"catalogUrl"* ]] || fail "config.js invalide"
+  # The runtime config (SB_* env + branding/config.yaml) is served as
+  # runtime-config.js by docker/serve.js; there is no config.js in dist.
+  config="$(curl -fsS "${browser_url%/}/runtime-config.js")"
+  [[ "$config" == *"catalogUrl"* ]] || fail "runtime-config.js invalide"
   [[ "$config" == *"${api_path}"* ]] || fail "catalogUrl ne contient pas ${api_path}: ${config}"
   log "OK: browser ${browser_url}"
 }

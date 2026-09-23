@@ -76,6 +76,10 @@ transactions: off
 #                         and the two actions (fullscreen, open) are added to the
 #                         asset's own action button group.
 #   height    iframe height in px (default 480).
+#   order     Optional sort key for the block, relative to the other blocks
+#             (asset blocks and viewers). Lower comes first; unset = 0. An
+#             asset block inherits the order of its in-place viewer, so it can
+#             be placed between append viewers too.
 #   embed     add `embed=1` to the iframe URL so the viewer can drop its
 #             standalone chrome (default true). Set false to omit.
 #   expand    Whether the block is shown open by default (append mode, default false).
@@ -110,6 +114,7 @@ assetViewers:
       datetime: "viewer:datetime"
       bracket: "viewer:bracket"
     mode: append
+    order: 3
     height: 480
     expand: true
 
@@ -127,6 +132,7 @@ assetViewers:
     query:
       url: href
     mode: inplace
+    order: 2
     height: 640
 
   # Zarr subset download: pick variables/ranges and stream a ZIP of the selected
@@ -147,4 +153,5 @@ assetViewers:
     query:
       url: href
     mode: append
+    order: 1
     height: 640

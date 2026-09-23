@@ -8,6 +8,10 @@ const VIEWER_DEFAULTS = {
   height: 480,
   expand: false,
   allowFullscreen: true,
+  // Optional sort key relative to the other asset blocks and viewers. Lower
+  // comes first; unset (or non-numeric) = 0. An asset block without an
+  // in-place viewer also uses 0, so plain assets keep their natural position.
+  order: null,
   // Add `embed=1` to the iframe URL so viewers can adapt their chrome (hide
   // download buttons, standalone headers, …). There is no standard query
   // param for this; the reliable signals are the `Sec-Fetch-Dest: iframe`
@@ -71,6 +75,14 @@ export function getViewersForAsset(asset, mode) {
     }
     return matchesViewer(viewer, asset);
   });
+}
+
+// Sort key for a viewer (or the asset block it drives in-place). Unset or
+// non-numeric → 0, so untouched configs keep the default assets-then-viewers
+// order (the sort in Assets.vue is stable).
+export function viewerOrder(viewer) {
+  const order = Number(viewer && viewer.order);
+  return Number.isFinite(order) ? order : 0;
 }
 
 // Encode a substituted token value without escaping slashes, so relative

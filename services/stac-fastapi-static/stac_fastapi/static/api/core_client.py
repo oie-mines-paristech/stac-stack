@@ -37,6 +37,10 @@ from stac_fastapi.static.core import (
     BadWalkResultError,
 )
 
+from stac_fastapi.static.core.model.links import (
+    set_self_href,
+)
+
 from stac_fastapi.static.core.requests import (
     Session,
     file_uri_to_file_path,
@@ -175,6 +179,20 @@ def resolve(
                     base_api_href=base_api_href,
                     root_catalog_file=root_catalog_file,
                 )
+
+    # A published relative catalog (pystac RELATIVE_PUBLISHED) carries no `self`
+    # link on items and non-root collections, and the file-tree href it would
+    # carry is not an API route. Emit the canonical API self link instead: STAC
+    # requires it on items, and stac-browser reads it to build the item URL —
+    # without it the UI falls back to the base URL.
+    if isinstance(object, Item):
+        if object.collection:
+            set_self_href(
+                object,
+                urljoin(base_api_href, f"collections/{object.collection}/items/{object.id}"),
+            )
+    elif isinstance(object, Collection):
+        set_self_href(object, urljoin(base_api_href, f"collections/{object.id}"))
 
     return object
 

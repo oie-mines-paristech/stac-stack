@@ -191,14 +191,19 @@ def test_search_items_limit(api_base_href: str, catalog: pystac.Catalog):
 def test_search_items_by_cql2_filtering(api_base_href: str, catalog: pystac.Catalog):
     (text_filter, json_filter, validate) = pick_cql2_filters(catalog)
 
-    get_request_param = f"filter={text_filter}&filter-lang=cql2-text"
+    # `params=` so requests percent-encodes the LIKE wildcards: a bare `%da` in
+    # the query string is read back as a byte and corrupts the filter.
+    get_request_param = {
+        "filter": text_filter,
+        "filter-lang": "cql2-text"
+    }
     post_request_param = {
         "filter": json_filter,
         "filter-lang": "cql2-json"
     }
 
     for response in (
-        requests.get(urljoin(api_base_href, f"search?{get_request_param}")),
+        requests.get(urljoin(api_base_href, "search"), params=get_request_param),
         requests.post(urljoin(api_base_href, "search"), json=post_request_param)
     ):
         response.raise_for_status()

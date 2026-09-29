@@ -23,6 +23,7 @@ from geojson_pydantic.geometries import Geometry
 import datetime
 
 from stac_fastapi.static.core.compat import fromisoformat
+from stac_fastapi.static.core.lib.geometries_intersect import to_2d_bbox
 
 
 def walk_items(catalog: pystac.Catalog | pystac_client.Client) -> Iterator[pystac.Item]:
@@ -150,7 +151,7 @@ def pick_bbox(catalog: pystac.Catalog | pystac_client.Client) -> shapely.Polygon
 
     def get_item_center(item: pystac.Item) -> shapely.Point | None:
         if item.bbox:
-            return shapely.centroid(shapely.geometry.box(*item.bbox))
+            return shapely.centroid(shapely.geometry.box(*to_2d_bbox(item.bbox)))
         elif item.geometry:
             return shapely.centroid(shapely.geometry.shape(item.geometry))
         else:
@@ -169,18 +170,6 @@ def pick_bbox(catalog: pystac.Catalog | pystac_client.Client) -> shapely.Polygon
 def pick_geometry(catalog: pystac.Catalog | pystac_client.Client) -> shapely.Geometry:
 
     return pick_bbox(catalog)
-
-    item = pick_item(catalog)
-
-    def get_item_geometry(item: pystac.Item) -> shapely.Geometry:
-        if item.bbox:
-            return shapely.geometry.box(*item.bbox)
-        elif item.geometry:
-            return shapely.geometry.shape(item.geometry)
-        else:
-            raise ValueError("Item missing geometry")
-
-    return get_item_geometry(item)
 
 
 def pick_datetimes(catalog: pystac.Catalog | pystac_client.Client) -> Tuple[Tuple[None | datetime.datetime, None | datetime.datetime]]:

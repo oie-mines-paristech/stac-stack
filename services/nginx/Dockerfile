@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 # nginx with WebDAV (PROPFIND/LOCK/UNLOCK via arut/nginx-dav-ext-module) and
 # mod_zip (evanmiller/mod_zip, ZIP streaming), based on the THIRD-PARTY image
 # hakwerk/nginx-dav (official nginx + static dav-ext).

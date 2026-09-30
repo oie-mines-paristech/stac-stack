@@ -1,7 +1,18 @@
+# Provenance stamped on every first-party image by scripts/release.sh.
+# `unreleased` means the image was built outside a release: never publish it as
+# a version. Renovation tools and `docker inspect` read the revision back.
+x-oci-labels: &oci-labels
+  org.opencontainers.image.source: "https://git.sophia.minesparis.psl.eu/oie/stac-oie"
+  org.opencontainers.image.revision: "${STACK_REVISION:-unreleased}"
+  org.opencontainers.image.version: "${STACK_VERSION:-dev}"
+
 services:
 
   stac-generator:
-    build: ./services/stac-generator
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-generator:${STACK_VERSION:-latest}
+    build:
+      context: ./services/stac-generator
+      labels: *oci-labels
     restart: unless-stopped
     environment:
       INPUT_DIR: /data
@@ -13,9 +24,11 @@ services:
       - ./volumes/catalog:/catalog
 
   browser:
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-browser:${STACK_VERSION:-latest}
     build:
       context: ./services/stac-browser
       dockerfile: Dockerfile.oie
+      labels: *oci-labels
     restart: unless-stopped
     depends_on:
       static-api:
@@ -37,8 +50,10 @@ services:
   # review https://github.com/hakwerk/nginx-dav and the digest before bumping.
   # Full audit of every base image: README → « Supply chain ».
   nginx:
-    build: ./services/nginx
-    image: stac-oie-nginx:local
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-nginx:${STACK_VERSION:-latest}
+    build:
+      context: ./services/nginx
+      labels: *oci-labels
     restart: unless-stopped
     environment:
       NGINX_HTTP_PORT: "8080"
@@ -95,14 +110,20 @@ services:
       - ./volumes/certificates:/data
 
   zarr-viewer:
-    build: ./services/zarr-viewer
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-zarr-viewer:${STACK_VERSION:-latest}
+    build:
+      context: ./services/zarr-viewer
+      labels: *oci-labels
     volumes:
       - zarr-viewer-static:/out
     environment:
       DEV: "0"
 
   notebook-viewer:
-    build: ./services/notebook-viewer
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-notebook-viewer:${STACK_VERSION:-latest}
+    build:
+      context: ./services/notebook-viewer
+      labels: *oci-labels
     volumes:
       - notebook-viewer-static:/out
     environment:
@@ -114,9 +135,11 @@ services:
   # The whole data tree is mounted at the same path nginx serves it from (/data),
   # so a deep store URI (e.g. /data/fisheye/ikarus) resolves 1:1.
   zarr-subset-zip:
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-zarr-subset-zip:${STACK_VERSION:-latest}
     build:
       context: ./services/zarr-subset-zip
       dockerfile: Dockerfile.api
+      labels: *oci-labels
     restart: unless-stopped
     environment:
       ZARR_ROOT: /data
@@ -127,7 +150,10 @@ services:
       - zarr-subset-cache:/tmp/cache
 
   static-api:
-    build: ./services/stac-fastapi-static
+    image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-static-api:${STACK_VERSION:-latest}
+    build:
+      context: ./services/stac-fastapi-static
+      labels: *oci-labels
     restart: unless-stopped
     depends_on:
       stac-generator:

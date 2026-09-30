@@ -115,6 +115,19 @@ test-webdav:
 test: test-direct test-webdav
 	@echo "make test : OK"
 
+# Proves the stack runs from published images only: build -> push to a local
+# registry -> purge local tags -> pull -> up --no-build. Leaves nothing behind.
+test-release:
+	@bash scripts/e2e/release-roundtrip.sh
+
+# Guard rail: refuses to release anything that is not committed (submodules
+# included). Read-only, safe to run as a CI gate.
+release-check:
+	@bash scripts/release.sh check
+
+release:
+	@bash scripts/release.sh release $(VERSION)
+
 e2e-clean:
 	-$(COMPOSE) -p stac-e2e-direct down -v --remove-orphans 2>/dev/null
 	-$(COMPOSE) -p stac-e2e-webdav down -v --remove-orphans 2>/dev/null

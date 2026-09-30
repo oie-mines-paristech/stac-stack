@@ -231,19 +231,73 @@ Toutes les images de base sont **pinnées par digest SHA256** dans leur `Dockerf
   version exacte de nginx de l'image de base au build (`services/nginx/Dockerfile`) — pas de
   conteneur nginx dédié côté `zarr-subset-zip`.
 
-### Audit des images (état au 2026-09-16)
+### Audit des images (état au 2026-09-30)
 
 | Service | Image de base | Pin digest | Note |
 |---------|---------------|:----------:|------|
 | `nginx` | `hakwerk/nginx-dav` (nginx 1.31.4 + dav-ext statique + headers-more + fancyindex) | ✅ | ⚠ tiers, non-officiel Docker |
-| `browser` | `node:lts-alpine` (= v24 au pin) | ✅ | — |
+| `browser` | `node:lts-alpine` (= v24.21.0 au pin) | ✅ | 2 étages `FROM` pinnés ; `deps` hérité l'est aussi |
 | `zarr-viewer` | `node:22-alpine` | ✅ | — |
-| `stac-generator` | `python:3.12-slim` | ✅ | — |
+| `stac-generator` | `python:3.12-slim` | ✅ | uv installé **depuis PyPI `uv==0.12.15` pinné** (identique à `static-api`) |
 | `static-api` (2 étages) | `python:3.12-alpine` | ✅ | uv installé **depuis PyPI `uv==0.12.15` pinné** au lieu du script `astral.sh` (trou de supply chain corrigé) |
-| `zarr-subset-zip` | `python:3.12-slim` | ✅ | API FastAPI (sous-module OIE) ; mod_zip chargé dans `nginx` |
+| `zarr-subset-zip` | `python:3.12-slim` | ✅ | API FastAPI (sous-module OIE) ; uv via `COPY --from=ghcr.io/astral-sh/uv:0.12.21` pinné par digest ; mod_zip chargé dans `nginx` |
 | `caddy` (profil `tls`) | `caddy:2-alpine` | ✅ | image officielle, pin dans [`docker-compose.yml`](docker-compose.yml) |
+| *frontend syntax* (les 7 `Dockerfile`) | `docker/dockerfile:1.7` | ✅ | directive `# syntax=` elle-même épinglée par digest |
 
-**Re-pin après bump** (routine à chaque mise à jour d'une image) : modifier la version dans le `FROM`, puis `docker inspect --format '{{index .RepoDigests 0}}' <image>` et reporter le digest dans le `@sha256:` du `FROM`.
+**Re-pin après bump** (routine à chaque mise à jour d'une image) : modifier la version dans le `FROM`, puis `docker inspect --format '{{index .RepoDigests 0}}' <image>` et reporter le digest dans le `@sha256:` du `FROM`. Pour le frontend syntax, `docker buildx imagetools inspect docker/dockerfile:1.7`.
+
+### Images publiées
+
+Les 7 images *first-party* portent un nom explicite, versionné par variables
+d'environnement. Le `build:` reste présent : le dépôt reste requis (config nginx,
+`branding/`, volumes), les images évitent seulement la compilation.
+
+| Variable | Défaut | Rôle |
+|----------|--------|------|
+| `STACK_REGISTRY` | `ghcr.io/oie-mines-paristech` | registre de publication |
+| `STACK_VERSION` | `latest` | tag commun à toute la stack |
+
+```bash
+STACK_REGISTRY=ghcr.io/oie-mines-paristech STACK_VERSION=2026.09.30 docker compose build
+```
+
+Noms dérivés : `stac-stack-nginx`, `stac-stack-static-api`, `stac-stack-zarr-subset-zip`,
+`stac-stack-browser`, `stac-stack-generator`, `stac-stack-zarr-viewer`,
+`stac-stack-notebook-viewer`. `caddy` reste une image tierce pinnée, jamais publiée par ce dépôt.
+
+Chaque image porte deux labels OCI, injectés par compose (ancrage `x-oci-labels`) :
+
+| Label | Valeur | Usage |
+|-------|--------|-------|
+| `org.opencontainers.image.revision` | SHA du commit, ou `unreleased` | Renovate, `docker inspect`, traçabilité image → commit |
+| `org.opencontainers.image.version` | tag de release, ou `dev` | version lisible sans le registre |
+
+Une image construite hors release s'auto-identifie `unreleased` / `dev` : elle ne peut pas
+être confondue avec une version publiée.
+
+### Publier une release
+
+Rien n'est publié tant que la source n'est pas committée — **y compris les sous-modules**.
+
+```bash
+make release-check                 # garde-fou seul, sans effet de bord (gate CI)
+make release VERSION=2026.09.30    # check → tag git → build → push
+```
+
+`scripts/release.sh` refuse la release si :
+
+- le worktree du dépôt parent a des modifications non committées ;
+- un sous-module a des modifications non committées **dans son propre worktree**
+  (le message indique le fichier et la commande `git add` à faire ensuite) ;
+- un sous-module est checkout sur un commit que le parent n'enregistre pas
+  (gitlink divergent — `git submodule status` le signale par un `+`, `git status` seul ne le voit pas) ;
+- un sous-module n'est pas initialisé, ou est en conflit de merge ;
+- le tag demandé existe déjà.
+
+Le tag gitannoté est créé **après** le premier push réussi, pour qu'un build en échec
+ne laisse jamais un tag pointer sur un commit non publié. `scripts/release.sh push <image>`
+applique la même règle au niveau de l'image : refuses de pousser une image dont le label
+`revision` n'est pas le commit courant — donc un `docker push` manuel ne contourne pas le garde-fou.
 
 ## Tests E2E déploiement
 
@@ -254,6 +308,7 @@ Vérifie automatiquement (ports dédiés pour ne pas perturber une stack en cour
 | `make test` | Les deux scénarios ci-dessous |
 | `make test-direct` | HTTP direct `http://localhost:18001/` — API, browser, viewer, proxy Zarr |
 | `make test-webdav` | WebDAV `/data` (lecture publique, écriture admin) + `/dav` (tout auth, catalog RO) |
+| `make test-release` | Roundtrip de release : build → push vers un registre local → purge des tags locaux → `pull` → `up --no-build` → smoke test |
 
 ```bash
 make test
@@ -264,6 +319,17 @@ make e2e-clean   # arrête les projets compose E2E
 ```
 
 Prérequis : Docker, `curl`, Python 3.
+
+`make test-release` est le test le plus important pour la distribution : il prouve
+qu'un déploiement peut démarrer **sans jamais builder**, en ne faisant que `pull`.
+Il utilise un registre `registry:2` jetable sur `localhost:5000` et le tag `test`,
+pour ne toucher à aucun tag publié — et il ne laisse rien derrière lui (stack,
+images `:test`, conteneur du registre sont supprimés en sortie, y compris en cas
+d'échec).
+
+```bash
+make test-release   # ~3 min : registre local jetable puis roundtrip
+```
 
 Les tests contrôlent notamment :
 - liens API en chemins absolus (`/api/collections`, sans `http://` embarqué)

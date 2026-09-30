@@ -179,7 +179,7 @@ pointing at this host.
 
 ## Branding and configuration
 
-Everything user-facing lives in `branding/`, mounted read-only:
+Everything user-facing lives in `branding/` :
 
 | File | Purpose |
 |---|---|
@@ -192,7 +192,7 @@ Edit them and `make up` (or `docker compose restart browser`) to see the result.
 
 ## Author
 
-[Raphaël Jolivet](mailto:raphael.jolivet@minesparis.psl.eu) @ [OIE - Mines Paris - PSL](https://www.oie.minesparis.psl.eu/), .
+[Raphaël Jolivet](mailto:raphael.jolivet@minesparis.psl.eu) @ [OIE - Mines Paris - PSL](https://www.oie.minesparis.psl.eu/)
 
 ## License
 

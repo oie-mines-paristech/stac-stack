@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# A Collection of Zarr cubes, showing how to attach extra assets to an item.
+#
+# An asset accepts `file:` (relative to this folder) or `href:` (a URL), and
+# any extra key is copied verbatim into the STAC asset JSON.
+# ---------------------------------------------------------------------------
+
+title: Fisheye cameras
+description: Solar irradiance data from a fisheye camera, stored as a Zarr cube.
+
+# Scientific Citation extension fields.
+doi: 10.1234/stac-stack.fisheye
+citation: "Example citation for the STAC Stack fisheye collection (2026)."
+
+items:
+  - path: ikarus
+    assets:
+      # Extra asset, resolved relative to this metadata.yml folder.
+      - file: ikarus-access.ipynb
+        roles: [preview]
+        title: Jupyter notebook
+        description: Opens the cube from a notebook.
+        # Extra keys are passed through to STAC Browser (iframe height here).
+        expand: true
+        preview:height: 600
+
+      # Targeting `name: data` augments the inferred data asset instead of
+      # adding a new one, so the cube's own href is kept. The viewer:* keys
+      # tell the Zarr viewer which variable and slice to open by default.
+      - name: data
+        viewer:variable: raw_sensor
+        viewer:datetime: "2024-08-13T06:00:00Z"
+        viewer:bracket: 2

@@ -1,0 +1,18 @@
+# ---------------------------------------------------------------------------
+# A Collection of GeoTIFF files, parsed with rasterio, plus a folder-level
+# document attached to the collection itself rather than to an item.
+# ---------------------------------------------------------------------------
+
+title: GeoTIFF samples
+description: A single GeoTIFF, with a companion document.
+
+items:
+  - "*.tiff"
+
+# Folder-level assets are attached to the Collection (or Catalog), not to an
+# item. A plain string like `- doc.pdf` would be shorthand for the same thing.
+assets:
+  - file: doc.pdf
+    roles: [documentation]
+    name: documentation
+    title: Test document

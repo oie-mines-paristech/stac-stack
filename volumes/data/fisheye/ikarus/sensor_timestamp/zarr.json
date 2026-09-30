@@ -1,0 +1,80 @@
+{
+  "shape": [
+    3,
+    5
+  ],
+  "data_type": "uint64",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        3,
+        5
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          1,
+          1
+        ],
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "sensor timestamp (monotonic, nanoseconds since sensor boot)",
+    "comment": "Monotonic hardware timestamp in nanoseconds since sensor boot (CLOCK_BOOTTIME). This is NOT wall-clock or epoch time and is not comparable across reboots; it carries no CF `units` so readers do not decode it as a duration or a date. Use `capture_time` for the true instant.",
+    "zarr_chunks": {
+      "time": 1,
+      "bracket": 1
+    },
+    "zarr_shards": {
+      "time": 24,
+      "bracket": -1
+    }
+  },
+  "dimension_names": [
+    "time",
+    "bracket"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

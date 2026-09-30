@@ -1,0 +1,83 @@
+{
+  "shape": [
+    3,
+    5
+  ],
+  "data_type": "int64",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        3,
+        5
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          1,
+          1
+        ],
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "standard_name": "time",
+    "long_name": "exact capture instant",
+    "units": "microseconds since 1970-01-01 00:00:00",
+    "calendar": "standard",
+    "comment": "True wall-clock instant each frame was captured, to microsecond precision. Distinct from the `time` coordinate, which snaps the capture to its 15-minute grid slot and discards the jitter.",
+    "zarr_chunks": {
+      "time": 1,
+      "bracket": 1
+    },
+    "zarr_shards": {
+      "time": 24,
+      "bracket": -1
+    }
+  },
+  "dimension_names": [
+    "time",
+    "bracket"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

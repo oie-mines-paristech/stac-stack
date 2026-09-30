@@ -24,9 +24,10 @@ coverage/
 data/stac-index/*
 data/*
 
-# Docker volume mounts (generated at runtime)
-volumes/data/**
-!volumes/data/.gitkeep
+# Docker volume mounts.
+# volumes/data/ is committed: it holds the small example catalog that the
+# stack serves out of the box. volumes/catalog/ and volumes/certificates/ are
+# generated at runtime.
 volumes/catalog/**
 !volumes/catalog/.gitkeep
 volumes/certificates/**

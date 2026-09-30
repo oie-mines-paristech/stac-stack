@@ -1,0 +1,88 @@
+{
+  "shape": [
+    3,
+    5,
+    3
+  ],
+  "data_type": "float32",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        3,
+        5,
+        3
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": "NaN",
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          1,
+          1,
+          3
+        ],
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "colour gains (white balance)",
+    "units": "1",
+    "comment": "White-balance gains over the [R, G, B] channels, used to render the preview image. Not applied to the raw counts stored here.",
+    "zarr_chunks": {
+      "time": 1,
+      "bracket": 1,
+      "rgb": -1
+    },
+    "zarr_shards": {
+      "time": 24,
+      "bracket": -1,
+      "rgb": -1
+    },
+    "_FillValue": "AAAAAAAA+H8="
+  },
+  "dimension_names": [
+    "time",
+    "bracket",
+    "rgb"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

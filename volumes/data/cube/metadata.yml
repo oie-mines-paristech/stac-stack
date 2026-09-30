@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# A Collection: it declares `items` (a Catalog would declare `children`).
+#
+# Each item is a NetCDF or Zarr dataset. The generator opens it with xarray/CF
+# and infers spatial extent, temporal extent, datacube dimensions and bands.
+# ---------------------------------------------------------------------------
+
+title: Land surface temperature
+description: >-
+  Time series of land surface temperature, as a Zarr datacube and a NetCDF
+  climatology. Everything specific to each dataset is inferred from the file.
+
+# Collection-level metadata.
+license: CC-BY-4.0
+keywords: [land surface temperature, climatology, demo]
+providers:
+  - name: OIE - Mines Paris - PSL
+    roles: [producer, host]
+    url: https://www.oie.minesparis.psl.eu/
+created: "2024-09-12T00:00:00Z"
+updated: "2026-09-30T00:00:00Z"
+
+# `doi` and `citation` add the Scientific Citation extension to the collection.
+doi: 10.1234/stac-stack.cube
+citation: "Example citation for the STAC Stack cube collection (2026)."
+
+# `items` accepts a glob, or an object with per-item overrides.
+items:
+  - "*.nc"
+  - path: lst.zarr
+    # Per-item overrides win over the inferred values.
+    properties:
+      title: LST datacube
+    # Any of these could be forced instead of inferred:
+    # datetime: "2002-01-02T00:00:00Z"
+    # bbox: [1.0, 47.0, 3.0, 49.0]

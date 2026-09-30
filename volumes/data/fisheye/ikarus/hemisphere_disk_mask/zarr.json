@@ -1,0 +1,60 @@
+{
+  "shape": [
+    4,
+    425,
+    442
+  ],
+  "data_type": "int8",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        4,
+        425,
+        442
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "bytes"
+    },
+    {
+      "name": "zstd",
+      "configuration": {
+        "level": 0,
+        "checksum": false
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "hemisphere disk pixel mask",
+    "comment": "True where the pixel images an incident angle <= 90 degrees from the optical axis, i.e. within the fisheye's frontal hemisphere. False means the pixel is beyond the 90-degree hemisphere or not imaged at all (the dark corners of the bounding-box crop); a False pixel is discarded regardless of its count. Depends on the intrinsic calibration but kept in this raw store because it defines the crop that shrinks the stored data; treated as fixed per deployment, so a recalibration that changes it means a new dataset. Static per camera, computed at first write by squishing the single-channel mask into the four Bayer channels.",
+    "zarr_chunks": {
+      "band": -1,
+      "sub_y": -1,
+      "sub_x": -1
+    },
+    "zarr_shards": {
+      "band": -1,
+      "sub_y": -1,
+      "sub_x": -1
+    },
+    "dtype": "bool"
+  },
+  "dimension_names": [
+    "band",
+    "sub_y",
+    "sub_x"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

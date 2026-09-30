@@ -1,0 +1,94 @@
+{
+  "shape": [
+    3,
+    5,
+    3,
+    3
+  ],
+  "data_type": "float32",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        3,
+        5,
+        3,
+        3
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": "NaN",
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          1,
+          1,
+          3,
+          3
+        ],
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "colour correction matrix",
+    "units": "1",
+    "comment": "3x3 colour correction matrix used to render the preview image, laid out row = output channel (ccm_out), column = input channel (ccm_in), so output = matrix @ input over [R, G, B]. Not applied to the raw counts stored here.",
+    "zarr_chunks": {
+      "time": 1,
+      "bracket": 1,
+      "ccm_out": -1,
+      "ccm_in": -1
+    },
+    "zarr_shards": {
+      "time": 24,
+      "bracket": -1,
+      "ccm_out": -1,
+      "ccm_in": -1
+    },
+    "_FillValue": "AAAAAAAA+H8="
+  },
+  "dimension_names": [
+    "time",
+    "bracket",
+    "ccm_out",
+    "ccm_in"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

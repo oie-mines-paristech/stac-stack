@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# Root of the STAC tree.
+#
+# A folder becomes a Catalog when it declares `children`, a Collection when it
+# declares `items`. The two are mutually exclusive, and one is required.
+# Every path or glob is resolved relative to the folder holding this file.
+# ---------------------------------------------------------------------------
+
+id: stac-stack-example
+title: STAC Stack example
+description: >-
+  Example catalog shipped with the STAC Stack. Through three collections it
+  documents the main metadata.yml features: a catalog tree, glob-based item
+  discovery, automatic dataset metadata, extra assets and per-item overrides.
+
+# Explicit relative paths here. A glob such as "collection-*" would work too.
+children:
+  - fisheye
+  - cube
+  - tiffs
+
+# Extra STAC links, appended after the structural links the generator writes.
+links:
+  - rel: describedby
+    href: https://git.sophia.minesparis.psl.eu/oie/stac-generator
+    type: text/html
+    title: metadata.yml reference
+
+# A preview.png sitting in this folder is auto-detected and attached as an
+# `icon` link, so it does not need to be declared here.

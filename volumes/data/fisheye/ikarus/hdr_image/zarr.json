@@ -1,0 +1,126 @@
+{
+  "shape": [
+    3,
+    850,
+    884,
+    3
+  ],
+  "data_type": "uint8",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        3,
+        850,
+        884,
+        3
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          1,
+          850,
+          884,
+          3
+        ],
+        "codecs": [
+          {
+            "name": "transpose",
+            "configuration": {
+              "order": [
+                3,
+                1,
+                2,
+                0
+              ]
+            }
+          },
+          {
+            "name": "imagecodecs_jpegxl",
+            "configuration": {
+              "effort": 4,
+              "distance": 2.0,
+              "lossless": false,
+              "photometric": "GRAY",
+              "planar": true
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "HDR colour image",
+    "comment": "Demosaiced high-dynamic-range colour image for display, one per capture, derived from the raw sensor data in this store. Full native sensor resolution (sensor_y x sensor_x, ~2x the squished sub_y/sub_x grid), three RGB channels laid out channels-last (H x W x 3), NOT the squished four-band Bayer layout. Lossy JPEG-XL: a display product, not measurement data.",
+    "zarr_chunks": {
+      "time": 1,
+      "sensor_y": -1,
+      "sensor_x": -1,
+      "rgb": -1
+    },
+    "zarr_shards": {
+      "time": 24,
+      "sensor_y": -1,
+      "sensor_x": -1,
+      "rgb": -1
+    },
+    "zarr_encoding": {
+      "name": "imagecodecs_jpegxl",
+      "args": {
+        "lossless": false,
+        "distance": 2.0,
+        "effort": 4
+      },
+      "dimension_order": [
+        "rgb",
+        "sensor_y",
+        "sensor_x"
+      ]
+    },
+    "_swap_dimensions": [
+      "rgb",
+      "sensor_y",
+      "sensor_x",
+      "time"
+    ]
+  },
+  "dimension_names": [
+    "time",
+    "sensor_y",
+    "sensor_x",
+    "rgb"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

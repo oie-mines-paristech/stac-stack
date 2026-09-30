@@ -1,0 +1,113 @@
+{
+  "shape": [
+    3,
+    5,
+    4,
+    425,
+    442
+  ],
+  "data_type": "uint16",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        3,
+        5,
+        4,
+        425,
+        442
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          1,
+          1,
+          4,
+          425,
+          442
+        ],
+        "codecs": [
+          {
+            "name": "imagecodecs_jpegxl",
+            "configuration": {
+              "effort": 4,
+              "lossless": true,
+              "photometric": "GRAY",
+              "planar": true
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "raw sensor counts",
+    "units": "1",
+    "coordinates": "exposures",
+    "ancillary_variables": "hemisphere_disk_mask",
+    "black_level": 64,
+    "white_level": 1023,
+    "comment": "Analog-to-digital counts, stored exactly as the 10-bit sensor reported them, cropped to a fixed bounding box around the imaged disk. Stored in the squished (de-interleaved) sub_y/sub_x layout -- each Bayer band as its own coherent half-resolution image, one per `band` -- because that compresses far better under JPEG-XL than the interleaved mosaic. Pixel validity is derived, not stored: a pixel is underexposed where raw <= black_level (64), overexposed where raw >= white_level (1023), and valid in between (65..1022). Counts a few below the black level occur as read noise around the black-level pedestal and count as underexposed. Whether a pixel lies within the imaged hemisphere is answered by hemisphere_disk_mask; whether it sees open sky is a further, world-frame question answered in the next-level product.",
+    "zarr_chunks": {
+      "time": 1,
+      "bracket": 1,
+      "band": -1,
+      "sub_y": -1,
+      "sub_x": -1
+    },
+    "zarr_shards": {
+      "time": 24,
+      "bracket": -1,
+      "band": -1,
+      "sub_y": -1,
+      "sub_x": -1
+    },
+    "zarr_encoding": {
+      "name": "imagecodecs_jpegxl",
+      "args": {
+        "lossless": true,
+        "effort": 4
+      }
+    }
+  },
+  "dimension_names": [
+    "time",
+    "bracket",
+    "band",
+    "sub_y",
+    "sub_x"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

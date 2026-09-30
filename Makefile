@@ -100,7 +100,10 @@ sync-code:
 #   make deploy env=dev    → dev host
 deploy: sync-code
 	@echo "Remote $(DEPLOY_HOST): down / build / up"
-	ssh $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && docker compose down && docker compose build && docker compose up -d'
+	@# ssh does not forward this shell's environment, so STACK_VERSION has to be
+	@# exported explicitly in the remote command. Without it compose falls back to
+	@# its "${STACK_VERSION:-dev}" default and the footer reads "dev".
+	ssh $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && export STACK_VERSION=$(STACK_VERSION) && docker compose down && docker compose build && docker compose up -d'
 
 # Prod (stac) runs inside systemd-nspawn; Docker needs session keyrings (keyctl).
 deploy-check:

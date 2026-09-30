@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sync git subtrees listed in subtrees.yaml (pull/push/remotes/status).
+# Sync git subtrees listed in .subtrees.yml (pull/push/remotes/status).
 #
 # Workflow (standalone repos are the source of truth):
 #   1. Develop in the standalone repo, push to its remote.
@@ -10,14 +10,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG="${SUBTREES_CONFIG:-$ROOT/subtrees.yaml}"
+CONFIG="${SUBTREES_CONFIG:-$ROOT/.subtrees.yml}"
 
 usage() {
   cat <<EOF
 Usage: $(basename "$0") <command> [name]
 
 Commands:
-  remotes              Add or update git remotes from subtrees.yaml
+  remotes              Add or update git remotes from .subtrees.yml
   status [name]        Compare local subtree paths with upstream (tree + git link)
   pull <name|--all>    Pull upstream changes into the monorepo
   push <name>          Export monorepo changes upstream, then reconcile (use with care)

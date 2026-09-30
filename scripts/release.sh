@@ -106,11 +106,19 @@ cmd_release() {
 
   check
 
-  git rev-parse -q --verify "refs/tags/$version" >/dev/null \
-    && die "tag $version already exists — pick a new version"
-
   local rev
   rev=$(git rev-parse HEAD)
+
+  # An existing tag is only acceptable if it already points at HEAD: that is a
+  # pre-pushed tag for this exact commit. A tag anywhere else means the version
+  # was already released from different source, so refuse.
+  if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+    local tagged
+    tagged=$(git rev-list -n1 "$version")
+    [ "$tagged" = "$rev" ] || die "tag $version already exists at ${tagged:0:12}, not HEAD ${rev:0:12} — pick a new version"
+    printf '  ..  tag %s already present at HEAD, reusing it\n' "$version"
+  fi
+
   printf '\nrelease: %s @ %s\n' "$version" "${rev:0:12}"
 
   # Stamp the revision on the images before building: provenance must describe
@@ -139,8 +147,12 @@ for n, s in sorted(svc.items()):
 
   # Tag only after every image is published, so a failed build or a partial
   # push never leaves a version tag pointing at an unpublished commit.
-  printf '  -> tag %s\n' "refs/tags/$version"
-  git tag -a "$version" -m "stac-stack $version @ ${rev:0:12}"
+  if ! git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+    printf '  -> tag %s\n' "refs/tags/$version"
+    git tag -a "$version" -m "stac-stack $version @ ${rev:0:12}"
+  else
+    printf '  -> tag %s already present\n' "$version"
+  fi
 
   printf '\nrelease: done.\n'
   printf '  images : %s:%s\n' "$STACK_REGISTRY" "$version"

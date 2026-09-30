@@ -165,10 +165,11 @@ function computeConfig() {
   return { config, branding };
 }
 
-// In assetViewers query dicts, uppercase values are ENV var names (client has
-// no access to the server env). Resolve them here at container start and drop
-// the query param when the variable is unset/empty. Lowercase values (href,
-// asset attribute names) are resolved at runtime on each asset.
+// In assetViewers query values, `{NAME}` is a placeholder. A token in an
+// uppercase ENV-var form is resolved here at container start (the client has no
+// access to the server env) and the whole query param is dropped when the
+// variable is unset/empty. Other tokens ({href}, {asset.attr.path}) are left
+// for the client to resolve per asset.
 function resolveAssetViewerEnv(config) {
   const viewers = config.assetViewers;
   if (!Array.isArray(viewers)) {
@@ -180,14 +181,25 @@ function resolveAssetViewerEnv(config) {
       continue;
     }
     for (const [name, spec] of Object.entries(query)) {
-      if (typeof spec !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(spec)) {
+      if (typeof spec !== "string") {
         continue;
       }
-      const value = process.env[spec];
-      if (value !== "" && value != null) {
-        query[name] = value;
-      } else {
+      let missing = false;
+      const resolved = spec.replace(/\{([^{}]+)\}/g, (match, token) => {
+        if (!/^[A-Z][A-Z0-9_]*$/.test(token)) {
+          return match; // Client-side token, left untouched.
+        }
+        const value = process.env[token];
+        if (value === "" || value == null) {
+          missing = true;
+          return "";
+        }
+        return value;
+      });
+      if (missing) {
         delete query[name];
+      } else {
+        query[name] = resolved;
       }
     }
   }

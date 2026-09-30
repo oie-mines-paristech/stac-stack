@@ -92,34 +92,51 @@ function encodePathSafe(value) {
   return encodeURIComponent(String(value)).replace(/%2F/gi, '/');
 }
 
-// Resolve a query parameter value spec against the runtime asset:
-//   "href"            → the asset's (projected) URL
-//   "attr.path"       → a (possibly dotted) attribute of the asset
-//   anything else     → used verbatim (already resolved by serve.js from ENV)
-// Uppercase specs are ENV var names and are resolved at container start by
-// serve.js — the client never sees them. Returns '' when nothing matches so
-// the caller can drop the parameter.
-function resolveQueryValue(spec, asset, href) {
-  if (typeof spec === 'string') {
-    if (spec === 'href' || spec === 'url') {
-      return href;
-    }
-    let obj = asset;
-    for (const part of spec.split('.')) {
-      if (obj === undefined || obj === null) {
-        return '';
-      }
-      obj = obj[part];
-    }
+// Resolve one `{token}` placeholder against the runtime asset:
+//   {href} / {url}   → the asset's (projected) URL
+//   {attr} / {attr.path} → a (possibly dotted) attribute of the asset
+// Uppercase ENV tokens are already substituted by serve.js at container start.
+// Returns '' when the token cannot be resolved.
+function resolveQueryToken(token, asset, href) {
+  if (token === 'href' || token === 'url') {
+    return href;
+  }
+  let obj = asset;
+  for (const part of token.split('.')) {
     if (obj === undefined || obj === null) {
       return '';
     }
-    if (typeof obj === 'object') {
-      return JSON.stringify(obj);
-    }
-    return String(obj);
+    obj = obj[part];
   }
-  return spec === undefined || spec === null ? '' : String(spec);
+  if (obj === undefined || obj === null) {
+    return '';
+  }
+  if (typeof obj === 'object') {
+    return JSON.stringify(obj);
+  }
+  return String(obj);
+}
+
+// Resolve a query parameter value against the runtime asset. A value with no
+// `{...}` placeholder is a static literal, used verbatim (e.g. "fill").
+// Otherwise every placeholder is substituted; the caller drops the param when
+// one of them cannot be resolved.
+function resolveQueryValue(spec, asset, href) {
+  if (typeof spec !== 'string') {
+    return spec === undefined || spec === null ? '' : String(spec);
+  }
+  if (!spec.includes('{')) {
+    return spec;
+  }
+  let missing = false;
+  const value = spec.replace(/\{([^{}]+)\}/g, (_match, token) => {
+    const resolved = resolveQueryToken(token, asset, href);
+    if (resolved === '') {
+      missing = true;
+    }
+    return resolved;
+  });
+  return missing ? '' : value;
 }
 
 export function buildViewerUrl(viewer, asset, projectUrl = null) {

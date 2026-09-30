@@ -33,7 +33,7 @@ transactions: off
 # Collection IDs are resolved against /api/collections; URLs also work.
 # Remove the line (or use []) to hide the block. It can also be set via the
 # SB_featuredCollections env var (value above wins for this key).
-# featuredCollections: [fisheye]
+featuredCollections: []
 
 # Advanced: full widget overrides, see services/stac-browser/widgets.config.js.
 # widgetConfigs:
@@ -56,16 +56,17 @@ transactions: off
 #               key    exact asset key
 #   url       BASE URL of the viewer (no query). Query params are built from
 #             the `query` dict below.
-#   query     Query parameters for the iframe URL, as {name: value}. Each value
-#             is looked up in order of:
-#               #1 "href"                     → the asset's URL
-#               #2 UPPER_CASE_NAME            → an ENV var of the browser
+#   query     Query parameters for the iframe URL, as {name: value}. A value is
+#             a template: `{token}` placeholders are substituted, everything
+#             else is a literal passed through as-is (e.g. zoom: "fill"). Tokens:
+#               {href}                        → the asset's URL
+#               {ENV_VAR}                     → an ENV var of the browser
 #                                                container (resolved at start)
-#               #3 any other string           → an attribute of the asset
+#               {attr} / {attr.path}          → an attribute of the asset
 #                                                (dotted paths allowed), e.g.
-#                                                "viewer:default_var"
-#             A query param is silently DROPPED when its value is empty/unset
-#             at runtime (e.g. attribute missing on the asset).
+#                                                "{viewer:default_var}"
+#             A query param is silently DROPPED when one of its placeholders
+#             cannot be resolved (e.g. attribute missing on the asset).
 #   mode      "append"  → a new dedicated accordion block: the viewer title and
 #                         icon on the left, the asset's badges repeated on the
 #                         right, and the asset's own action buttons repeated
@@ -108,11 +109,13 @@ assetViewers:
     url: "/viewer/"
     roles: ["preview"]
     query:
-      url: href
-      # Example: passthrough an optional per-asset attribute to the viewer.
-      variable: "viewer:variable"
-      datetime: "viewer:datetime"
-      bracket: "viewer:bracket"
+      url: "{href}"
+      # Optional per-asset attributes, each dropped when the asset lacks it.
+      variable: "{viewer:variable}"
+      datetime: "{viewer:datetime}"
+      bracket: "{viewer:bracket}"
+      # Static value, passed through unchanged.
+      zoom: "fill"
     mode: append
     order: 3
     height: 480
@@ -130,7 +133,7 @@ assetViewers:
       type: "application/x-ipynb+json"
     url: "/notebook-viewer/"
     query:
-      url: href
+      url: "{href}"
     mode: inplace
     order: 2
     height: 640
@@ -152,7 +155,7 @@ assetViewers:
       roles: [data]
     url: "/zarr-subset/"
     query:
-      url: href
+      url: "{href}"
     mode: append
     order: 1
     height: 640

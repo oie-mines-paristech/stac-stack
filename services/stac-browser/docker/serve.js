@@ -39,6 +39,10 @@ const EXTRA_SCHEMA = {
   // List of {id, title, icon, match: {type, roles, key}, url, mode, height},
   // see branding/config.yaml. Read by src/oie/assetViewers.js.
   assetViewers: { type: ["array"] },
+  // Stack version and source repository, shown in the footer next to the
+  // upstream STAC Browser credit. Fed by SB_stackVersion / SB_stackUrl.
+  stackVersion: { type: ["string"] },
+  stackUrl: { type: ["string"] },
 };
 
 // Keys consumed directly by serve.js (not written into the runtime config).

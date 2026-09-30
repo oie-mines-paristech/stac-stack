@@ -41,6 +41,10 @@ services:
       SB_catalogUrl: "/api/"
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: "100"
+      # Shown in the footer next to the STAC Browser credit. STACK_VERSION is
+      # exported by the Makefile from the VERSION file.
+      SB_stackVersion: "${STACK_VERSION:-dev}"
+      SB_stackUrl: "https://git.sophia.minesparis.psl.eu/oie/stac-oie"
     volumes:
       - ./branding:/branding:ro
 

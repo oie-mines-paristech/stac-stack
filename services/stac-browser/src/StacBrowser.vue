@@ -87,11 +87,16 @@
           <a :href="link.url" target="_blank" rel="noopener noreferrer">{{ $te(`footerLinks.${link.label}`) ? $t(`footerLinks.${link.label}`) : link.label }}</a>
         </li>
       </ul>
-      <i18n-t tag="small" keypath="poweredBy" class="poweredby text-body-secondary" scope="global">
-        <template #link>
-          <a href="https://github.com/radiantearth/stac-browser" target="_blank" rel="noopener noreferrer">STAC Browser</a> {{ browserVersion }}
+      <small class="poweredby text-body-secondary">
+        <i18n-t keypath="poweredBy" scope="global">
+          <template #link>
+            <a href="https://github.com/radiantearth/stac-browser" target="_blank" rel="noopener noreferrer">STAC Browser</a> {{ browserVersion }}
+          </template>
+        </i18n-t>
+        <template v-if="stackVersion">
+          &amp; <a :href="stackUrl" target="_blank" rel="noopener noreferrer">Stac Stack {{ stackVersion }}</a>
         </template>
-      </i18n-t>
+      </small>
     </footer>
     <b-popover
       v-if="root" id="popover-root" class="popover-large" target="popover-root-btn"
@@ -186,6 +191,8 @@ export default defineComponent({
       allowExternalAccessFromVueX: 'allowExternalAccess',
       showFavoritesFromVueX: 'showFavorites',
       footerLinksFromVueX: 'footerLinks',
+      stackVersion: 'stackVersion',
+      stackUrl: 'stackUrl',
       localeFromVueX: 'locale',
       fallbackLocaleFromVueX: 'fallbackLocale',
       detectLocaleFromBrowserFromVueX: 'detectLocaleFromBrowser',

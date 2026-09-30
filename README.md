@@ -41,15 +41,15 @@ The generator never edits your data. It produces a separate catalog tree under
 
 ## Projects in this stack
 
-| Project | What it does | Author | Our additions |
+| Project | What it does | Origin | Our additions |
 |---|---|---|---|
-| [**stac-generator**](https://git.sophia.minesparis.psl.eu/oie/stac-generator) | Walks the asset tree, reads `metadata.yml`, extracts spatial/temporal/band metadata, writes the STAC catalog | OIE | Whole project |
-| [**stac-browser**](https://github.com/radiantearth/stac-browser) | STAC search web app: results, filters, map, item pages | [Radiant Earth](https://radiant.earth/) (upstream) | OIE branding, catalog wiring, viewer integrations, release Dockerfile |
-| [**zarr-viewer**](https://git.sophia.minesparis.psl.eu/oie/zarr-viewer) | Web viewer for Zarr v2/v3 image cubes, CF-convention aware | OIE | Whole project, built on [Zarrita](https://zarrita.dev/) |
-| [**zarr-subset-zip**](https://git.sophia.minesparis.psl.eu/oie/zarr-subset-zip) | HTTP API that subsets a Zarr cube and streams it as a ZIP | OIE | Whole project |
-| [**notebook-viewer**](https://git.sophia.minesparis.psl.eu/oie/notebook-viewer) | Renders a Jupyter notebook in an iframe, for `application/x-ipynb+json` assets | OIE | Whole project, built on [notebookjs](https://github.com/jsvine/notebookjs) |
-| [**stac-fastapi-static**](https://github.com/stac-utils/stac-fastapi-static) | Serves a static STAC catalog as a STAC API | [stac-utils](https://github.com/stac-utils) (upstream) | Packaging and integration |
-| **nginx + WebDAV** | Single entry point; routes `/api/`, `/viewer/`, `/data/`… and exposes WebDAV /dav | — | Routing, WebDAV access policy |
+| [**stac-generator**](https://git.sophia.minesparis.psl.eu/oie/stac-generator) | Walks the asset tree, reads `metadata.yml`, extracts spatial/temporal/band metadata, writes the STAC catalog | OIE — own project | Whole project |
+| [**zarr-viewer**](https://git.sophia.minesparis.psl.eu/oie/zarr-viewer) | Web viewer for Zarr v2/v3 image cubes, CF-convention aware | OIE — own project, built on [Zarrita](https://zarrita.dev/) | Whole project |
+| [**zarr-subset-zip**](https://git.sophia.minesparis.psl.eu/oie/zarr-subset-zip) | HTTP API that subsets a Zarr cube and streams it as a ZIP | OIE — own project | Whole project |
+| [**notebook-viewer**](services/notebook-viewer/) | Renders a Jupyter notebook in an iframe, for `application/x-ipynb+json` assets | OIE — own project, in-tree, built on [notebookjs](https://github.com/jsvine/notebookjs) | Whole project |
+| **stac-browser** | STAC search web app: results, filters, map, item pages | Fork of [eu-cdse/stac-browser-cdse](https://github.com/eu-cdse/stac-browser-cdse), itself a fork of [radiantearth/stac-browser](https://github.com/radiantearth/stac-browser) | OIE branding, catalog wiring, viewer integrations, release Dockerfile |
+| **stac-fastapi-static** | Serves a static STAC catalog as a STAC API | Fork of [fntb/stac-fastapi-static](https://github.com/fntb/stac-fastapi-static) | Packaging and integration |
+| **nginx + WebDAV** | Single entry point; routes `/api/`, `/viewer/`, `/data/`… and exposes WebDAV `/dav` | Upstream nginx image | Routing, WebDAV access policy |
 
 All images are published to `ghcr.io/oie-mines-paristech/stac-stack-*`.
 

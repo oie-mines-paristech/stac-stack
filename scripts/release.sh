@@ -155,9 +155,10 @@ for n, s in sorted(svc.items()):
     docker push "$image"
     # Also move `latest` so a clone that runs plain `docker compose up` — with no
     # VERSION resolved — lands on this release instead of a missing tag.
-    docker tag "$image" "${image%:*}:latest"
-    printf '  -> push %s\n' "${image%:*}:latest"
-    docker push "${image%:*}:latest"
+    local latest="${image%:*}:latest"
+    docker tag "$image" "$latest"
+    printf '  -> push %s\n' "$latest"
+    docker push "$latest"
   done
 
   # Tag only after every image is published, so a failed build or a partial

@@ -248,17 +248,32 @@ Toutes les images de base sont **pinnées par digest SHA256** dans leur `Dockerf
 
 ### Images publiées
 
-Les 7 images *first-party* portent un nom explicite, versionné par variables
-d'environnement. Le `build:` reste présent : le dépôt reste requis (config nginx,
-`branding/`, volumes), les images évitent seulement la compilation.
+Les 7 images *first-party* portent un nom explicite et une version. Le `build:`
+reste présent : le dépôt reste requis (config nginx, `branding/`, volumes), les
+images évitent seulement la compilation.
 
-| Variable | Défaut | Rôle |
-|----------|--------|------|
-| `STACK_REGISTRY` | `ghcr.io/oie-mines-paristech` | registre de publication |
-| `STACK_VERSION` | `latest` | tag commun à toute la stack |
+La version vient du fichier commité **`VERSION`**, lu par le `Makefile`. Un clone
+ne dépend donc d'aucune variable d'environnement ni d'un tag git local :
 
 ```bash
-STACK_REGISTRY=ghcr.io/oie-mines-paristech STACK_VERSION=2026.09.30 docker compose build
+make up          # tire stac-stack-*:$(cat VERSION)
+```
+
+| Fichier | Rôle |
+|---------|------|
+| `VERSION` | version publiée, bumpée par `release.sh` |
+
+Le registre est figé dans `docker-compose.yml` (`ghcr.io/oie-mines-paristech`).
+Chaque release pousse aussi le tag `:latest` à côté du tag de version, donc un
+`docker compose up` sans le `Makefile` résout également.
+
+`VERSION` est délibérément hors de `.env` : ce dernier porte des secrets d'hôte et
+ne doit jamais faire foi sur un artefact publié.
+
+Pour forcer une version précise sans modifier le dépôt :
+
+```bash
+STACK_VERSION=2026.09.30 docker compose build
 ```
 
 Noms dérivés : `stac-stack-nginx`, `stac-stack-static-api`, `stac-stack-zarr-subset-zip`,

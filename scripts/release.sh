@@ -121,6 +121,16 @@ cmd_release() {
 
   printf '\nrelease: %s @ %s\n' "$version" "${rev:0:12}"
 
+  # Bump the committed VERSION record before tagging, so a clone at this tag
+  # resolves to the images we are about to push. Done before the tag so the tag
+  # always describes the tree that carries it.
+  if [ "$(cat VERSION 2>/dev/null || true)" != "$version" ]; then
+    printf '  -> bump VERSION -> %s\n' "$version"
+    printf '%s\n' "$version" > VERSION
+  else
+    printf '  ..  VERSION already at %s\n' "$version"
+  fi
+
   # Stamp the revision on the images before building: provenance must describe
   # the commit we just verified, not the one someone types in later.
   export STACK_REVISION="$rev"
@@ -143,6 +153,11 @@ for n, s in sorted(svc.items()):
   for image in $tags; do
     printf '  -> push %s\n' "$image"
     docker push "$image"
+    # Also move `latest` so a clone that runs plain `docker compose up` — with no
+    # VERSION resolved — lands on this release instead of a missing tag.
+    docker tag "$image" "${image%:*}:latest"
+    printf '  -> push %s\n' "${image%:*}:latest"
+    docker push "${image%:*}:latest"
   done
 
   # Tag only after every image is published, so a failed build or a partial
@@ -155,10 +170,20 @@ for n, s in sorted(svc.items()):
   fi
 
   printf '\nrelease: done.\n'
-  printf '  images : %s:%s\n' "$STACK_REGISTRY" "$version"
+  printf '  images : %s:%s (+ :latest)\n' "$STACK_REGISTRY" "$version"
   printf '  git tag: %s (pushed? -> git push origin %s)\n' "$version" "$version"
   printf '  verify : docker image inspect --format "{{index .Config.Labels \\"org.opencontainers.image.revision\\"}}" \\\n'
   printf '             %s/stac-stack-nginx:%s\n' "$STACK_REGISTRY" "$version"
+
+  # VERSION was bumped above, so the tree is no longer clean. Commit it here and
+  # leave pushing to the caller, rather than leaving a dirty tree that would make
+  # the next release-check fail.
+  if ! git diff --quiet -- VERSION; then
+    printf '  -> commit VERSION bump\n'
+    git add VERSION
+    git commit -q -m "release: bump VERSION to $version"
+    printf '     remember to push: git push origin main\n'
+  fi
 }
 
 case "${1:-}" in

@@ -6,15 +6,17 @@
     :title="$t('fullscreen.show')"
     @click="$emit('update:fullscreen', true)"
   >
-    <b-icon-fullscreen />
+    <b-icon-fullscreen class="me-1" />
+    {{ $t('assetViewer.fullscreen') }}
   </b-button>
   <b-button
     v-if="src"
     variant="primary" class="asset-viewer-action"
     tag="a" :href="src" target="_blank" rel="noopener noreferrer"
-    :title="$t('open')"
+    :title="$t('assetViewer.openInNewTab')"
   >
-    <b-icon-box-arrow-up-right />
+    <b-icon-box-arrow-up-right class="me-1" />
+    {{ $t('assetViewer.openInNewTab') }}
   </b-button>
 </template>
 

@@ -4,5 +4,9 @@
   },
   "fields": {
     
+  },
+  "assetViewer": {
+    "fullscreen": "Vollbild",
+    "openInNewTab": "In neuem Tab öffnen"
   }
 }

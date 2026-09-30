@@ -136,6 +136,62 @@ externe, profondeur libre) et le résout entre le point de montage HTTP (`ZARR_U
 le bind-mount interne (`ZARR_ROOT`) : aucune métadonnée STAC supplémentaire n'est nécessaire.
 Voir [`services/zarr-subset-zip`](services/zarr-subset-zip) (sous-module OIE).
 
+### TLS termination (optional Caddy profile)
+
+The stack is HTTP-only by default and expects to sit behind an external reverse proxy. To terminate
+TLS itself instead, enable the `tls` profile: a [Caddy](https://caddyserver.com/) container takes over
+`:80`/`:443` and reverse-proxies everything to nginx, which keeps serving every route (`/`, `/api/`,
+`/data`, `/dav/`, `/viewer/`) unchanged.
+
+```bash
+# DOMAIN must already resolve to this host (see below)
+make up-tls          # BIND_ADDR=127.0.0.1 docker compose --profile tls up -d
+make down            # caddy goes away with the profile
+```
+
+Two variables in `.env` drive it (see `.env.example`):
+
+| Variable | Role |
+| --- | --- |
+| `DOMAIN` | Hostname Caddy answers for. Must resolve to this host. |
+| `TLS` | Caddy `tls` directive: `internal` (self-signed) or `"acme you@host"` (Let's Encrypt). |
+
+`EXTERNAL_URL`, advertised in the STAC items, defaults to `https://${DOMAIN}/` — declare `DOMAIN`
+before it. Without the profile the stack is reached over plain HTTP, so point `EXTERNAL_URL` back at
+`http://localhost:${HTTP_PORT}/`.
+
+**Self-signed** (`TLS=internal`) works offline. Browsers warn until you trust Caddy's local root:
+
+```bash
+docker compose exec caddy caddy trust   # installs it in the host trust store
+docker compose exec caddy caddy trust --remove   # undo
+```
+
+Caddy logs `failed to install root certificate … tee: exit status 1` on startup: that is the *host*
+trust store, unreachable from an unprivileged container. Harmless, and the two commands above are the
+supported way to trust it.
+
+**Let's Encrypt** (`TLS="acme you@example.com"`) additionally requires the domain to resolve to
+this host over public DNS, inbound `:80`/`:443` reachable, and ports 80/443 free — stop whatever else
+holds them (`systemctl status nginx`, `ss -tlnp | grep -E ':(80|443)'`). Renewal is automatic.
+
+Certificates, the ACME account and Caddy's internal CA persist in `volumes/certificates/` (gitignored),
+so `make down && make up-tls` reuses them instead of re-requesting — which matters for Let's Encrypt
+rate limits. Caddy runs as `$NGINX_UID:$NGINX_GID` with `NET_BIND_SERVICE`, like nginx, so that
+directory stays owned by you rather than `root:root 0700`.
+
+`make up-tls` also pins nginx to `127.0.0.1`, which closes the plaintext `:8000` entry point so
+`http://host:8000/dav/` is not still reachable in clear. Compose has no way to make `ports`
+conditional on a profile, so this is done by exporting `BIND_ADDR` in the target; running
+`docker compose --profile tls up -d` by hand leaves it on `0.0.0.0` unless you prefix
+`BIND_ADDR=127.0.0.1` yourself.
+
+For a purely local test, map the domain to loopback:
+
+```bash
+echo '127.0.0.1 stac.oie.local' | sudo tee -a /etc/hosts
+```
+
 ### Mode développement
 
 Pour travailler sur **stac-generator**, **zarr-viewer** ou **stac-browser** sans rebuild d'image à chaque changement de code :
@@ -185,6 +241,7 @@ Toutes les images de base sont **pinnées par digest SHA256** dans leur `Dockerf
 | `stac-generator` | `python:3.12-slim` | ✅ | — |
 | `static-api` (2 étages) | `python:3.12-alpine` | ✅ | uv installé **depuis PyPI `uv==0.12.15` pinné** au lieu du script `astral.sh` (trou de supply chain corrigé) |
 | `zarr-subset-zip` | `python:3.12-slim` | ✅ | API FastAPI (sous-module OIE) ; mod_zip chargé dans `nginx` |
+| `caddy` (profil `tls`) | `caddy:2-alpine` | ✅ | image officielle, pin dans [`docker-compose.yml`](docker-compose.yml) |
 
 **Re-pin après bump** (routine à chaque mise à jour d'une image) : modifier la version dans le `FROM`, puis `docker inspect --format '{{index .RepoDigests 0}}' <image>` et reporter le digest dans le `@sha256:` du `FROM`.
 

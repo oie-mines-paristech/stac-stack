@@ -49,6 +49,17 @@ dd if=/dev/zero of="$BIG" bs=1M count=2 2>/dev/null
 [[ "$(status -u "$WEBDAV_ADMIN:$WEBDAV_PASSWORD" -T "$BIG" "$DATA_URL/e2e-big.bin")" == "201" ]]
 log "OK: PUT 2 Mo (client_max_body_size 0) 201"
 
+# --- Cache-Control: only Zarr-chunk-shaped paths (no dot in the last segment)
+# are cacheable; metadata documents and ordinary files revalidate every time,
+# otherwise a browser keeps a stale zarr.json after a store is consolidated.
+[[ "$(status -u "$WEBDAV_ADMIN:$WEBDAV_PASSWORD" -T "$UPLOAD" "$DATA_URL/e2e-chunk")" == "201" ]]
+cache_control() { curl -sS -o /dev/null -D- "$1" | grep -i '^cache-control:' | tr -d '\r'; }
+[[ "$(cache_control "$DATA_URL/e2e-chunk")" == *"max-age=3600"* ]] \
+  || fail "Cache-Control chunk attendu max-age=3600: $(cache_control "$DATA_URL/e2e-chunk")"
+[[ "$(cache_control "$DATA_URL/e2e-upload.txt")" == *"max-age=0"* ]] \
+  || fail "Cache-Control fichier attendu max-age=0: $(cache_control "$DATA_URL/e2e-upload.txt")"
+log "OK: Cache-Control chunk 1h / metadata revalidate"
+
 # --- READ public ---
 [[ "$(curl -fsS "$DATA_URL/e2e-upload.txt")" == "hello webdav" ]]
 log "OK: GET public"
@@ -73,6 +84,8 @@ log "OK: DELETE anonyme 401"
 [[ "$(status -u "$WEBDAV_ADMIN:$WEBDAV_PASSWORD" -X DELETE "$DATA_URL/e2e-upload.txt")" == "204" ]]
 [[ ! -f "$DATA_DIR/e2e-upload.txt" ]]
 log "OK: DELETE admin 204"
+
+[[ "$(status -u "$WEBDAV_ADMIN:$WEBDAV_PASSWORD" -X DELETE "$DATA_URL/e2e-chunk")" == "204" ]]
 
 # --- Ownership: host NGINX_UID:GID ---
 owner="$(stat -c '%u:%g' "$DATA_DIR/e2e-big.bin")"

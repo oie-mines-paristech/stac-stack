@@ -28,13 +28,6 @@ services:
       SB_catalogUrl: "/api/"
       SB_allowExternalAccess: "true"
       SB_itemsPerPage: "100"
-      # "En vedette" (Featured) block on the landing page: a collection name,
-      # or a list for several, resolved against /api/collections.
-      #   SB_featuredCollections: "fisheye"
-      #   SB_featuredCollections: "[fisheye, other]"
-      # Empty list or unset = block hidden.
-      # The rest of the branding lives in branding/config.yaml (env wins).
-      SB_featuredCollections: "[fisheye]"
     volumes:
       - ./branding:/branding:ro
 
@@ -54,7 +47,9 @@ services:
       WEBDAV_ADMIN: "${WEBDAV_ADMIN:-}"
       WEBDAV_PASSWORD: "${WEBDAV_PASSWORD:-}"
     ports:
-      - "${HTTP_PORT:-8000}:8080"
+      # Set BIND_ADDR=127.0.0.1 to keep nginx off the public interface when the
+      # `tls` profile is on and Caddy is the only entry point.
+      - "${BIND_ADDR:-0.0.0.0}:${HTTP_PORT:-8000}:8080"
     depends_on:
       - static-api
       - browser
@@ -67,6 +62,37 @@ services:
       - ./volumes/catalog:/dav/catalog:ro
       - zarr-viewer-static:/usr/share/nginx/html/viewer:ro
       - notebook-viewer-static:/usr/share/nginx/html/notebook-viewer:ro
+
+  # ⚡ OPTIONAL TLS TERMINATION — profile `tls`, off by default.
+  #   docker compose --profile tls up -d
+  # Caddy then owns :80/:443 and reverse-proxies to nginx, which keeps serving
+  # every route (/, /api/, /data, /dav/...). Domain and certificate issuer come
+  # from DOMAIN / TLS (.env → .env.example); certificates persist in
+  # volumes/certificates/. Requires ports 80 and 443 to be free on the host.
+  caddy:
+    image: caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+    profiles:
+      - tls
+    restart: unless-stopped
+    # Same host uid/gid as nginx (NGINX_UID/NGINX_GID) so the bind-mounted
+    # volumes/certificates stays owned by the user instead of root:root 0700,
+    # and NET_BIND_SERVICE is all it needs to keep listening on :80 and :443.
+    user: "${NGINX_UID:-1000}:${NGINX_GID:-1000}"
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      DOMAIN: "${DOMAIN:-localhost}"
+      TLS: "${TLS:-internal}"
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - nginx
+    volumes:
+      - ./services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persists the certificates, the ACME account and Caddy's internal CA, so a
+      # `down`/`up` does not re-request certs (Let's Encrypt rate limit).
+      - ./volumes/certificates:/data
 
   zarr-viewer:
     build: ./services/zarr-viewer
@@ -110,9 +136,6 @@ services:
       catalog_href: file:///catalog/catalog.json
       root_path: /api/
       app_port: "80"
-      # Root catalog title/description are read from catalog.json at runtime
-      # (chain: volumes/data/metadata.yml -> stac-generator -> catalog.json ->
-      # /api/ landing -> stac-browser). No hardcoded values here.
       app_host: "0.0.0.0"
     volumes:
       - ./volumes/catalog:/catalog:ro

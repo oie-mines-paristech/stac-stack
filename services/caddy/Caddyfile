@@ -1,0 +1,20 @@
+# Optional TLS terminator in front of nginx — OFF by default.
+# Enable with the `tls` compose profile:  docker compose --profile tls up -d
+#
+# Environment (see .env.example):
+#   DOMAIN  hostname Caddy answers for, must resolve to this host.
+#           Add it to /etc/hosts for a local one:  127.0.0.1 stac.oie.local
+#   TLS     value of Caddy's `tls` directive:
+#             internal          self-signed, offline, browsers warn
+#             "acme user@host"  Let's Encrypt, needs public inbound 80/443
+#
+# Caddy owns :80 and :443, then proxies everything to nginx, which stays the only
+# place where routing, WebDAV and the STAC API live. The ACME account and the
+# certificates are persisted in volumes/certificates/ so a `down`/`up` does not
+# burn Let's Encrypt rate limit.
+
+{$DOMAIN} {
+	tls {$TLS}
+
+	reverse_proxy nginx:8080
+}

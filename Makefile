@@ -7,7 +7,7 @@
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
 #   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build rebuild up down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
+.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
@@ -57,6 +57,13 @@ rebuild-viewer: submodules
 
 up:
 	$(COMPOSE) up
+
+# Adds the optional Caddy TLS terminator (:80/:443) and pins nginx to loopback, so
+# Caddy becomes the only reachable entry point. Compose cannot make `ports`
+# conditional on a profile, hence BIND_ADDR here (the shell wins over .env).
+# Requires DOMAIN in .env to resolve to this host and both ports to be free.
+up-tls tls:
+	BIND_ADDR=127.0.0.1 $(COMPOSE) --profile tls up -d
 
 .dev-up dev:
 	$(COMPOSE_DEV) up

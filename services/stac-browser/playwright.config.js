@@ -1,5 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'node:fs';
 import os from 'node:os';
+
+// This host (LMDE/Linux Mint) isn't supported by `npx playwright install`, which
+// fails with "Playwright does not support chromium on …". Fall back to the
+// system Chromium so local runs never trigger a browser download; CI and the
+// Docker image don't ship one at these paths and keep Playwright's own build.
+// Set PLAYWRIGHT_CHROMIUM_PATH to point somewhere else explicitly.
+function resolveChromiumExecutable() {
+  if (process.env.PLAYWRIGHT_CHROMIUM_PATH) {
+    return process.env.PLAYWRIGHT_CHROMIUM_PATH;
+  }
+  return ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium']
+    .find(candidate => fs.existsSync(candidate)) || null;
+}
+
+export const chromiumExecutablePath = resolveChromiumExecutable();
 
 function getEnvWithoutSB() {
   const env = {};
@@ -64,14 +80,18 @@ export default defineConfig({
     /* Screenshot on failure */
     screenshot: 'only-on-failure',
     
-    /* Video on failure */
-    video: 'retain-on-failure',
+    /* Video on failure — only when Playwright owns the browser: the system
+       Chromium fallback sits on a host where `npx playwright install` (which
+       would also fetch the ffmpeg binary video needs) is unsupported. */
+    video: chromiumExecutablePath ? 'off' : 'retain-on-failure',
 
     /* Force English locale so tests are deterministic regardless of host/CI locale.
        The app auto-detects language from navigator.languages when detectLocaleFromBrowser is true. */
     locale: 'en',
 
     permissions: ['clipboard-read', 'clipboard-write'],
+
+    ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}),
   },
 
   /* Configure projects for major browsers */

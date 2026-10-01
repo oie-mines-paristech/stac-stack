@@ -9,8 +9,11 @@ import StaticCatalog from '../fixtures/instances/static';
  * first batch of tests may time out while the server is still transforming.
  */
 export default async function globalSetup(config) {
-  const { baseURL } = config.projects[0].use;
-  const browser = await chromium.launch();
+  const { baseURL, launchOptions } = config.projects[0].use;
+  // launchOptions carries the system-Chromium executablePath resolved in
+  // playwright.config.js — without it the launch fails on hosts where
+  // `npx playwright install` is unsupported.
+  const browser = await chromium.launch(launchOptions || {});
   try {
     const url = 'stac.example/catalog.json';
     const catalog = new StaticCatalog({ url: `https://${url}` });

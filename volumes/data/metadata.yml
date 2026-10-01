@@ -44,6 +44,20 @@ children:
           mime: image/png
           href: https://tds.webservice-energy.org/thredds/fileServer/iea-pvps/qc/{station_id}.png
 
+  # Protected server: the catalog XML, the OPeNDAP reads and the downloads all
+  # send HTTP basic credentials from the environment ({VAR} placeholders, so
+  # the secret stays out of this file, of the cache and of the catalog). The
+  # items carry the authentication extension, so STAC Browser prompts the end
+  # user for their own credentials before handing out an href.
+  - url: https://tds.webservice-energy.org/thredds/catalog/bsrn-stations/catalog.xml
+    id: bsrn-stations
+    # The only nested catalogRef holds QC PNG plots, not datasets; exposing
+    # them is deferred (same treatment as iea-pvps above, for later).
+    max_depth: 0
+    auth:
+      login: "{THREDDS_LOGIN}"
+      password: "{THREDDS_PASSWORD}"
+
 # Extra STAC links, appended after the structural links the generator writes.
 links:
   - rel: describedby

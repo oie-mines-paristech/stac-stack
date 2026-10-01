@@ -19,6 +19,10 @@ services:
       OUTPUT_DIR: /catalog
       ROOT_HREF: /data
       VIEWER_URL: ${EXTERNAL_URL}viewer/
+      # HTTP basic credentials for protected remote THREDDS children
+      # (`auth:` in metadata.yml, referenced as {THREDDS_LOGIN}/{THREDDS_PASSWORD}).
+      THREDDS_LOGIN: "${THREDDS_LOGIN:-}"
+      THREDDS_PASSWORD: "${THREDDS_PASSWORD:-}"
       # TTL cache of remote THREDDS catalogs + their OPeNDAP descriptors, so a
       # poll never re-reads remote metadata.
       CACHE_DIR: /cache

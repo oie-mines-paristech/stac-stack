@@ -19,6 +19,9 @@
     <div class="mt-4" v-if="description">
       <Description :description="description" compact />
     </div>
+    <div v-if="inlineImage" class="asset-image mt-4">
+      <img :src="inlineImage" :alt="assetTitle" loading="lazy">
+    </div>
     <MetadataGroups class="mt-4" :data="resolvedAsset" :ignoreFields="ignoredMetadataFields" title="" type="Asset" />
     <AssetViewerFrame
       v-for="viewer in viewers" :key="viewer.id"
@@ -32,6 +35,7 @@
 
 <script>
 import { defineAsyncComponent } from 'vue';
+import { mapGetters } from 'vuex';
 import Description from './Description.vue';
 import HrefActions from './HrefActions.vue';
 import AuthUtils from './auth/utils';
@@ -72,6 +76,23 @@ export default {
     };
   },
   computed: {
+    ...mapGetters(['getRequestUrl']),
+    // Images a browser can render natively (an image/* media type, or an
+    // image extension when the type is missing) are previewed inline by
+    // default. A configured in-place viewer wins, and Item Asset Definitions
+    // are skipped because they carry no real href.
+    inlineImage() {
+      if (this.definition || this.viewers.length > 0) {
+        return null;
+      }
+      if (typeof this.asset.canBrowserDisplayImage !== 'function' || !this.asset.canBrowserDisplayImage(true)) {
+        return null;
+      }
+      return this.getRequestUrl(this.asset.getAbsoluteUrl());
+    },
+    assetTitle() {
+      return this.asset.title || this.asset.getKey();
+    },
     viewers() {
       return this.definition ? [] : getViewersForAsset(this.asset, 'inplace');
     },
@@ -130,5 +151,15 @@ export default {
 <style lang="scss" scoped>
 .asset-alternative {
   padding: 1rem;
+
+  .asset-image img {
+    display: block;
+    max-width: 100%;
+    max-height: 60vh;
+    margin: 0 auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    background: #fff;
+  }
 }
 </style>

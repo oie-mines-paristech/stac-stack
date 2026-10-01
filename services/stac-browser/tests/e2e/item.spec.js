@@ -184,6 +184,40 @@ test.describe('Item view - Assets', () => {
     await expect(page.getByRole('button', { name: /show on map/i })).toBeVisible();
   });
 
+  // Image assets are previewed inline as soon as their box is expanded.
+  // The fixture thumbnail is pulled out of the assets list into the preview
+  // pane, so this uses a plain image asset with a custom role instead.
+  test('Catalog - shows image assets inline when expanded', async ({ page, worker }) => {
+    // Cold vite transforms under parallel workers push this past the 30s default.
+    test.slow();
+    const { catalog, item } = createCatalog();
+    const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const QC_URL = 'https://stac.example/qc.png';
+    item.data.assets = {
+      qc: { href: QC_URL, type: 'image/png', roles: ['qc'], title: 'Quality control plot' }
+    };
+    await catalog.createServer(worker);
+    await worker.use(
+      http.get(QC_URL, () => {
+        const bytes = Uint8Array.from(atob(PNG_BASE64), c => c.charCodeAt(0));
+        return new HttpResponse(bytes, { headers: { 'Content-Type': 'image/png' } });
+      })
+    );
+
+    await page.goto(item.getBrowserPath());
+    await waitForBrowserReady(page);
+
+    const assetBtn = page.getByRole('button', { name: /Quality control plot/i }).first();
+
+    await expect(assetBtn).toBeVisible();
+    await assetBtn.click();
+
+    const preview = page.locator('.assets .asset-alternative img').first();
+    await preview.scrollIntoViewIfNeeded();
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveAttribute('src', QC_URL);
+  });
+
   // API tests
   test('API - should list item assets', async ({ page, worker }) => {
     const { api, item } = createAPI();

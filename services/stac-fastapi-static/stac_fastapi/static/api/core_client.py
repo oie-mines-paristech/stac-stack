@@ -25,7 +25,7 @@ from stac_pydantic.item_collection import ItemCollection
 
 from stac_fastapi.types import stac
 from stac_fastapi.types.core import Relations, BaseCoreClient
-from stac_fastapi.static.api.requests import get_base_url
+from stac_fastapi.static.api.requests import get_base_url, get_self_base_url
 
 from pydantic import BaseModel, ValidationError
 
@@ -145,11 +145,13 @@ def _canonical_api_href(
 def resolve(
     result: WalkResult,
     *,
-    base_api_href: str,
+    request: Request,
     catalog_is_file: bool = True,
     catalog_href: bool = True,
     pre_resolve: Optional[Callable[[Catalog | Collection | Item], None]] = None
 ) -> Catalog | Collection | Item:
+    base_api_href = get_base_url(request)
+    self_base_href = get_self_base_url(request)
     object: Catalog | Collection | Item = result.resolve()
 
     # if isinstance(object, Item):
@@ -184,15 +186,16 @@ def resolve(
     # link on items and non-root collections, and the file-tree href it would
     # carry is not an API route. Emit the canonical API self link instead: STAC
     # requires it on items, and stac-browser reads it to build the item URL —
-    # without it the UI falls back to the base URL.
+    # without it the UI falls back to the base URL. `self` is the one link the
+    # schema forces to be an absolute IRI, hence the origin-qualified base.
     if isinstance(object, Item):
         if object.collection:
             set_self_href(
                 object,
-                urljoin(base_api_href, f"collections/{object.collection}/items/{object.id}"),
+                urljoin(self_base_href, f"collections/{object.collection}/items/{object.id}"),
             )
     elif isinstance(object, Collection):
-        set_self_href(object, urljoin(base_api_href, f"collections/{object.id}"))
+        set_self_href(object, urljoin(self_base_href, f"collections/{object.id}"))
 
     return object
 
@@ -276,6 +279,11 @@ class CoreClient(BaseCoreClient):
             }
         ])
 
+        # `self` is the only link the STAC schema requires to be an absolute IRI.
+        for link in landing_page["links"]:
+            if link["rel"] == Relations.self.value:
+                link["href"] = get_self_base_url(request)
+
         # Title/description come from the root catalog (metadata.yml), not from
         # hardcoded API stubs, so the browse UI mirrors the catalog metadata.
         landing_page.update(_root_catalog_metadata(settings))
@@ -294,7 +302,6 @@ class CoreClient(BaseCoreClient):
         settings: Settings = request.app.state.settings
         session: Session = request.app.state.session
         catalog_is_file: bool = request.app.state.catalog_is_file
-        base_api_href = get_base_url(request)
 
         page = search_items(
             collections=query.collections,
@@ -315,7 +322,7 @@ class CoreClient(BaseCoreClient):
             features=[
                 resolve(
                     walk_result,
-                    base_api_href=base_api_href,
+                    request=request,
                     catalog_is_file=catalog_is_file,
                     catalog_href=settings.catalog_href
                 )
@@ -402,7 +409,6 @@ class CoreClient(BaseCoreClient):
         settings: Settings = request.app.state.settings
         session: Session = request.app.state.session
         catalog_is_file: bool = request.app.state.catalog_is_file
-        base_api_href = get_base_url(request)
 
         item_walk_result = get_item(
             item_id=item_id,
@@ -416,7 +422,7 @@ class CoreClient(BaseCoreClient):
         else:
             return resolve(
                 item_walk_result,
-                base_api_href=base_api_href,
+                request=request,
                 catalog_is_file=catalog_is_file,
                 catalog_href=settings.catalog_href
             ).model_dump()
@@ -436,7 +442,6 @@ class CoreClient(BaseCoreClient):
         settings: Settings = request.app.state.settings
         session: Session = request.app.state.session
         catalog_is_file: bool = request.app.state.catalog_is_file
-        base_api_href = get_base_url(request)
 
         try:
             query = SearchCollections(
@@ -471,7 +476,7 @@ class CoreClient(BaseCoreClient):
                 in [
                     resolve(
                         walk_result,
-                        base_api_href=base_api_href,
+                        request=request,
                         catalog_is_file=catalog_is_file,
                         catalog_href=settings.catalog_href,
                         pre_resolve=lambda collection: add_collection_links(collection, request)
@@ -506,7 +511,6 @@ class CoreClient(BaseCoreClient):
         settings: Settings = request.app.state.settings
         session: Session = request.app.state.session
         catalog_is_file: bool = request.app.state.catalog_is_file
-        base_api_href = get_base_url(request)
 
         collection_walk_result = get_collection(
             collection_id=collection_id,
@@ -519,7 +523,7 @@ class CoreClient(BaseCoreClient):
         else:
             return resolve(
                 collection_walk_result,
-                base_api_href=base_api_href,
+                request=request,
                 catalog_is_file=catalog_is_file,
                 catalog_href=settings.catalog_href,
                 pre_resolve=lambda collection: add_collection_links(collection, request)
@@ -545,7 +549,6 @@ class CoreClient(BaseCoreClient):
         settings: Settings = request.app.state.settings
         session: Session = request.app.state.session
         catalog_is_file: bool = request.app.state.catalog_is_file
-        base_api_href = get_base_url(request)
 
         try:
             query = SearchCollectionItems(
@@ -584,7 +587,7 @@ class CoreClient(BaseCoreClient):
             features=[
                 resolve(
                     walk_result,
-                    base_api_href=base_api_href,
+                    request=request,
                     catalog_is_file=catalog_is_file,
                     catalog_href=settings.catalog_href,
                 )

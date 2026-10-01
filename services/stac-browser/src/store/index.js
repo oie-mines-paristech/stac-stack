@@ -69,6 +69,21 @@ function combineChildren(stac, apiList, priority, { type = null, items = [], pre
   return children;
 }
 
+// A path-absolute catalogUrl ("/api/") carries no origin, so urijs relativeTo()
+// against an absolute same-origin URL returns the URL unchanged and the caller
+// misclassifies it as external (cards linking `rel=self`, which STAC requires to
+// be an absolute IRI, would render as /external/...). Resolve the path base
+// against the compared URL's own origin; inputs without one are left as is.
+function resolveCatalogBase(catalogUrl, absoluteUrl) {
+  if (catalogUrl.startsWith('/') && absoluteUrl.is('absolute')) {
+    const origin = absoluteUrl.origin();
+    if (origin) {
+      return `${origin}${catalogUrl}`;
+    }
+  }
+  return catalogUrl;
+}
+
 // Fallback for APIs without proper links: If we detect OGC API like paths
 // (i.e. `collections/xyz` or `collections/xyz/items/abc`), go up the number of
 // levels configured for the detected endpoint to guess the URL of a parent entity.
@@ -442,7 +457,7 @@ function getStore(config, router) {
         let absolute = toAbsolute(url, state.url, false);
         let relative;
         if (!state.allowSelectCatalog && state.catalogUrl) {
-          relative = absolute.relativeTo(state.catalogUrl);
+          relative = absolute.relativeTo(resolveCatalogBase(state.catalogUrl, absolute));
         }
 
         if (typeof relative === 'undefined' || getters.isExternalUrl(absolute, false)) {
@@ -505,7 +520,7 @@ function getStore(config, router) {
           relative = absoluteUrl;
         }
         else {
-          relative = absoluteUrl.relativeTo(state.catalogUrl);
+          relative = absoluteUrl.relativeTo(resolveCatalogBase(state.catalogUrl, absoluteUrl));
           if (relative.equals(absoluteUrl)) {
             return true;
           }

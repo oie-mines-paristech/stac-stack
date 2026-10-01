@@ -2,10 +2,16 @@
 
 A ready-to-run stack for publishing georeferenced scientific data (**GeoTIFF, NetCDF, Zarr**, ...) as a browsable, queryable STAC catalog.
 
-Drop your assets in a folder, add a `metadata.yml` next to them, and the stack does the rest: it extracts the metadata, builds a STAC catalog, serves a STAC API, and gives you a Stac Browser with custom viewer and tools built in :
+Drop your assets in a folder, add a `metadata.yml` next to them, and the stack does the rest: it extracts the metadata, builds a STAC catalog, serves a STAC API, and gives you a [Stac Browser (by Radiant Earth)](https://github.com/radiantearth/stac-browser) with custom viewers and tools built in :
 * A Zarr viewer in the browser
 * A Notebook preview 
 * A streaming subset/ZIP for Zarr datasets
+
+## Live demo
+
+We developped this projet to publish our own datasets, here :
+
+[https://stac.webservice-energy.org/](https://stac.webservice-energy.org/)
 
 ## How it works
 
@@ -53,16 +59,19 @@ The generator never edits your data. It produces a separate catalog tree under
 `volumes/catalog/`, which is regenerated automatically whenever the content of
 `volumes/data/` changes.
 
+
+
 ## Projects in this stack
 
 | Project | What it does | Origin | Our additions |
 |---|---|---|---|
-| [**stac-generator**](https://git.sophia.minesparis.psl.eu/oie/stac-generator) | Walks the asset tree, reads `metadata.yml`, extracts spatial/temporal/band metadata, writes the STAC catalog | OIE - own project | Whole project |
+| [**stac-browser**](./services/stac-browser) | STAC search web app: results, filters, map, item pages | Fork of [eu-cdse/stac-browser-cdse](https://github.com/eu-cdse/stac-browser-cdse), itself a fork of [radiantearth/stac-browser](https://github.com/radiantearth/stac-browser) | branding, catalog wiring, custom viewer integrations |
+| [**stac-generator**](https://git.sophia.minesparis.psl.eu/oie/stac-generator) | Walks the asset tree, reads `metadata.yml`, extracts spatial/temporal/band metadata, writes the STAC catalog. Also translates remote Thredds catalogs to STAC | OIE - own project | Whole project |
 | [**zarr-viewer**](https://git.sophia.minesparis.psl.eu/oie/zarr-viewer) | Web viewer for Zarr v2/v3 image cubes, CF-convention aware | OIE - own project, built on [Zarrita](https://zarrita.dev/) | Whole project |
 | [**zarr-subset-zip**](https://git.sophia.minesparis.psl.eu/oie/zarr-subset-zip) | HTTP API that subsets a Zarr cube and streams it as a ZIP | OIE - own project | Whole project |
 | [**notebook-viewer**](./services/notebook-viewer) | Renders a Jupyter notebook in an iframe, for `application/x-ipynb+json` assets | OIE - own project, in-tree, built on [notebookjs](https://github.com/jsvine/notebookjs) | Whole project |
-| [**stac-browser**](./services/stac-browser) | STAC search web app: results, filters, map, item pages | Fork of [eu-cdse/stac-browser-cdse](https://github.com/eu-cdse/stac-browser-cdse), itself a fork of [radiantearth/stac-browser](https://github.com/radiantearth/stac-browser) | branding, catalog wiring, custom viewer integrations |
 | [**stac-fastapi-static**](./services/stac-fastapi-static) | Serves a static STAC catalog as a STAC API | Fork of [fntb/stac-fastapi-static](https://github.com/fntb/stac-fastapi-static) | Packaging and integration |
+
 
 
 

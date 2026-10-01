@@ -31,6 +31,19 @@ children:
     # `refresh` elapses. Set `workers: 1` to read them sequentially.
     refresh: 600
 
+    # Same overrides as an `items:` entry, rendered once per dataset:
+    # {station_id} is a scalar property of every item (ADR, BOU, ...), so each
+    # station gets its own QC plot, listed with the other assets (custom role,
+    # so STAC Browser does not promote it to the item preview).
+    itemTemplate:
+      assets:
+        - name: qc
+          title: Quality control plot
+          description: Multi-plot QC report of the station, published alongside the dataset.
+          roles: [QC]
+          mime: image/png
+          href: https://tds.webservice-energy.org/thredds/fileServer/iea-pvps/qc/{station_id}.png
+
 # Extra STAC links, appended after the structural links the generator writes.
 links:
   - rel: describedby

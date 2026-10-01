@@ -19,9 +19,13 @@ services:
       OUTPUT_DIR: /catalog
       ROOT_HREF: /data
       VIEWER_URL: ${EXTERNAL_URL}viewer/
+      # TTL cache of remote THREDDS catalogs + their OPeNDAP descriptors, so a
+      # poll never re-reads remote metadata.
+      CACHE_DIR: /cache
     volumes:
       - ./volumes/data:/data:ro
       - ./volumes/catalog:/catalog
+      - ./volumes/cache:/cache
 
   browser:
     image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-browser:${STACK_VERSION:-latest}

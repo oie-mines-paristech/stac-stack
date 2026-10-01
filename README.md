@@ -142,7 +142,8 @@ manager. It shows two folders:
   `metadata.yml` files here.
 - `catalog/` - read-only. The generated output, useful to debug or inspect: its
   `status.log` reads `OK` after a successful generation, or carries the error and
-  traceback when one failed (the previous catalog is kept in that case).
+  traceback when one failed. A failed refresh never empties the folder: the
+  previous catalog is kept and stays served.
 
 Paste this URL into your file manager:
 

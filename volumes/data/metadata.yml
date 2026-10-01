@@ -9,15 +9,27 @@
 id: stac-stack-example
 title: STAC Stack example
 description: >-
-  Example catalog shipped with the STAC Stack. Through three collections it
-  documents the main metadata.yml features: a catalog tree, glob-based item
-  discovery, automatic dataset metadata, extra assets and per-item overrides.
+  Example catalog shipped with the STAC Stack. Through three local collections
+  and one remote THREDDS catalog it documents the main metadata.yml features:
+  a catalog tree, glob-based item discovery, automatic dataset metadata, extra
+  assets, per-item overrides and remote ODAP children.
 
 # Explicit relative paths here. A glob such as "collection-*" would work too.
 children:
   - fisheye
   - cube
   - tiffs
+  # A remote THREDDS catalog is a `children` entry like any other, only the
+  # value is a URL instead of a folder. Nothing is downloaded: every dataset
+  # becomes an Item read over OPeNDAP, its extent sampled at time[0]/[1]/[-1].
+  - url: https://tds.webservice-energy.org/thredds/catalog/iea-pvps/catalog.xml
+    id: iea-pvps-task16
+
+    # The catalog's only nested catalogRef holds QC PNG plots, not datasets.
+    max_depth: 0
+    # Cold build ~9 s over 94 stations, then served from the /cache TTL until
+    # `refresh` elapses. Set `workers: 1` to read them sequentially.
+    refresh: 600
 
 # Extra STAC links, appended after the structural links the generator writes.
 links:

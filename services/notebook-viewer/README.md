@@ -13,7 +13,7 @@ https://<host>/notebook-viewer/?url=<NOTEBOOK-URL>
 ```
 
 `<NOTEBOOK-URL>` may be absolute or root-relative (e.g.
-`/data/fisheye/ikarus-access.ipynb`); it is fetched by the browser. Markdown,
+`/data/fisheye/allskyimager-access.ipynb`); it is fetched by the browser. Markdown,
 ANSI text, `text/plain` / `text/html` / image outputs are rendered. HTML outputs
 are sanitized with DOMPurify and cell JavaScript is **not** executed.
 

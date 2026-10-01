@@ -16,7 +16,7 @@ items:
   - path: ikarus
     assets:
       # Extra asset, resolved relative to this metadata.yml folder.
-      - file: ikarus-access.ipynb
+      - file: allskyimager-access.ipynb
         roles: [preview]
         title: Jupyter notebook
         description: Opens the cube from a notebook.

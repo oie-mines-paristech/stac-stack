@@ -6,6 +6,8 @@
 // built SPA (with history-mode fallback). Branding and catalog URL are injected
 // at runtime, so the same image serves any org. Prod targets dist/, dev (vite)
 // targets public/ + the project-root index.html — see CONFIG_OUTPUT/INDEX_HTML.
+// Static SEO meta (<title>/description/og) is rewritten from branding config
+// at start, see injectSeo.
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -28,6 +30,10 @@ const CONFIG_OUTPUT = process.env.STAC_CONFIG_OUTPUT || (DEV
   : path.join(DIST_DIR, "runtime-config.js"));
 const INDEX_HTML = process.env.STAC_INDEX_HTML || ((DEV ? ROOT : DIST_DIR) + "/index.html");
 
+// Config in force (set by apply), read by injectSeo to rewrite the static SEO
+// meta in index.html at container start.
+let activeConfig = {};
+
 // OIE runtime config extensions, not in the upstream schema. Accepted via SB_*
 // or branding/config.yaml, merged into the schema copy so they are typed too.
 const EXTRA_SCHEMA = {
@@ -43,6 +49,11 @@ const EXTRA_SCHEMA = {
   // upstream STAC Browser credit. Fed by SB_stackVersion / SB_stackUrl.
   stackVersion: { type: ["string"] },
   stackUrl: { type: ["string"] },
+  // Static SEO meta for crawlers that don't run JS (landing page only): the SPA
+  // overrides <title>/description at runtime from the API responses, these
+  // values only feed index.html as served. See injectSeo / branding/config.yaml.
+  metaTitle: { type: ["string"] },
+  metaDescription: { type: ["string"] },
 };
 
 // Keys consumed directly by serve.js (not written into the runtime config).
@@ -222,7 +233,7 @@ const BRANDING_END = "<!--/OIE-BRANDING-->";
 
 // Inject CSS/favicon <link> tags from SB_css / SB_favicon into index.html.
 // Keeps the image generic: each org's look is applied at container start.
-function injectBranding(branding, catalogTitle) {
+function injectBranding(branding) {
   const indexPath = INDEX_HTML;
   if (!fs.existsSync(indexPath)) return;
 
@@ -236,18 +247,6 @@ function injectBranding(branding, catalogTitle) {
 
   let html = fs.readFileSync(indexPath, "utf8");
   const original = html;
-
-  // Static og:site_name in index.html carries the org defaults; rebrand it from
-  // the runtime title so social shares don't leak the other org. Match the
-  // content attribute only: in dev the value is still an EJS placeholder
-  // ("<%- catalogTitle %>") whose ">" would end a [^>]* match mid-tag and leave
-  // a stray ">" that breaks the <head> parsing (dropping the injected links).
-  if (catalogTitle) {
-    html = html.replace(
-      /(<meta[^>]*name="og:site_name"[^>]*content=")[^"]*(")/,
-      `$1${catalogTitle}$2`,
-    );
-  }
 
   // Idempotent: replace a previously injected block, else insert before </head>.
   const blockRe = /[ \t]*<!--OIE-BRANDING-->[\s\S]*?<!--\/OIE-BRANDING-->[ \t]*\n?/;
@@ -265,6 +264,57 @@ function injectBranding(branding, catalogTitle) {
     if (links.length) {
       console.log(`[serve] injected branding links: ${links.join(" ")}`);
     }
+  }
+}
+
+// ─ Static SEO meta ───────────────────────────────────────────────────────────
+// Crawlers that don't run JS (link unfurlers, social cards, SEO bots) only see
+// index.html as served: for the landing page <title>/og/meta must be right
+// there, not just after the SPA runs (HeaderTitle.vue rewrites them client-side
+// from the API responses). Values are branding config — as static as the site
+// itself — so this runs once at container start.
+
+function escapeHtml(text) {
+  const escapes = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+  return String(text).replace(/[&<>"]/g, (c) => escapes[c]);
+}
+
+// Replace the value of the content attribute on the meta tag selected by
+// attr="key" (id or name). Tolerates both build-time values and the raw EJS
+// placeholders still present in the dev template ("<%- catalogTitle %>", whose
+// ">" would end a naive [^>]* match mid-value), hence [^<>"]* before content.
+function replaceMetaContent(html, attr, key, value) {
+  const re = new RegExp(`(\\b${attr}="${key}"[^<>"]*content=")([^"]*)(")`);
+  return html.replace(re, (_, before, __, after) => `${before}${value}${after}`);
+}
+
+function injectSeo() {
+  if (!fs.existsSync(INDEX_HTML)) return;
+  const original = fs.readFileSync(INDEX_HTML, "utf8");
+  let html = original;
+
+  const title = activeConfig.metaTitle || activeConfig.catalogTitle;
+  if (title) {
+    const escaped = escapeHtml(title);
+    html = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${escaped}</title>`);
+    html = replaceMetaContent(html, "id", "og-title", escaped);
+  }
+  if (activeConfig.catalogTitle) {
+    html = replaceMetaContent(html, "name", "og:site_name", escapeHtml(activeConfig.catalogTitle));
+  }
+  if (activeConfig.metaDescription) {
+    const description = escapeHtml(activeConfig.metaDescription);
+    html = replaceMetaContent(html, "id", "meta-description", description);
+    html = replaceMetaContent(html, "id", "og-description", description);
+  }
+  // The build-time og:url points at another org's API and this server doesn't
+  // know the public origin behind the proxy: empty it. Scrapers then fall back
+  // to the URL they fetched, and HeaderTitle sets the real one once JS runs.
+  html = replaceMetaContent(html, "id", "og-url", "");
+
+  if (html !== original) {
+    fs.writeFileSync(INDEX_HTML, html);
+    console.log("[serve] injected static SEO meta");
   }
 }
 
@@ -370,8 +420,10 @@ function serveDev() {
 
 function apply() {
   const { config, branding } = computeConfig();
+  activeConfig = config;
   writeConfig(config);
-  injectBranding(branding, config.catalogTitle);
+  injectBranding(branding);
+  injectSeo();
 }
 
 // Dev only: re-read branding/config.yaml when it changes on the host, so an

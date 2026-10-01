@@ -9,10 +9,18 @@
 # plus the OIE extensions css, favicon, widgetConfigs, featuredCollections and
 # assetViewers.
 
-# Fallback name for the root catalog (used for <title>/share links when the
-# root catalog JSON has no title). The landing title and description come from
-# the root catalog metadata (STAC_FASTAPI_TITLE/_DESCRIPTION in docker-compose).
+# Site name shown in the header and in og:site_name.
 catalogTitle: OIE - MinesParis PSL - STAC catalog
+# Static <title>/og:title and meta description, served as-is to crawlers that
+# don't run JS (landing page SEO). The SPA overrides both at runtime from the
+# API responses, so these only need to describe the site itself — and to stay
+# in sync with the root title/description in volumes/data/metadata.yml.
+metaTitle: STAC Stack example - OIE - MinesParis PSL - STAC catalog
+metaDescription: >-
+  Example catalog shipped with the STAC Stack. Through three local collections
+  and one remote THREDDS catalog it documents the main metadata.yml features:
+  a catalog tree, glob-based item discovery, automatic dataset metadata, extra
+  assets, per-item overrides and remote ODAP children.
 # Short label shown next to the logo in the header.
 catalogTitleAfterImage:
 # Logo (under /branding/ so it is served by the browser container).
@@ -140,9 +148,10 @@ assetViewers:
 
   # Zarr subset download: pick variables/ranges and stream a ZIP of the selected
   # chunks, served by the nginx /zarr-subset/ route (FastAPI + mod_zip). The UI
-  # derives the dataset name from the asset href (its last path segment) and
-  # resolves its own API/download URLs against the /zarr-subset/ base path, so
-  # no extra STAC metadata is needed.
+  # receives the asset href as ?url= (path or absolute URL) and passes it
+  # through as ?uri= — the API maps it to the store (ZARR_URI_PREFIX); its own
+  # API/download URLs resolve against the /zarr-subset/ base path, so no extra
+  # STAC metadata is needed.
   - id: zarr-subset
     title: Download ZIP subset
     hideActions: true

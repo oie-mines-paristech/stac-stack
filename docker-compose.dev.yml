@@ -43,6 +43,9 @@ services:
       - ./branding:/app/public/branding:ro
 
   zarr-viewer:
+    build:
+      context: ./services/zarr-viewer
+      target: dev
     environment:
       DEV: "1"
     restart: unless-stopped
@@ -58,6 +61,9 @@ services:
       start_period: 120s
 
   notebook-viewer:
+    build:
+      context: ./services/notebook-viewer
+      target: dev
     environment:
       DEV: "1"
     restart: unless-stopped

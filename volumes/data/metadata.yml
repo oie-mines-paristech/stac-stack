@@ -10,53 +10,21 @@ id: stac-stack-example
 title: STAC Stack example
 description: >-
   Example catalog shipped with the STAC Stack. Through three local collections
-  and one remote THREDDS catalog it documents the main metadata.yml features:
-  a catalog tree, glob-based item discovery, automatic dataset metadata, extra
-  assets, per-item overrides and remote ODAP children.
+  and a sub-catalog of remote THREDDS networks it documents the main
+  metadata.yml features: a catalog tree, glob-based item discovery, automatic
+  dataset metadata, extra assets, per-item overrides and remote ODAP children.
 
 # Explicit relative paths here. A glob such as "collection-*" would work too.
 children:
   - fisheye
   - cube
   - tiffs
-  # A remote THREDDS catalog is a `children` entry like any other, only the
-  # value is a URL instead of a folder. Nothing is downloaded: every dataset
-  # becomes an Item read over OPeNDAP, its extent sampled at time[0]/[1]/[-1].
-  - url: https://tds.webservice-energy.org/thredds/catalog/iea-pvps/catalog.xml
-    id: iea-pvps-task16
-
-    # The catalog's only nested catalogRef holds QC PNG plots, not datasets.
-    max_depth: 0
-    # Cold build ~9 s over 94 stations, then served from the /cache TTL until
-    # `refresh` elapses. Set `workers: 1` to read them sequentially.
-    refresh: 600
-
-    # Same overrides as an `items:` entry, rendered once per dataset:
-    # {station_id} is a scalar property of every item (ADR, BOU, ...), so each
-    # station gets its own QC plot, listed with the other assets (custom role,
-    # so STAC Browser does not promote it to the item preview).
-    itemTemplate:
-      assets:
-        - name: qc
-          title: Quality control plot
-          description: Multi-plot QC report of the station, published alongside the dataset.
-          roles: [QC]
-          mime: image/png
-          href: https://tds.webservice-energy.org/thredds/fileServer/iea-pvps/qc/{station_id}.png
-
-  # Protected server: the catalog XML, the OPeNDAP reads and the downloads all
-  # send HTTP basic credentials from the environment ({VAR} placeholders, so
-  # the secret stays out of this file, of the cache and of the catalog). The
-  # items carry the authentication extension, so STAC Browser prompts the end
-  # user for their own credentials before handing out an href.
-  - url: https://tds.webservice-energy.org/thredds/catalog/bsrn-stations/catalog.xml
-    id: bsrn-stations
-    # The only nested catalogRef holds QC PNG plots, not datasets; exposing
-    # them is deferred (same treatment as iea-pvps above, for later).
-    max_depth: 0
-    auth:
-      login: "{THREDDS_LOGIN}"
-      password: "{THREDDS_PASSWORD}"
+  # All the remote THREDDS networks live under one sub-catalog: see
+  # in-situ/metadata.yml (auth, QC assets, shared YAML anchors). A remote
+  # catalog is a `children` entry like any other, only the value is a URL
+  # instead of a folder. Nothing is downloaded: every dataset becomes an Item
+  # read over OPeNDAP, its extent sampled at time[0]/[1]/[-1].
+  - in-situ
 
 # Extra STAC links, appended after the structural links the generator writes.
 links:

@@ -18,9 +18,9 @@ catalogTitle: OIE - MinesParis PSL - STAC catalog
 metaTitle: STAC Stack example - OIE - MinesParis PSL - STAC catalog
 metaDescription: >-
   Example catalog shipped with the STAC Stack. Through three local collections
-  and one remote THREDDS catalog it documents the main metadata.yml features:
-  a catalog tree, glob-based item discovery, automatic dataset metadata, extra
-  assets, per-item overrides and remote ODAP children.
+  and a sub-catalog of remote THREDDS networks it documents the main
+  metadata.yml features: a catalog tree, glob-based item discovery, automatic
+  dataset metadata, extra assets, per-item overrides and remote ODAP children.
 # Short label shown next to the logo in the header.
 catalogTitleAfterImage:
 # Logo (under /branding/ so it is served by the browser container).
@@ -36,6 +36,11 @@ footerLinks:
 # Disable the CDSE OIDC login ("Connexion") and transactional editing.
 authConfig: null
 transactions: off
+
+# Landing page: show only the root's direct child links (fisheye, cube, tiffs,
+# in-situ) instead of the flat list of every collection from /collections.
+# Items are never affected (upstream option, see docs/options.md).
+apiCatalogPriority: childs
 
 # Domains allowed to receive the end user's credentials (auth headers/query),
 # here the HTTP basic login of the protected THREDDS child. Without this the

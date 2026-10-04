@@ -215,13 +215,13 @@ def add_collection_links(collection: Collection, request: Request) -> None:
         collection.links.append(link)
 
 
-def _root_catalog_metadata(settings: Settings) -> Dict[str, str]:
-    """Read title/description from the static root catalog.
+def _root_catalog_document(settings: Settings) -> Dict[str, Any]:
+    """Read the static root catalog document.
 
     The landing page mirrors the catalog the generator produced from
     `metadata.yml`, so the browser UI follows the chain
-    `metadata.yml -> catalog.json -> /api/`. Falls back to the Settings
-    stubs when the file is unavailable or has no title/description.
+    `metadata.yml -> catalog.json -> /api/`. Returns {} when the file is
+    unavailable or not a JSON object.
     """
     href = getattr(settings, "catalog_href", "")
     if not isinstance(href, str) or not href.startswith("file://"):
@@ -231,11 +231,124 @@ def _root_catalog_metadata(settings: Settings) -> Dict[str, str]:
             catalog = orjson.loads(fh.read())
     except Exception:
         return {}
-    return {
-        key: catalog[key]
-        for key in ("title", "description")
-        if isinstance(catalog.get(key), str) and catalog.get(key)
-    }
+    return catalog if isinstance(catalog, dict) else {}
+
+
+def _map_tree_href(
+    href: str,
+    *,
+    source_dir: str,
+    root_catalog_file: str,
+    base_url: str,
+) -> Optional[str]:
+    """Map a relative href inside the static catalog tree to its API route.
+
+    Returns None for external hrefs and files the API does not expose.
+    Layout `<id>/collection.json` gives the collection id; `<dir>/catalog.json`
+    the sub-catalog path (STAC API - Children URL shape, `/catalogs/{path}`).
+    Only API routes carry the `items` link, without which a collection view
+    shows no item markers on its map.
+    """
+    parsed = urlparse(href)
+    if parsed.scheme or parsed.netloc:
+        return None
+    target = path.normpath(path.join(source_dir, parsed.path))
+    if target == root_catalog_file:
+        return base_url
+    rel = path.relpath(target, path.dirname(root_catalog_file))
+    if rel.startswith(".."):
+        return None
+    if rel.endswith("collection.json"):
+        id_ = path.basename(path.dirname(rel))
+        if id_ and id_ != ".":
+            return urljoin(base_url, f"collections/{id_}")
+    if rel.endswith("catalog.json"):
+        sub = path.dirname(rel)
+        if sub not in ("", "."):
+            return urljoin(base_url, f"catalogs/{sub}")
+    return None
+
+
+def _root_child_links(
+    root_catalog: Dict[str, Any],
+    settings: Settings,
+    base_url: str,
+) -> List[Dict[str, str]]:
+    """Feature the root's direct children on the landing page.
+
+    stac-browser renders these as the catalogs grid when
+    `apiCatalogPriority: childs` is configured (branding).
+    """
+    href = getattr(settings, "catalog_href", "")
+    if not isinstance(href, str) or not href.startswith("file://"):
+        return []
+    root_catalog_file = file_uri_to_file_path(href)
+    source_dir = path.dirname(root_catalog_file)
+    links = []
+    for link in root_catalog.get("links", []):
+        if not isinstance(link, dict) or link.get("rel") != "child":
+            continue
+        link_href = link.get("href")
+        if not isinstance(link_href, str):
+            continue
+        mapped = _map_tree_href(
+            link_href,
+            source_dir=source_dir,
+            root_catalog_file=root_catalog_file,
+            base_url=base_url,
+        )
+        links.append(dict(link, href=mapped or urljoin(base_url, link_href)))
+    return links
+
+
+def get_catalog(request: Request):
+    """Serve a sub-catalog document with API-rewritten navigation links.
+
+    STAC API has no catalog endpoint (`/collections` only serves Collections),
+    and the raw static file would send child links back into the file tree —
+    a collection reached that way lacks the `items` link, so its map shows no
+    item markers. Registered before the StaticFiles mount, so `/catalogs/...`
+    takes precedence over the raw file.
+    """
+    settings: Settings = request.app.state.settings
+    href = getattr(settings, "catalog_href", "")
+    if not isinstance(href, str) or not href.startswith("file://"):
+        raise HTTPException(status_code=404)
+    catalog_path = str(request.path_params.get("catalog_path", "")).strip("/")
+    if not catalog_path:
+        raise HTTPException(status_code=404)
+    root_catalog_file = file_uri_to_file_path(href)
+    catalog_dir = path.dirname(root_catalog_file)
+    file_path = path.normpath(
+        path.join(catalog_dir, *catalog_path.split("/"), "catalog.json")
+    )
+    if not file_path.startswith(catalog_dir + path.sep) or not path.isfile(file_path):
+        raise HTTPException(status_code=404)
+    try:
+        with open(file_path, "rb") as fh:
+            document = orjson.loads(fh.read())
+    except Exception as error:
+        raise HTTPException(status_code=404) from error
+    if not isinstance(document, dict):
+        raise HTTPException(status_code=404)
+
+    base_url = get_base_url(request)
+    source_dir = path.dirname(file_path)
+    for link in document.get("links", []):
+        if not isinstance(link, dict):
+            continue
+        link_href = link.get("href")
+        if not isinstance(link_href, str):
+            continue
+        mapped = _map_tree_href(
+            link_href,
+            source_dir=source_dir,
+            root_catalog_file=root_catalog_file,
+            base_url=base_url,
+        )
+        if mapped:
+            link["href"] = mapped
+    return document
 
 
 class CoreClient(BaseCoreClient):
@@ -284,13 +397,22 @@ class CoreClient(BaseCoreClient):
             if link["rel"] == Relations.self.value:
                 link["href"] = get_self_base_url(request)
 
-        # Title/description come from the root catalog (metadata.yml), not from
+        # Title/children come from the root catalog (metadata.yml), not from
         # hardcoded API stubs, so the browse UI mirrors the catalog metadata.
-        landing_page.update(_root_catalog_metadata(settings))
+        root_catalog = _root_catalog_document(settings)
+        landing_page.update(
+            {
+                key: root_catalog[key]
+                for key in ("title", "description")
+                if isinstance(root_catalog.get(key), str) and root_catalog.get(key)
+            }
+        )
 
-        # Collections are exposed via the standard `data` link (/collections).
-        # Do not also emit `child` links here: stac-browser loads both sources and
-        # fails to deduplicate them when catalogUrl is a relative path like /api/.
+        # `child` links make the root's direct children visible as catalog
+        # cards (stac-browser `apiCatalogPriority: childs`). The `data` link
+        # stays for API clients; in `childs` mode stac-browser drops that
+        # list, so the two sources don't double-render.
+        landing_page["links"].extend(_root_child_links(root_catalog, settings, base_url))
 
         return landing_page
 

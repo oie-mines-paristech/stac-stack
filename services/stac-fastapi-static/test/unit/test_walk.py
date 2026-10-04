@@ -83,9 +83,12 @@ def test_walk_collections(catalog: pystac.Catalog, catalog_href: str, session):
         for walk_result
         in filtered_walk
     ) == set(
+        # `/collections` only serves Collection objects (STAC API): plain
+        # sub-catalogs like `in-situ` are reachable through their catalog
+        # file, not through the collections endpoint.
         collection.id
-        for collection
-        in collections
+        for collection in collections
+        if isinstance(collection, pystac.Collection)
     )
 
     collections = pick_collections(catalog, 5)

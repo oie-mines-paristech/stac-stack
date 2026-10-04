@@ -47,7 +47,7 @@ import xxhash
 import orjson
 
 from .config import Settings
-from .core_client import CoreClient
+from .core_client import CoreClient, get_catalog
 from .filters_client import FiltersClient
 from .models import (
     SearchItems,
@@ -214,5 +214,10 @@ def make_api(settings: Settings):
             return await http_exception_handler(request, error)
 
     api.app.exception_handler(StarletteHTTPException)(safe_http_exception_handler)
+
+    # Sub-catalog documents (e.g. /catalogs/in-situ) with navigation links
+    # rewritten to API routes. Registered here — before the lifespan mounts
+    # StaticFiles at "/" — so it takes precedence over the raw file.
+    api.app.get("/catalogs/{catalog_path:path}")(get_catalog)
 
     return api

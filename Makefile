@@ -14,11 +14,13 @@ RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-fr
 COMPOSE := docker compose
 COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 
-# Published version. VERSION is the committed record of what the images in the
-# registry were built from; `release.sh release` bumps it. It lives outside .env
-# on purpose: .env holds host secrets and must never be the source of truth for
-# a published artefact.
-STACK_VERSION := $(shell cat VERSION 2>/dev/null || echo latest)
+# Published version. On a released checkout the tag is the record; VERSION is the
+# committed fallback for an untagged clone (main, just after a release). Tag
+# first, like `version_of` in scripts/release.sh: a tag is written after the
+# VERSION bump commit, so a clone sitting on the tag would otherwise read the
+# *previous* version out of VERSION and silently pull its images. .env is
+# deliberately not a source here: it holds host secrets.
+STACK_VERSION := $(shell git describe --tags --exact-match 2>/dev/null || cat VERSION 2>/dev/null || echo latest)
 export STACK_VERSION
 
 TEST_DIRECT_PORT ?= 18001

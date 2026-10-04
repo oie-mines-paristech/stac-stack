@@ -72,7 +72,7 @@ assert_browser() {
   log "OK: browser ${browser_url}"
 }
 
-assert_viewer_proxy() {
+assert_viewer_proxy_disabled() {
   local base_url="$1"
   local viewer_url="${base_url%/}/viewer/"
   local proxy_url="${viewer_url}proxy/https/httpbin.org/get"
@@ -83,13 +83,15 @@ assert_viewer_proxy() {
   [[ "$html" == *"Zarr Image Viewer"* || "$html" == *'id="app"'* ]] \
     || fail "Page viewer inattendue: ${viewer_url}"
 
-  log "Vérification proxy Zarr OPTIONS ${proxy_url}"
-  local status
-  status="$(curl -fsS -o /dev/null -w '%{http_code}' -X OPTIONS "${proxy_url}")"
-  [[ "$status" == "204" ]] || fail "Proxy OPTIONS attendu 204, reçu ${status}: ${proxy_url}"
-
-  log "Vérification proxy Zarr HEAD ${proxy_url}"
-  status="$(curl -sS -o /dev/null -w '%{http_code}' -I "${proxy_url}")"
-  [[ "$status" != "404" ]] || fail "Proxy HEAD ne doit pas retourner 404: ${proxy_url}"
-  log "OK: viewer + proxy ${viewer_url}"
+  # The generic /proxy/ CORS-bypass location must stay removed (open relay):
+  # no CORS preflight, and the path must fall back to the SPA, not the upstream.
+  log "Vérification proxy Zarr désactivé ${proxy_url}"
+  local status ctype
+  # No -f: a 4xx/5xx here is the expected proof that nothing is proxied.
+  status="$(curl -sS -o /dev/null -w '%{http_code}' -X OPTIONS "${proxy_url}")"
+  [[ "$status" != "204" ]] || fail "Proxy OPTIONS ne doit plus retourner 204: ${proxy_url}"
+  ctype="$(curl -sSI "${proxy_url}" | tr -d '\r' | grep -i '^content-type:' || true)"
+  [[ "$ctype" == *"text/html"* ]] \
+    || fail "Proxy HEAD doit servir le SPA ou une page d'erreur (text/html), reçu: ${ctype:-vide} (${proxy_url})"
+  log "OK: viewer + proxy désactivé ${viewer_url}"
 }

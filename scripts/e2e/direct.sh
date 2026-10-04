@@ -15,7 +15,7 @@ stack_up "$HTTP_PORT"
 wait_http "http://localhost:${HTTP_PORT}/api/"
 assert_api_links "http://localhost:${HTTP_PORT}/api/" "/api/collections"
 assert_browser "http://localhost:${HTTP_PORT}/" "/api/"
-assert_viewer_proxy "http://localhost:${HTTP_PORT}"
+assert_viewer_proxy_disabled "http://localhost:${HTTP_PORT}"
 log "PASS: HTTP direct root"
 
 trap - EXIT

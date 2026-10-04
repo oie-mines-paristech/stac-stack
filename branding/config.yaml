@@ -37,6 +37,14 @@ footerLinks:
 authConfig: null
 transactions: off
 
+# Domains allowed to receive the end user's credentials (auth headers/query),
+# here the HTTP basic login of the protected THREDDS child. Without this the
+# browser never attaches Authorization to external URLs. The browser download
+# from tds.webservice-energy.org still needs CORS enabled on the TDS itself
+# (owned by its admins) — this only clears the client-side gate.
+allowedDomains:
+  - tds.webservice-energy.org
+
 # Featured ("En vedette") collections on the landing page.
 # Collection IDs are resolved against /api/collections; URLs also work.
 # Remove the line (or use []) to hide the block. It can also be set via the

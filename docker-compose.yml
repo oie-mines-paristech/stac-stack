@@ -56,11 +56,11 @@ services:
     volumes:
       - ./branding:/branding:ro
 
-  # ⚠ SUPPLY CHAIN: nginx is built FROM the third-party image hakwerk/nginx-dav
-  # (official nginx + statically-compiled arut/nginx-dav-ext-module), pinned by
-  # SHA256 digest in services/nginx/Dockerfile. NOT an official Docker/nginx build —
-  # review https://github.com/hakwerk/nginx-dav and the digest before bumping.
-  # Full audit of every base image: README → « Supply chain ».
+  # Official nginx + WebDAV: ngx_http_dav_module is compiled into the base, and
+  # dav-ext (PROPFIND/LOCK/UNLOCK) + mod_zip are built here as dynamic modules
+  # against the base's own nginx version — see services/nginx/Dockerfile. No
+  # third-party base image. Base re-pinned by scripts/repin-digests.sh.
+  # Full audit of every base image: `make trivy`.
   nginx:
     image: ${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}/stac-stack-nginx:${STACK_VERSION:-latest}
     build:

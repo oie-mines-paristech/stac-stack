@@ -14,14 +14,9 @@ RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-fr
 COMPOSE := docker compose
 COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 
-# Published version. On a released checkout the tag is the record; VERSION is the
-# committed fallback for an untagged clone (main, just after a release). Tag
-# first, like `version_of` in scripts/release.sh: a tag is written after the
-# VERSION bump commit, so a clone sitting on the tag would otherwise read the
-# *previous* version out of VERSION and silently pull its images. .env is
-# deliberately not a source here: it holds host secrets.
-STACK_VERSION := $(shell git describe --tags --exact-match 2>/dev/null || cat VERSION 2>/dev/null || echo latest)
-export STACK_VERSION
+# STACK_REGISTRY and STACK_VERSION live in .env (see .env.example). Compose reads
+# .env by itself, so `docker compose up` needs no exported variable; make sure
+# they stay in sync by not re-deriving the version here.
 
 TEST_DIRECT_PORT ?= 18001
 TEST_BACKEND_PORT ?= 18002
@@ -102,10 +97,7 @@ sync-code:
 #   make deploy env=dev    → dev host
 deploy: sync-code
 	@echo "Remote $(DEPLOY_HOST): down / build / up"
-	@# ssh does not forward this shell's environment, so STACK_VERSION has to be
-	@# exported explicitly in the remote command. Without it compose falls back to
-	@# its "${STACK_VERSION:-dev}" default and the footer reads "dev".
-	ssh $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && export STACK_VERSION=$(STACK_VERSION) && docker compose down && docker compose build && docker compose up -d'
+	ssh $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && docker compose down && docker compose build && docker compose up -d'
 
 # Prod (stac) runs inside systemd-nspawn; Docker needs session keyrings (keyctl).
 deploy-check:

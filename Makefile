@@ -7,7 +7,7 @@
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
 #   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules
+.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules trivy trivy-repo trivy-clean
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
@@ -142,5 +142,44 @@ e2e-clean:
 	-$(COMPOSE) -p stac-e2e-direct down -v --remove-orphans 2>/dev/null
 	-$(COMPOSE) -p stac-e2e-webdav down -v --remove-orphans 2>/dev/null
 	@echo "Projets E2E nettoyés"
+
+# ---------------------------------------------------------------- security ---
+# Vulnerability / misconfiguration audit of the whole stack: repo contents
+# (locked deps, leaked secrets, Dockerfile + compose misconfig) and every image
+# referenced by docker-compose.yml.
+#   make trivy                          all images of the compose file
+#   make trivy IMAGES="img1 img2"       only those images
+#   make trivy SEVERITY=MEDIUM,HIGH     change the reporting threshold
+#   make trivy EXIT_CODE=1              non-zero exit on findings (CI gate)
+TRIVY ?= trivy
+TRIVY_SEVERITY ?= HIGH,CRITICAL
+TRIVY_EXIT_CODE ?= 0
+TRIVY_REPORT ?= output/trivy
+# Recursively expanded (?=), so `docker compose config` only runs when the
+# recipe is actually executed. --profile tls covers the optional Caddy.
+TRIVY_IMAGES ?= $(shell $(COMPOSE) --profile tls config --images 2>/dev/null | sort -u)
+
+trivy: trivy-repo
+	@mkdir -p $(TRIVY_REPORT)
+	@rc=0; for img in $(TRIVY_IMAGES); do \
+		name=$$(echo "$$img" | tr '/:' '__'); \
+		echo "=== $$img"; \
+		$(TRIVY) image --quiet --severity $(TRIVY_SEVERITY) --exit-code $(TRIVY_EXIT_CODE) \
+			--format json --output $(TRIVY_REPORT)/$$name.json "$$img" || rc=1; \
+		$(TRIVY) image --severity $(TRIVY_SEVERITY) "$$img" || rc=1; \
+	done; \
+	exit $$rc
+
+# Repo-level scans: lockfile CVEs, secrets, Dockerfile/compose misconfig.
+trivy-repo:
+	@mkdir -p $(TRIVY_REPORT)
+	$(TRIVY) fs --severity $(TRIVY_SEVERITY) --scanners vuln,secret,misconfig \
+		--skip-dirs output,node_modules,.git,.venv,tmp,volumes \
+		--format json --output $(TRIVY_REPORT)/repo.json .
+	$(TRIVY) fs --severity $(TRIVY_SEVERITY) --scanners vuln,secret,misconfig \
+		--skip-dirs output,node_modules,.git,.venv,tmp,volumes .
+
+trivy-clean:
+	rm -rf $(TRIVY_REPORT)
 
 

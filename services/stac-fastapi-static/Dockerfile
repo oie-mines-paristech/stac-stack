@@ -2,7 +2,7 @@
 ARG PYTHON_VERSION=3.12
 # Pinned by digest (python:3.12-alpine at pin time). Re-pin on bump: bump the
 # version, then docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine.
-ARG PYTHON_DIGEST=@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
+ARG PYTHON_DIGEST=@sha256:0687a6bc9716edc2a6ee0fbfb0f87e7ee358b262b67c9215de91bc9b2d38ba71
 
 FROM python:${PYTHON_VERSION}-alpine${PYTHON_DIGEST} AS build
 

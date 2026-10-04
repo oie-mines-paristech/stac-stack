@@ -20,6 +20,7 @@ test-results/
 playwright-report/
 coverage/
 *.tsbuildinfo
+output/
 
 data/stac-index/*
 data/*

@@ -5,6 +5,7 @@
     </div>
     <b-card-body>
       <b-card-title>
+        <BIconLockFill v-if="requiresBasicAuth" class="auth-lock" aria-hidden="true" />
         <StacLink :data="[data, catalog]" class="stretched-link" />
       </b-card-title>
       <b-card-text v-if="fileFormats.length > 0 || hasDescription || isDeprecated" class="intro">
@@ -35,6 +36,7 @@ import { STAC } from 'stac-js';
 import { formatTemporalExtent } from '@radiantearth/stac-fields/formatters';
 import { BCard, BCardBody, BCardFooter, BCardText, BCardTitle } from 'bootstrap-vue-next';
 import AuthImage from './AuthImage.vue';
+import BIconLockFill from '~icons/bi/lock-fill';
 
 export default {
   name: 'Catalog',
@@ -45,6 +47,7 @@ export default {
     BCardFooter,
     BCardText,
     BCardTitle,
+    BIconLockFill,
     StacLink,
     StacActions,
     Keywords: defineAsyncComponent(() => import('./Keywords.vue'))
@@ -94,6 +97,16 @@ export default {
         }
       }
       return null;
+    },
+    requiresBasicAuth() {
+      const obj = this.data || this.catalog;
+      if (!obj) {
+        return false;
+      }
+      const schemes = typeof obj.getMetadata === 'function'
+        ? obj.getMetadata('auth:schemes')
+        : obj['auth:schemes'];
+      return Boolean(schemes && schemes.basic);
     }
   },
   methods: {
@@ -106,3 +119,10 @@ export default {
   }
 };
 </script>
+
+<style lang="scss" scoped>
+.auth-lock {
+  margin-right: 0.35em;
+  vertical-align: -0.125em;
+}
+</style>

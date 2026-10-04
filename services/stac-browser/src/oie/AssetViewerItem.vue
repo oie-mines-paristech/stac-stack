@@ -23,7 +23,11 @@
       </span>
       <AssetBadges :asset="asset" :shown="shown" :extra-roles="viewerRoles" />
     </template>
-    <HrefActions v-if="!viewer.hideActions" isAsset :data="asset" :shown="shown" @show="show" :auth="auth" class="mb-3">
+    <HrefActions
+      v-if="!viewer.hideActions" isAsset :data="asset" :shown="shown"
+      @show="show" :auth="auth"
+      class="mb-3"
+    >
       <template #extra-actions>
         <AssetViewerActions
           v-if="!viewer.hideViewerActions"

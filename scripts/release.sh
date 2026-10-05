@@ -13,7 +13,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-STACK_REGISTRY="${STACK_REGISTRY:-ghcr.io/oie-mines-paristech}"
+STACK_REGISTRY="ghcr.io/oie-mines-paristech"
 
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
 ok()  { printf '  ok  %s\n' "$*"; }
@@ -138,7 +138,6 @@ cmd_release() {
   printf '\nrelease: %s @ %s\n' "$version" "${rev:0:12}"
   export STACK_REVISION="$rev"
   export STACK_VERSION="$version"
-  export STACK_REGISTRY
 
   local tags
   tags=$(docker compose config --format json | python3 -c '

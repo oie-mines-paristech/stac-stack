@@ -3,7 +3,8 @@
 #
 # Proves that a user can run the stack without ever building: every first-party
 # image is fetched from a registry. Uses a throwaway local registry and a `test`
-# tag so nothing collides with released tags or with the dev stack.
+# tag so nothing collides with released tags or with the dev stack; a generated
+# compose override points the images there (see below).
 #
 # Usage: scripts/e2e/release-roundtrip.sh   (from the repo root)
 set -euo pipefail
@@ -13,17 +14,56 @@ REGISTRY_CONTAINER=stac-release-registry
 TAG=test
 PROJECT=stac-release-test
 # Port 8001 keeps the test clear of the dev stack on 8000.
-export STACK_REGISTRY=$REGISTRY
 export STACK_VERSION=$TAG
 export COMPOSE_PROJECT_NAME=$PROJECT
 export HTTP_PORT=8001
 
-cd "$(dirname "$0")/../.."
+REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+cd "$REPO_ROOT"
+
+# Path of the compose override that redirects the images to the throwaway
+# registry; generated after the initial cleanup below, which must run first or
+# it would delete the override before the build.
+OVERRIDE=""
+
+step() { printf '\n== %s\n' "$*"; }
+cleanup() {
+  printf '\n== cleanup\n'
+  docker compose --profile tls down -v --remove-orphans >/dev/null 2>&1 || true
+  for i in "${IMAGES[@]}"; do docker rmi -f "$i" >/dev/null 2>&1 || true; done
+  docker rm -f "$REGISTRY_CONTAINER" >/dev/null 2>&1 || true
+  [ -n "$OVERRIDE" ] && rm -f "$OVERRIDE" || true
+  echo "   stack down, images purged, registry removed"
+}
+
+trap cleanup EXIT
+cleanup   # a previous failed run may have left state behind
+
+# docker-compose.yml hardcodes the production registry, so pushing or pulling
+# its image names as-is would publish a `test` tag into the real ghcr.io
+# namespace. Redirect every buildable service to the throwaway registry through
+# a generated compose override — generated from compose's own output rather than
+# retyped, so the naming scheme stays in docker-compose.yml and cannot drift.
+OVERRIDE=$(mktemp)
+docker compose -f "$REPO_ROOT/docker-compose.yml" config --format json | python3 -c '
+import json, sys
+reg, tag = sys.argv[1], sys.argv[2]
+svc = json.load(sys.stdin)["services"]
+built = {n: s["image"] for n, s in sorted(svc.items()) if s.get("build")}
+if not built:
+    sys.exit("compose exposes no buildable services")
+print("services:")
+for name, image in built.items():
+    base = image.rsplit("/", 1)[-1].split(":")[0]
+    print("  %s:" % name)
+    print("    image: %s/%s:%s" % (reg, base, tag))
+' "$REGISTRY" "$TAG" > "$OVERRIDE"
+export COMPOSE_FILE="$REPO_ROOT/docker-compose.yml:$OVERRIDE"
 
 SERVICES=()
 IMAGES=()
-# Compose is the single source of truth for both service and image names: never
-# duplicate the naming scheme here, or the script silently drifts from it.
+# Compose remains the single source of truth for both service and image names,
+# resolved through the override so they point at the throwaway registry.
 eval "$(docker compose config --format json | python3 -c '
 import json, sys
 svc = json.load(sys.stdin)["services"]
@@ -35,18 +75,6 @@ print("IMAGES=(%s)" % " ".join(i for _, i in built))
 ')"
 [ "${#IMAGES[@]}" -gt 0 ] || { echo "no first-party image resolved"; exit 1; }
 printf '   %d images: %s\n' "${#IMAGES[@]}" "${SERVICES[*]}"
-
-step() { printf '\n== %s\n' "$*"; }
-cleanup() {
-  printf '\n== cleanup\n'
-  docker compose --profile tls down -v --remove-orphans >/dev/null 2>&1 || true
-  for i in "${IMAGES[@]}"; do docker rmi -f "$i" >/dev/null 2>&1 || true; done
-  docker rm -f "$REGISTRY_CONTAINER" >/dev/null 2>&1 || true
-  echo "   stack down, images purged, registry removed"
-}
-
-trap cleanup EXIT
-cleanup   # a previous failed run may have left state behind
 
 step "1/6 start local registry at $REGISTRY"
 docker rm -f "$REGISTRY_CONTAINER" >/dev/null 2>&1 || true

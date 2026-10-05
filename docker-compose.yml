@@ -9,7 +9,7 @@ x-oci-labels: &oci-labels
 services:
 
   stac-generator:
-    image: ${STACK_REGISTRY}/stac-stack-generator:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-generator:${STACK_VERSION}
     build:
       context: ./services/stac-generator
       labels: *oci-labels
@@ -32,7 +32,7 @@ services:
       - ./volumes/cache:/cache
 
   browser:
-    image: ${STACK_REGISTRY}/stac-stack-browser:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-browser:${STACK_VERSION}
     build:
       context: ./services/stac-browser
       dockerfile: Dockerfile.oie
@@ -62,7 +62,7 @@ services:
   # third-party base image. Base re-pinned by scripts/repin-digests.sh.
   # Full audit of every base image: `make trivy`.
   nginx:
-    image: ${STACK_REGISTRY}/stac-stack-nginx:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-nginx:${STACK_VERSION}
     build:
       context: ./services/nginx
       labels: *oci-labels
@@ -122,7 +122,7 @@ services:
       - ./volumes/certificates:/data
 
   zarr-viewer:
-    image: ${STACK_REGISTRY}/stac-stack-zarr-viewer:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-zarr-viewer:${STACK_VERSION}
     build:
       context: ./services/zarr-viewer
       labels: *oci-labels
@@ -132,7 +132,7 @@ services:
       DEV: "0"
 
   notebook-viewer:
-    image: ${STACK_REGISTRY}/stac-stack-notebook-viewer:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-notebook-viewer:${STACK_VERSION}
     build:
       context: ./services/notebook-viewer
       labels: *oci-labels
@@ -147,7 +147,7 @@ services:
   # The whole data tree is mounted at the same path nginx serves it from (/data),
   # so a deep store URI (e.g. /data/fisheye/ikarus) resolves 1:1.
   zarr-subset-zip:
-    image: ${STACK_REGISTRY}/stac-stack-zarr-subset-zip:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-zarr-subset-zip:${STACK_VERSION}
     build:
       context: ./services/zarr-subset-zip
       dockerfile: Dockerfile.api
@@ -162,7 +162,7 @@ services:
       - zarr-subset-cache:/tmp/cache
 
   static-api:
-    image: ${STACK_REGISTRY}/stac-stack-static-api:${STACK_VERSION}
+    image: ghcr.io/oie-mines-paristech/stac-stack-static-api:${STACK_VERSION}
     build:
       context: ./services/stac-fastapi-static
       labels: *oci-labels

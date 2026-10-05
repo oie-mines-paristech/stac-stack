@@ -14,9 +14,9 @@ RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-fr
 COMPOSE := docker compose
 COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 
-# STACK_REGISTRY and STACK_VERSION live in .env (see .env.example). Compose reads
-# .env by itself, so `docker compose up` needs no exported variable; make sure
-# they stay in sync by not re-deriving the version here.
+# STACK_VERSION lives in .env (see .env.example). Compose reads .env by itself,
+# so `docker compose up` needs no exported variable; the registry is hardcoded in
+# docker-compose.yml.
 
 TEST_DIRECT_PORT ?= 18001
 TEST_BACKEND_PORT ?= 18002

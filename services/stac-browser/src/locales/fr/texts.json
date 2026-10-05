@@ -90,6 +90,7 @@
     "successorVersion": "Version suivante:",
     "warning": "Veuillez noter que ce {type} est déprécié et peut être supprimé à tout moment. Son usage devrait être abandonné dès que possible. Évitez de l'utiliser dans les nouveaux projets."
   },
+  "dataset": "{count} jeu de données | {count} jeux de données",
   "description": "Description",
   "errors": {
     "apiListRequested": "La requête n'est pas valide. Les requêtes directes vers /collections et .../items ne sont actuellement pas prises en charge.",

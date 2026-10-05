@@ -33,6 +33,7 @@ import StacLink from './StacLink.vue';
 import StacActions from './StacActions.vue';
 import { STAC } from 'stac-js';
 import { formatTemporalExtent, formatTimestamp } from '@radiantearth/stac-fields/formatters';
+import { formatMonthRange } from '../utils';
 import { BCard, BCardBody, BCardFooter, BCardText, BCardTitle } from 'bootstrap-vue-next';
 import AuthImage from './AuthImage.vue';
 
@@ -80,7 +81,9 @@ export default defineComponent({
     },
     displayTime() {
       if (this.extent) {
-        return formatTemporalExtent(this.extent);
+        // Compact `YYYY-MM → YYYY-MM` when bounded; otherwise let the localized
+        // formatter word the open end (ongoing / unknown start).
+        return formatMonthRange(this.extent[0], this.extent[1]) ?? formatTemporalExtent(this.extent);
       }
       else if (this.data && this.data.properties.datetime) {
         return formatTimestamp(this.data.properties.datetime);

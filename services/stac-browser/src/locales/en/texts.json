@@ -90,6 +90,7 @@
     "successorVersion": "Next version:",
     "warning": "Please note that this {type} is deprecated with the potential to be removed anytime. It should be transitioned out of usage as soon as possible. Refrain from using it in new projects."
   },
+  "dataset": "{count} dataset | {count} datasets",
   "description": "Description",
   "errors": {
     "apiListRequested": "The request is invalid. Direct requests to /collections and .../items endpoints are currently not supported.",

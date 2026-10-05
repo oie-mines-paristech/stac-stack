@@ -14,7 +14,10 @@
         {{ summarizeDescription }}
       </b-card-text>
       <Keywords v-if="showKeywordsInCatalogCards && keywords.length > 0" :keywords="keywords" variant="primary" />
-      <b-card-text v-if="temporalExtent" class="datetime"><small v-html="temporalExtent" /></b-card-text>
+      <b-card-text v-if="temporalExtent || itemCount !== null" class="datetime">
+        <small v-if="temporalExtent" v-html="temporalExtent" />
+        <small v-if="itemCount !== null">{{ $t('dataset', { count: itemCount }) }}</small>
+      </b-card-text>
     </b-card-body>
     <b-card-footer>
       <slot name="footer" :data="data" :source="catalog">
@@ -34,6 +37,7 @@ import StacLink from './StacLink.vue';
 import StacActions from './StacActions.vue';
 import { STAC } from 'stac-js';
 import { formatTemporalExtent } from '@radiantearth/stac-fields/formatters';
+import { formatMonthRange } from '../utils';
 import { BCard, BCardBody, BCardFooter, BCardText, BCardTitle } from 'bootstrap-vue-next';
 import AuthImage from './AuthImage.vue';
 import BIconLockFill from '~icons/bi/lock-fill';
@@ -93,10 +97,19 @@ export default {
       if (this.data?.isCollection && this.data.extent?.temporal?.interval.length > 0) {
         let extent = this.data.extent.temporal.interval[0];
         if (Array.isArray(extent) && (typeof extent[0] === 'string' || typeof extent[1] === 'string')) {
-          return this.formatTemporalExtent(this.data.extent.temporal.interval[0], true);
+          // Compact `YYYY-MM → YYYY-MM` when bounded; otherwise let the
+          // localized formatter word the open end.
+          return formatMonthRange(extent[0], extent[1])
+            ?? this.formatTemporalExtent(extent, true);
         }
       }
       return null;
+    },
+    itemCount() {
+      if (!this.data?.isCollection || typeof this.data.getItemLinks !== 'function') {
+        return null;
+      }
+      return this.data.getItemLinks().length;
     },
     requiresBasicAuth() {
       const obj = this.data || this.catalog;

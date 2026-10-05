@@ -16,6 +16,22 @@ export class BrowserError extends Error {
 }
 
 /**
+ * Formats a bounded temporal range as a compact `YYYY-MM → YYYY-MM`.
+ * Returns `null` when either bound is missing (ongoing or unknown extent), so
+ * the caller can fall back to a localized formatter that words the open end.
+ *
+ * @param {string|null} start RFC 3339 start, or null for an open start
+ * @param {string|null} end RFC 3339 end, or null for an open end
+ * @returns {string|null} The compact range, or null
+ */
+export function formatMonthRange(start, end) {
+  const month = value => (typeof value === 'string' && /^\d{4}-\d{2}/.test(value)) ? value.slice(0, 7) : null;
+  const from = month(start);
+  const to = month(end);
+  return from && to ? `${from} → ${to}` : null;
+}
+
+/**
  * General utilities
  * 
  * @class

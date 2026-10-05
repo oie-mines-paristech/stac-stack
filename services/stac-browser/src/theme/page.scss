@@ -672,6 +672,12 @@ svg {
 
     .datetime {
       color: $secondary;
+
+      // Temporal range and item count are one tight block: each on its own
+      // line, no inter-line gap like the separate card-text rows had.
+      small {
+        display: block;
+      }
     }
   }
 

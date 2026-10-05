@@ -3,6 +3,8 @@
 .env
 .vscode
 .idea
+.opencode/
+.serena/
 node_modules/
 **/node_modules/
 dist/
@@ -11,6 +13,8 @@ dist/
 **/.cache/
 __pycache__/
 **/__pycache__/
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
@@ -18,7 +22,10 @@ __pycache__/
 .ruff_cache/
 test-results/
 playwright-report/
+.playwright-mcp/
+tests/e2e-catalog/
 coverage/
 *.tsbuildinfo
 tmp/
+output/
 *.pyc

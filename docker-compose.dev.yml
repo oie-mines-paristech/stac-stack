@@ -46,6 +46,10 @@ services:
     build:
       context: ./services/zarr-viewer
       target: dev
+    # Distinct tag: sharing the runtime image tag (ghcr …:latest) made plain
+    # `up` reuse the runtime image — alpine, no node — while DEV=1 asked the
+    # entrypoint for npx. Same reason stac-browser uses stac-oie-browser:dev.
+    image: stac-oie-zarr-viewer:dev
     environment:
       DEV: "1"
     restart: unless-stopped
@@ -64,6 +68,7 @@ services:
     build:
       context: ./services/notebook-viewer
       target: dev
+    image: stac-oie-notebook-viewer:dev
     environment:
       DEV: "1"
     restart: unless-stopped

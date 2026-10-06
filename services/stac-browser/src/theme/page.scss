@@ -604,9 +604,9 @@ svg {
     .card-img-top,
     .card-img-end,
     .card-img-start {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+      width: auto;
+      height: auto;
+      object-fit: scale-down;
       object-position: center;
     }
 
@@ -620,9 +620,8 @@ svg {
         border-radius: 0;
 
         &.card-img-top {
-          height: 250px;
           max-width: 100%;
-          max-height: none;
+          max-height: 250px;
         }
       }
     }
@@ -709,7 +708,7 @@ svg {
           left: 0;
           width: 100%;
           height: 100%;
-          object-fit: cover;
+          object-fit: scale-down;
           object-position: center;
         }
       }

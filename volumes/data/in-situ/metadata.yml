@@ -12,8 +12,14 @@
 id: in-situ
 title: In situ irradiance datasets
 description: >-
-  Time series of in-situ irradiance measurements gathered from the Thredds server 
-  (tds.webservice-energy.org): 18 networks, about 651 stations in total.
+  
+  OIE's Web Service Energy gathers high quality, minute resolution, insitu data of solar irradiance 
+  from various, herogenous networks. 
+  
+  We process them into standard NetCDF files, following CF conventions and redistribute it freely on a Thredds server.
+
+  We cover 16 networks, for more than 600 stations in total.
+
 
 children:
   # The catalog's only nested catalogRef holds QC PNG plots, not datasets.
@@ -21,6 +27,7 @@ children:
   # `refresh` elapses. Set `workers: 1` to read them sequentially.
   - url: https://tds.webservice-energy.org/thredds/catalog/iea-pvps/catalog.xml
     id: iea-pvps
+    exclude: ["index.nc"]
     max_depth: &depth 0
     refresh: 600
     # Same overrides as an `items:` entry, rendered once per dataset:
@@ -47,6 +54,7 @@ children:
   - url: https://tds.webservice-energy.org/thredds/catalog/bsrn-stations/catalog.xml
     id: bsrn
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: &tds-auth
       login: "{THREDDS_LOGIN}"
       password: "{THREDDS_PASSWORD}"
@@ -54,57 +62,63 @@ children:
   # -- Protected networks (same credentials, QC plots stay private) -------
   - url: https://tds.webservice-energy.org/thredds/catalog/bom-stations/catalog.xml
     id: bom
+    exclude: ["index.nc"]
     max_depth: *depth
     auth: *tds-auth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/ecowapp-stations/catalog.xml
     id: ecowapp
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: *tds-auth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/enermena-stations/catalog.xml
     id: enermena
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: *tds-auth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/eratosthenes-stations/catalog.xml
     id: eratosthenes
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: *tds-auth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/isepvlive-stations/catalog.xml
     id: isepvlive
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: *tds-auth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/ozflux-stations/catalog.xml
     id: ozflux
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: *tds-auth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/skynet-stations/catalog.xml
     id: skynet
     max_depth: *depth
+    exclude: ["index.nc"]
     auth: *tds-auth
 
-  # -- Open networks -----------------------------------------------------
-  - url: https://tds.webservice-energy.org/thredds/catalog/cirocco-stations/catalog.xml
-    id: cirocco
-    max_depth: *depth
 
   - url: https://tds.webservice-energy.org/thredds/catalog/dimred/catalog.xml
     id: dimred
+    exclude: ["index.nc"]
     max_depth: *depth
 
   # Its qc/ catalogRef is empty, so no QC asset is attached.
   - url: https://tds.webservice-energy.org/thredds/catalog/meteofrance-stations/catalog.xml
     id: meteofrance
+    exclude: ["index.nc"]
     max_depth: *depth
 
   # -- Open networks with a public QC plot -------------------------------
   - url: https://tds.webservice-energy.org/thredds/catalog/esmap-stations/catalog.xml
     id: esmap
     max_depth: *depth
+    exclude: ["index.nc"]
     itemTemplate:
       assets:
         - <<: *qc
@@ -113,6 +127,7 @@ children:
   - url: https://tds.webservice-energy.org/thredds/catalog/nrelmidc-stations/catalog.xml
     id: nrelmidc
     max_depth: *depth
+    exclude: ["index.nc"]
     itemTemplate:
       assets:
         - <<: *qc
@@ -121,24 +136,17 @@ children:
   - url: https://tds.webservice-energy.org/thredds/catalog/sauran-stations/catalog.xml
     id: sauran
     max_depth: *depth
+    exclude: ["index.nc"]
     itemTemplate:
       assets:
         - <<: *qc
           href: https://tds.webservice-energy.org/thredds/fileServer/sauran-stations/qc/{station_id}.png
 
-  # Single top-level dataset (SCIDOSOL-SOP.nc), no per-station subcatalogs;
-  # station_id is "SOP".
-  - url: https://tds.webservice-energy.org/thredds/catalog/scidosol-stations/catalog.xml
-    id: scidosol
-    max_depth: *depth
-    itemTemplate:
-      assets:
-        - <<: *qc
-          href: https://tds.webservice-energy.org/thredds/fileServer/scidosol-stations/qc/{station_id}.png
 
   - url: https://tds.webservice-energy.org/thredds/catalog/solrad-stations/catalog.xml
     id: solrad
     max_depth: *depth
+    exclude: ["index.nc"]
     itemTemplate:
       assets:
         - <<: *qc
@@ -147,6 +155,7 @@ children:
   - url: https://tds.webservice-energy.org/thredds/catalog/surfrad-stations/catalog.xml
     id: surfrad
     max_depth: *depth
+    exclude: ["index.nc"]
     itemTemplate:
       assets:
         - <<: *qc

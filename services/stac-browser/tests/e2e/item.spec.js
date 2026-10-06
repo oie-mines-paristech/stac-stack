@@ -408,3 +408,55 @@ test.describe('Item view - Geometry', () => {
     await expect(fullscreen).toBeEnabled();
   });
 });
+
+test.describe('Item view - OPeNDAP assets', () => {
+  test('OPeNDAP asset offers copy URL but no download', async ({ page, worker }) => {
+    const catalog = new StaticCatalog({ url: 'https://stac.example/catalog.json' });
+    const collection = catalog.addCollection({ url: 'https://stac.example/collection.json' });
+    const item = collection.addItem({ url: 'https://stac.example/item.json' })
+      .setMetadata({ title: 'OPeNDAP station 2025', datetime: '2025-01-01T00:00:00Z' });
+
+    item.data.assets = {
+      data: {
+        href: 'https://tds.example.org/thredds/fileServer/station.nc',
+        type: 'application/x-netcdf',
+        roles: ['data'],
+        title: 'NetCDF Data'
+      },
+      'data-opendap': {
+        href: 'https://tds.example.org/thredds/dodsC/station.nc',
+        roles: ['data'],
+        title: 'OPeNDAP access',
+        description: 'This is an OPeNDAP URL. It should be used by a NetCDF client and cannot be downloaded.',
+        'browser:downloadable': false
+      },
+      'data-opendap-form': {
+        href: 'https://tds.example.org/thredds/dodsC/station.nc.html',
+        type: 'text/html',
+        roles: ['documentation'],
+        title: 'OPeNDAP Dataset Access Form'
+      }
+    };
+
+    await catalog.createServer(worker);
+    await page.goto(catalog.root.getBrowserPath());
+    await waitForBrowserReady(page);
+
+    await page.getByRole('link', { name: new RegExp(collection.getMetadata().title, 'i') }).click();
+    await waitForBrowserReady(page);
+
+    await page.getByRole('link', { name: /OPeNDAP station 2025/i }).click();
+    await waitForBrowserReady(page);
+
+    const opendapBlock = page.locator('#asset-data-opendap');
+    await opendapBlock.getByRole('button', { name: /OPeNDAP access/i }).click();
+    await expect(opendapBlock.getByRole('button', { name: /copy url/i })).toBeVisible();
+    await expect(opendapBlock.getByRole('button', { name: /download/i })).toHaveCount(0);
+    await expect(opendapBlock.getByText(/cannot be downloaded/i)).toBeVisible();
+
+    const formBlock = page.locator('#asset-data-opendap-form');
+    await formBlock.getByRole('button', { name: /OPeNDAP Dataset Access Form/i }).click();
+    await expect(formBlock.getByRole('button', { name: /open/i })).toBeVisible();
+    await expect(formBlock.getByRole('button', { name: /download/i })).toHaveCount(0);
+  });
+});

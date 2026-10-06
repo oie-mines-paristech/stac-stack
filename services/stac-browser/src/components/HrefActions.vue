@@ -166,7 +166,13 @@ export default {
       return this.isAsset && this.canShow && !this.shown;
     },
     canDownload() {
-      return this.isAsset && this.isBrowserProtocol && !disableDownloadTypes.includes(this.data?.type);
+      // An asset may opt out of the download button (e.g. an OPeNDAP endpoint
+      // that only a NetCDF client can consume): STAC asset field
+      // `browser:downloadable: false` leaves only the "copy URL" action.
+      return this.isAsset
+        && this.data?.['browser:downloadable'] !== false
+        && this.isBrowserProtocol
+        && !disableDownloadTypes.includes(this.data?.type);
     },
     downloadEvents() {
       if (this.canDownload && this.useAltDownloadMethod) {

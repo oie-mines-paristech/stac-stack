@@ -3,10 +3,13 @@
 # https://tds.webservice-energy.org/thredds/catalog/in-situ.xml
 #
 # Every entry is a remote THREDDS catalog — nothing is downloaded, each
-# dataset becomes an Item read over OPeNDAP. YAML anchors factor what the 18
-# children share: &depth (stop before the nested qc/ catalogRef), &tds-auth
-# (the 8 credential-protected networks) and &qc (the shared QC asset block,
-# each child overriding only its `href` through `<<` merge).
+# dataset becomes an Item read over OPeNDAP. The `_references` block below is
+# an ignored container for the reusable YAML fragments factored with anchors:
+# &depth (stop before the nested qc/ catalogRef), &tds-auth (the 8
+# credential-protected networks), &qc (the shared QC asset block, each child
+# overriding only its `href` through `<<` merge) and &catalog-link (the static
+# HTML catalog link every network declares). The generator never reads
+# `_references`; YAML itself resolves the anchors.
 # ---------------------------------------------------------------------------
 
 id: in-situ
@@ -21,6 +24,23 @@ description: >-
   We cover 16 networks, for more than 600 stations in total.
 
 
+# Ignored container for reusable YAML blocks (anchors referenced below).
+_references:
+  depth: &depth 0
+  tds-auth: &tds-auth
+    login: "{THREDDS_LOGIN}"
+    password: "render_placeholders(spec.auth.password,"
+  qc: &qc
+    name: qc
+    title: Quality control plot
+    description: Multi-plot QC report of the station, published alongside the dataset.
+    roles: [QC]
+    mime: image/png
+  catalog-link: &catalog-link
+    rel: describedby
+    type: text/html
+    title: THREDDS catalog
+
 children:
   # The catalog's only nested catalogRef holds QC PNG plots, not datasets.
   # Cold build ~9 s over 94 stations, then served from the /cache TTL until
@@ -28,21 +48,18 @@ children:
   - url: https://tds.webservice-energy.org/thredds/catalog/iea-pvps/catalog.xml
     id: iea-pvps
     exclude: ["index.nc"]
-    max_depth: &depth 0
+    max_depth: *depth
     refresh: 600
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/iea-pvps/catalog.html
     # Same overrides as an `items:` entry, rendered once per dataset:
     # {station_id} is a scalar property of every item (ADR, BOU, ...), so each
     # station gets its own QC plot, listed with the other assets (custom role,
-    # so STAC Browser does not promote it to the item preview). &qc below is
-    # the asset block shared by the six other QC networks.
+    # so STAC Browser does not promote it to the item preview).
     itemTemplate:
       assets:
-        - &qc
-          name: qc
-          title: Quality control plot
-          description: Multi-plot QC report of the station, published alongside the dataset.
-          roles: [QC]
-          mime: image/png
+        - <<: *qc
           href: https://tds.webservice-energy.org/thredds/fileServer/iea-pvps/qc/{station_id}.png
 
   # Protected server: the catalog XML, the OPeNDAP reads and the downloads all
@@ -55,9 +72,10 @@ children:
     id: bsrn
     max_depth: *depth
     exclude: ["index.nc"]
-    auth: &tds-auth
-      login: "{THREDDS_LOGIN}"
-      password: "{THREDDS_PASSWORD}"
+    auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/bsrn-stations/catalog.html
 
   # -- Protected networks (same credentials, QC plots stay private) -------
   - url: https://tds.webservice-energy.org/thredds/catalog/bom-stations/catalog.xml
@@ -65,60 +83,90 @@ children:
     exclude: ["index.nc"]
     max_depth: *depth
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/bom-stations/catalog.html
 
   - url: https://tds.webservice-energy.org/thredds/catalog/ecowapp-stations/catalog.xml
     id: ecowapp
     max_depth: *depth
     exclude: ["index.nc"]
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/ecowapp-stations/catalog.html
 
   - url: https://tds.webservice-energy.org/thredds/catalog/enermena-stations/catalog.xml
     id: enermena
     max_depth: *depth
     exclude: ["index.nc"]
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/enermena-stations/catalog.html
 
   - url: https://tds.webservice-energy.org/thredds/catalog/eratosthenes-stations/catalog.xml
     id: eratosthenes
     max_depth: *depth
     exclude: ["index.nc"]
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/eratosthenes-stations/catalog.html
 
   - url: https://tds.webservice-energy.org/thredds/catalog/isepvlive-stations/catalog.xml
     id: isepvlive
     max_depth: *depth
     exclude: ["index.nc"]
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/isepvlive-stations/catalog.html
 
   - url: https://tds.webservice-energy.org/thredds/catalog/ozflux-stations/catalog.xml
     id: ozflux
     max_depth: *depth
     exclude: ["index.nc"]
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/ozflux-stations/catalog.html
 
   - url: https://tds.webservice-energy.org/thredds/catalog/skynet-stations/catalog.xml
     id: skynet
     max_depth: *depth
     exclude: ["index.nc"]
     auth: *tds-auth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/skynet-stations/catalog.html
 
 
   - url: https://tds.webservice-energy.org/thredds/catalog/dimred/catalog.xml
     id: dimred
     exclude: ["index.nc"]
     max_depth: *depth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/dimred/catalog.html
 
   # Its qc/ catalogRef is empty, so no QC asset is attached.
   - url: https://tds.webservice-energy.org/thredds/catalog/meteofrance-stations/catalog.xml
     id: meteofrance
     exclude: ["index.nc"]
     max_depth: *depth
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/meteofrance-stations/catalog.html
 
   # -- Open networks with a public QC plot -------------------------------
   - url: https://tds.webservice-energy.org/thredds/catalog/esmap-stations/catalog.xml
     id: esmap
     max_depth: *depth
     exclude: ["index.nc"]
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/esmap-stations/catalog.html
     itemTemplate:
       assets:
         - <<: *qc
@@ -128,6 +176,9 @@ children:
     id: nrelmidc
     max_depth: *depth
     exclude: ["index.nc"]
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/nrelmidc-stations/catalog.html
     itemTemplate:
       assets:
         - <<: *qc
@@ -137,6 +188,9 @@ children:
     id: sauran
     max_depth: *depth
     exclude: ["index.nc"]
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/sauran-stations/catalog.html
     itemTemplate:
       assets:
         - <<: *qc
@@ -147,6 +201,9 @@ children:
     id: solrad
     max_depth: *depth
     exclude: ["index.nc"]
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/solrad-stations/catalog.html
     itemTemplate:
       assets:
         - <<: *qc
@@ -156,6 +213,9 @@ children:
     id: surfrad
     max_depth: *depth
     exclude: ["index.nc"]
+    links:
+      - <<: *catalog-link
+        href: https://tds.webservice-energy.org/thredds/catalog/surfrad-stations/catalog.html
     itemTemplate:
       assets:
         - <<: *qc

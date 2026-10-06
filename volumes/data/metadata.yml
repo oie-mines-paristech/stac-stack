@@ -36,6 +36,10 @@ children:
         href: http://foo/bar
         type: text/html
         title: Example link
+      - rel: describedby
+        href: https://tds.webservice-energy.org/thredds/catalog/abc-rad/catalog.html
+        type: text/html
+        title: THREDDS catalog
 
 # Extra STAC links, appended after the structural links the generator writes.
 links:

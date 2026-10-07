@@ -141,6 +141,60 @@ The generator infers extent, datacube shape and bands from the files themselves.
 See the [stac-generator README](https://git.sophia.minesparis.psl.eu/oie/stac-generator)
 for the full `metadata.yml` reference.
 
+### Testing against the prod dataset (WebDAV)
+
+The local stack can run against the full production dataset without committing
+it. The prod **data** is served read-only over WebDAV; the **metadata**
+(`metadata.yml` + small illustrations) come from a local git clone of the prod
+repo, overlaid on top. Editing a metadata file locally has no effect on prod;
+pushing the clone deploys it.
+
+One-time setup:
+
+```bash
+make prod-meta-clone     # git clone of the prod metadata repo -> volumes/data-meta/
+make up-prod-remote      # mounts the overlay (read-only) and starts the stack
+```
+
+Workflow:
+
+```bash
+make prod-meta-pull      # fetch colleagues' WebDAV edits before editing
+$EDITOR volumes/data-meta/some/folder/metadata.yml
+# ... test the stack (catalog is rebuilt in volumes/catalog-prod/) ...
+git -C volumes/data-meta commit -am "…"
+make prod-meta-push      # deploy: updates the served prod tree
+```
+
+- The overlay is a **read-only** [rclone union](https://rclone.org/union/) of
+  `volumes/data-meta/` (first) and the prod WebDAV (`search_policy=ff`): your
+  metadata wins, everything else is read from prod. Neither directory is
+  committed (`volumes/data-meta/`, `volumes/data-prod/`, `volumes/catalog-prod/`
+  are gitignored).
+- The demo `volumes/data/` and `volumes/catalog/` are left untouched; switch back
+  with `make down && make up`.
+- Helpers: `make prod-data-status|umount`, `make prod-meta-pull|push|status`,
+  `make down-prod-remote`.
+- Defaults: data at `https://stac.webservice-energy.org/data` (public read, no
+  credentials), metadata remote `stac:~/stac/volumes/data`. Override with
+  `PROD_WEBDAV_URL`, `PROD_META_REMOTE`, `PROD_META_DIR`.
+
+On the **prod host**, keep the git-dir *outside* the served tree (nginx serves
+`volumes/data` publicly, so a `.git` directory inside it would be downloadable) —
+e.g. `git init --separate-git-dir=/root/stac-meta.git` — and allow pushes to
+update the served working tree:
+
+```bash
+git -C ~/stac/volumes/data config receive.denyCurrentBranch updateInstead
+```
+
+Cloning/pushing still targets the worktree path (`stac:~/stac/volumes/data`); git
+follows the `.git` file to the separate git-dir.
+
+> The prod repo tracks only metadata (`*.yml`, png/jpg/pdf/ipynb); the datasets
+> are not in git. Container access to the FUSE mount needs `user_allow_other` in
+> `/etc/fuse.conf` (the mount script warns if it is missing).
+
 ### Uploading over WebDAV
 
 You do not have to copy files on the server: the stack exposes an authenticated

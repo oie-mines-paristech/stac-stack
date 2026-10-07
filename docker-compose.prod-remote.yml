@@ -1,0 +1,35 @@
+# Prod-remote overlay: serve the *prod* dataset instead of the committed demo
+# tree. `volumes/data-prod/` is a read-only rclone/WebDAV mount (see
+# scripts/prod-data.sh) and the catalog is written to a separate
+# `volumes/catalog-prod/`, so nothing mixes with the demo stack.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod-remote.yml up
+#   make up-prod-remote        # mounts the data first, then this
+#
+# Only the volume entries that target /data, /catalog and /cache are overridden;
+# Compose merges service volumes by container path, so the rest of the base file
+# is untouched.
+services:
+
+  # Read-only prod data, separate catalog and cache.
+  stac-generator:
+    volumes:
+      - ./volumes/data-prod:/data:ro
+      - ./volumes/catalog-prod:/catalog
+      - ./volumes/cache-prod:/cache
+
+  static-api:
+    volumes:
+      - ./volumes/catalog-prod:/catalog:ro
+
+  # WebDAV serves the prod tree read-only: a local experiment must never write
+  # back to prod. Uploads/edits are for the real prod deployment only.
+  nginx:
+    volumes:
+      - ./volumes/data-prod:/data:ro
+      - ./volumes/data-prod:/dav/data:ro
+      - ./volumes/catalog-prod:/dav/catalog:ro
+
+  zarr-subset-zip:
+    volumes:
+      - ./volumes/data-prod:/data:ro

@@ -7,12 +7,13 @@
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
 #   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules trivy trivy-repo trivy-clean
+.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules trivy trivy-repo trivy-clean up-prod-remote down-prod-remote prod-data-mount prod-data-umount prod-data-status prod-meta-clone prod-meta-pull prod-meta-push prod-meta-status
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
 COMPOSE := docker compose
 COMPOSE_DEV := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
+COMPOSE_PROD_REMOTE := $(COMPOSE) -f docker-compose.yml -f docker-compose.prod-remote.yml
 
 # STACK_VERSION lives in .env (see .env.example). Compose reads .env by itself,
 # so `docker compose up` needs no exported variable; the registry is hardcoded in
@@ -76,6 +77,48 @@ dev-up: dev
 
 down:
 	$(COMPOSE) down
+
+# ----------------------------------------------------- prod dataset (WebDAV) ---
+# Switch the local stack to the *prod* dataset without committing it: the data
+# is served read-only from the prod WebDAV, and your edited metadata come from a
+# local git clone overlaid on top (volumes/data-meta/). The catalog goes to
+# volumes/catalog-prod/. See scripts/prod-data.sh and scripts/prod-meta.sh.
+prod-data-mount:
+	@bash scripts/prod-data.sh mount
+
+prod-data-umount:
+	@bash scripts/prod-data.sh umount
+
+prod-data-status:
+	@bash scripts/prod-data.sh status
+
+# Local git clone of the prod metadata (workflow: clone -> edit -> push).
+prod-meta-clone:
+	@bash scripts/prod-meta.sh clone
+
+prod-meta-pull:
+	@bash scripts/prod-meta.sh pull
+
+prod-meta-push:
+	@bash scripts/prod-meta.sh push
+
+prod-meta-status:
+	@bash scripts/prod-meta.sh status
+
+# Switch to the prod dataset: remove any existing containers first (recreating
+# them while a FUSE mount is bound would unmount that mount), then mount the
+# overlay fresh, then start the stack so the binds are created against the live
+# mount. Containers must NOT be recreated afterwards, or the host mount drops.
+up-prod-remote:
+	$(COMPOSE_PROD_REMOTE) down
+	@bash scripts/prod-data.sh mount
+	@mkdir -p volumes/catalog-prod volumes/cache-prod
+	$(COMPOSE_PROD_REMOTE) up -d
+	@echo "prod-remote stack up — follow logs with: docker compose -f docker-compose.yml -f docker-compose.prod-remote.yml logs -f"
+
+# Tear the prod-remote stack down (the WebDAV mount stays; use prod-data-umount).
+down-prod-remote:
+	$(COMPOSE_PROD_REMOTE) down
 
 sync-dry:
 	@echo "Deploy: $(env) → $(DEPLOY_DEST)"

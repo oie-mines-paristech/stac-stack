@@ -36,6 +36,13 @@ volumes/cache/**
 volumes/certificates/**
 !volumes/certificates/.gitkeep
 
+# Prod dataset mounted over WebDAV (read-only) by `make up-prod-remote`, plus
+# its own catalog/cache. Never committed; the dirs are created at runtime.
+volumes/data-prod/
+volumes/data-meta/
+volumes/catalog-prod/
+volumes/cache-prod/
+
 # local env files
 .env
 .env.local

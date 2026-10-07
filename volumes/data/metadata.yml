@@ -21,17 +21,18 @@ children:
   - tiffs
   # All the remote THREDDS networks live under one sub-catalog: see
   # in-situ/metadata.yml (auth, QC assets, shared YAML anchors). A remote
-  # catalog is a `children` entry like any other, only the value is a URL
-  # instead of a folder. Nothing is downloaded: every dataset becomes an Item
-  # read over OPeNDAP, its extent sampled at time[0]/[1]/[-1].
+  # catalog is simply a collection with a `thredds` source, or a bare URL as a
+  # `children` entry. Nothing is downloaded: every dataset becomes an Item read
+  # over OPeNDAP, its extent sampled at time[0]/[1]/[-1].
   - in-situ
-  - url: https://tds.webservice-energy.org/thredds/catalog/abc-rad/catalog.xml
-    id: abcrad
-    max_depth: 0
+  - id: abcrad
+    thredds:
+      url: https://tds.webservice-energy.org/thredds/catalog/abc-rad/catalog.xml
+      max_depth: 0
 
     # You may add standard "collection" metadata here
 
-    links: 
+    links:
       - rel: describedby
         href: http://foo/bar
         type: text/html

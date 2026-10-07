@@ -159,12 +159,19 @@ make up-prod-remote      # mounts the overlay (read-only) and starts the stack
 Workflow:
 
 ```bash
-make prod-meta-pull      # fetch colleagues' WebDAV edits before editing
+make prod-meta-pull      # fetch committed history from prod
 $EDITOR volumes/data-meta/some/folder/metadata.yml
 # ... test the stack (catalog is rebuilt in volumes/catalog-prod/) ...
 git -C volumes/data-meta commit -am "…"
 make prod-meta-push      # deploy: updates the served prod tree
 ```
+
+`prod-meta-push` also reconciles colleagues who edit over WebDAV *without*
+committing: it commits their uncommitted working-tree changes on the prod host
+under a generic message, merges that commit into your clone, then pushes. A
+concurrent edit on the same file surfaces as a merge conflict (reported, never
+silently overwritten). Env: `PROD_META_HOST` (default `stac`),
+`PROD_META_WORKTREE` (default `$HOME/stac/volumes/data`).
 
 - The overlay is a **read-only** [rclone union](https://rclone.org/union/) of
   `volumes/data-meta/` (first) and the prod WebDAV (`search_policy=ff`): your

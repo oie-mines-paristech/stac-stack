@@ -14,20 +14,28 @@
 # (png/jpg/pdf/ipynb); the datasets are NOT in git (see its .gitignore).
 #
 # Env:
-#   PROD_META_REMOTE  git remote of the prod metadata repo
-#                     (default: stac:~/stac/volumes/data)
-#   PROD_META_DIR     local clone path (default: volumes/data-meta)
+#   PROD_META_REMOTE    git remote of the prod metadata repo
+#                       (default: stac:~/stac/volumes/data)
+#   PROD_META_DIR       local clone path (default: volumes/data-meta)
+#   PROD_META_HOST      ssh host for the prod worktree (default: stac)
+#   PROD_META_WORKTREE  prod working tree path, a remote-shell expression
+#                       (default: $HOME/stac/volumes/data)
+#
+# `push` also captures colleagues' uncommitted WebDAV edits (they commit nothing
+# themselves): it commits them on the prod host under a generic message, pulls
+# that commit locally, then deploys. A concurrent edit on the same file surfaces
+# as a merge conflict instead of being overwritten.
 #
 # Deploying by push requires the prod repo to accept a push into its checked-out
 # branch, i.e. on the prod host, once:
 #   git -C ~/stac/volumes/data config receive.denyCurrentBranch updateInstead
-# (colleagues editing directly over WebDAV must have committed/cleaned first, or
-#  the push is refused to protect their in-tree changes).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 META_DIR="${PROD_META_DIR:-$ROOT/volumes/data-meta}"
 REMOTE="${PROD_META_REMOTE:-stac:~/stac/volumes/data}"
+HOST="${PROD_META_HOST:-stac}"
+WORKTREE="${PROD_META_WORKTREE:-\$HOME/stac/volumes/data}"
 
 require_git() {
   command -v git >/dev/null 2>&1 || { echo "git is required." >&2; exit 1; }
@@ -52,7 +60,31 @@ do_clone() {
 }
 
 do_pull() { require_git; require_clone; git -C "$META_DIR" pull --ff-only; }
-do_push() { require_git; require_clone; git -C "$META_DIR" push; }
+
+do_push() {
+  require_git
+  require_clone
+
+  # 1. Capture colleagues' uncommitted WebDAV edits on the prod host. `git add -A`
+  #    respects the prod repo's .gitignore (only metadata/images), and the commit
+  #    gets a throwaway identity so it never fails on a missing user.email.
+  echo "committing uncommitted prod (WebDAV) edits on $HOST ..."
+  ssh "$HOST" "cd $WORKTREE && git add -A && { git diff --cached --quiet || \
+    git -c user.name=stac-webdav -c user.email=stac-webdav@localhost \
+    commit -m 'auto(webdav): uncommitted edits before push'; }"
+
+  # 2. Integrate that commit locally. A concurrent edit on the same file becomes
+  #    a merge conflict here — reported, never silently overwritten.
+  echo "integrating prod commits ..."
+  if ! git -C "$META_DIR" pull --no-edit --no-rebase; then
+    echo "MERGE FAILED: resolve the conflict in $META_DIR, commit, then re-run." >&2
+    exit 1
+  fi
+
+  # 3. Deploy. updateInstead sets the served prod working tree to the new HEAD.
+  git -C "$META_DIR" push
+}
+
 do_status() { require_git; require_clone; git -C "$META_DIR" status -sb; }
 
 case "${1:-}" in

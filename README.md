@@ -3,9 +3,10 @@
 A ready-to-run stack for publishing georeferenced scientific data (**GeoTIFF, NetCDF, Zarr**, ...) as a browsable, queryable STAC catalog.
 
 Drop your assets in a folder, add a `metadata.yml` next to them, and the stack does the rest: it extracts the metadata, builds a STAC catalog, serves a STAC API, and gives you a [Stac Browser (by Radiant Earth)](https://github.com/radiantearth/stac-browser) with custom viewers and tools built in :
-* A Zarr viewer in the browser
-* A Notebook preview 
-* A streaming subset/ZIP for Zarr datasets
+* A **Zarr viewer** in the browser
+* A **preview of notebooks**
+* A **streaming subset/ZIP for Zarr datasets**
+* Automatic translation of **Thredds XML catalogs to Zarr**
 
 ## Live demo
 

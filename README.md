@@ -6,7 +6,7 @@ Drop your assets in a folder, add a `metadata.yml` next to them, and the stack d
 * A **Zarr viewer** in the browser
 * A **preview of notebooks**
 * A **streaming subset/ZIP for Zarr datasets**
-* Automatic translation of **Thredds XML catalogs to Zarr**
+* Automatic translation of **Thredds XML catalogs to Stac**
 
 ## Live demo
 

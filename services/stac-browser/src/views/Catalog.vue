@@ -11,6 +11,7 @@
             <Description :description="data.description" />
           </ReadMore>
           <Keywords v-if="Array.isArray(data.keywords) && data.keywords.length > 0" :keywords="data.keywords" class="mb-3" />
+          <Citation :citation="sciCitation" :doi="sciDoi" />
           <CollectionLink v-if="collectionLink" :link="collectionLink" />
           <section v-if="isCollection" class="metadata mb-4">
             <b-row v-if="licenses">
@@ -78,6 +79,7 @@
 import { defineComponent, defineAsyncComponent } from 'vue';
 import { mapState, mapGetters } from 'vuex';
 import Catalogs from '../components/Catalogs.vue';
+import Citation from '../components/Citation.vue';
 import Description from '../components/Description.vue';
 import Items from '../components/Items.vue';
 import ReadMore from "../components/ReadMore.vue";
@@ -102,6 +104,7 @@ export default defineComponent({
     AnonymizedNotice: defineAsyncComponent(() => import('../components/AnonymizedNotice.vue')),
     Assets: defineAsyncComponent(() => import('../components/Assets.vue')),
     Catalogs,
+    Citation,
     CollectionLink: defineAsyncComponent(() => import('../components/CollectionLink.vue')),
     DeprecationNotice: defineAsyncComponent(() => import('../components/DeprecationNotice.vue')),
     Description,
@@ -132,6 +135,12 @@ export default defineComponent({
     ...mapGetters(['catalogs', 'collectionLink', 'isApiChildrenLoading', 'isCollection', 'items', 'getApiItemsLoading', 'parentLink', 'rootLink']),
     ignoredMetadataFields() {
       return getIgnoredFields(this.data, 'CatalogLike');
+    },
+    sciCitation() {
+      return this.data?.['sci:citation'] || '';
+    },
+    sciDoi() {
+      return this.data?.['sci:doi'] || '';
     },
     cssStacType() {
       if (hasText(this.data?.type)) {

@@ -53,6 +53,44 @@ test.describe('Collection Metadata', () => {
     await expect(page.getByText(new RegExp(start))).toBeVisible();
   });
 
+  test('Catalog - renders citation and DOI below the description', async ({ page, worker }) => {
+    const { catalog, collection } = createStaticCatalog();
+    const doi = '10.1234/example';
+    collection.setMetadata({
+      'sci:citation': `Example, A. (2024). Example dataset. https://ror.org/04y8cs423. https://doi.org/${doi}`,
+      'sci:doi': doi
+    });
+    collection.addToExtensions('https://stac-extensions.github.io/scientific/v1.0.0/schema.json');
+    await catalog.createServer(worker);
+
+    await page.goto(collection.getBrowserPath());
+    await waitForBrowserReady(page);
+
+    // One citation block inside the intro, i.e. below the description and the keywords...
+    const block = page.locator('section.intro section.citation');
+    await expect(block).toHaveCount(1);
+    // Rendered like the other intro attributes (license, temporal extent): a
+    // label column and a value column per field.
+    await expect(block.locator('.label')).toHaveText(['Citation', 'DOI']);
+    await expect(block.locator('.value')).toHaveCount(2);
+    // Keywords load through an async component, wait for them before comparing positions.
+    await expect(page.locator('.keywords .keyword').first()).toBeVisible();
+    const citationAfterKeywords = await page.evaluate(() => {
+      const keywords = document.querySelector('.keywords');
+      const citation = document.querySelector('section.intro section.citation');
+      return Boolean(keywords && citation && keywords.compareDocumentPosition(citation) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(citationAfterKeywords).toBe(true);
+
+    // ...with both URLs of the citation text and the DOI link clickable...
+    await expect(block.locator('a[href="https://ror.org/04y8cs423"]')).toBeVisible();
+    await expect(block.locator(`a[href="https://doi.org/${doi}"]`)).toHaveCount(2);
+
+    // ...and no leftover citation/DOI rows in the metadata grid further down.
+    await expect(page.locator('.metadata-card', { hasText: 'Citation' })).toHaveCount(0);
+    await expect(page.locator('.metadata-card', { hasText: 'DOI' })).toHaveCount(0);
+  });
+
   test('Catalog - renders temporal resolution from the datacube temporal step', async ({ page, worker }) => {
     const { catalog, collection } = createStaticCatalog();
     // The datacube temporal dimension may use any name ("time", "t", ...); the

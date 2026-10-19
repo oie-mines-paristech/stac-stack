@@ -48,6 +48,34 @@ test.describe('Item view - Metadata', () => {
     await expect(itemTitle).toBeVisible();
   });
 
+  test('Catalog - renders citation and DOI below the description', async ({ page, worker }) => {
+    const { catalog, item } = createCatalog();
+    const doi = '10.1234/example';
+    item.setMetadata({
+      'sci:citation': `Example, A. (2024). Example dataset. https://doi.org/${doi}`,
+      'sci:doi': doi
+    });
+    item.addToExtensions('https://stac-extensions.github.io/scientific/v1.0.0/schema.json');
+    await catalog.createServer(worker);
+
+    await page.goto(item.getBrowserPath());
+    await waitForBrowserReady(page);
+
+    // One citation block inside the intro, i.e. below the description...
+    const block = page.locator('section.intro section.citation');
+    await expect(block).toHaveCount(1);
+    // Rendered like the other attributes: a label column and a value column.
+    await expect(block.locator('.label')).toHaveText(['Citation', 'DOI']);
+    await expect(block.locator('.value')).toHaveCount(2);
+
+    // ...with the citation URL and the DOI link clickable...
+    await expect(block.locator(`a[href="https://doi.org/${doi}"]`)).toHaveCount(2);
+
+    // ...and no leftover citation/DOI rows in the metadata grid further down.
+    await expect(page.locator('.metadata-card', { hasText: 'Citation' })).toHaveCount(0);
+    await expect(page.locator('.metadata-card', { hasText: 'DOI' })).toHaveCount(0);
+  });
+
   test('should display rich item properties from EO collection', async ({ page, worker }) => {
     const { api, items } = createAPI();
     await api.createServer(worker);

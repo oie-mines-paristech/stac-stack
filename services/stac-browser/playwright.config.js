@@ -27,6 +27,14 @@ function getEnvWithoutSB() {
   return env;
 }
 
+// The specs serve their mock catalogs through the /external/... routes, which
+// only exist when external access is on, and would otherwise be rewritten
+// against config.js's fixed CDSE catalog URL.
+const E2E_CONFIG = {
+  SB_allowExternalAccess: 'true',
+  SB_catalogUrl: ''
+};
+
 /**
  * @see https://playwright.dev/docs/test-configuration
  */
@@ -125,14 +133,14 @@ export default defineConfig({
         // STAC_BROWSER_E2E enables __VUE_PROD_DEVTOOLS__ so tests can introspect
         // the map (see vite.config.js); it does not affect real production builds.
         command: 'npm run build && npx vite preview --port 4173 --strictPort',
-        env: { ...getEnvWithoutSB(), STAC_BROWSER_E2E: 'true' },
+        env: { ...getEnvWithoutSB(), ...E2E_CONFIG, STAC_BROWSER_E2E: 'true' },
         url: 'http://localhost:4173',
         reuseExistingServer: false,
         timeout: 120 * 1000,
       }
     : {
         command: 'npm start',
-        env: { ...process.env, STAC_BROWSER_E2E: 'true' },
+        env: { ...process.env, ...E2E_CONFIG, STAC_BROWSER_E2E: 'true' },
         url: 'http://localhost:8080',
         reuseExistingServer: true,
         timeout: 120 * 1000,

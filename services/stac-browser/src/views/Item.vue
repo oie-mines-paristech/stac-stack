@@ -29,6 +29,7 @@
             <Description :description="data.properties.description" />
           </ReadMore>
           <Keywords v-if="Array.isArray(data.properties.keywords) && data.properties.keywords.length > 0" :keywords="data.properties.keywords" class="mb-3" />
+          <Citation :citation="sciCitation" :doi="sciDoi" />
         </section>
         <CollectionLink v-if="collectionLink" :link="collectionLink" />
         <Providers v-if="data.properties.providers" :providers="data.properties.providers" />
@@ -43,6 +44,7 @@
 import { defineComponent, defineAsyncComponent } from 'vue';
 import { mapState, mapGetters } from 'vuex';
 import { BTab, BTabs, BCard } from 'bootstrap-vue-next';
+import Citation from '../components/Citation.vue';
 import Description from '../components/Description.vue';
 import ReadMore from "../components/ReadMore.vue";
 import ShowAssetLinkMixin from '../components/ShowAssetLinkMixin';
@@ -58,6 +60,7 @@ export default defineComponent({
     BCard,
     AnonymizedNotice: defineAsyncComponent(() => import('../components/AnonymizedNotice.vue')),
     Assets: defineAsyncComponent(() => import('../components/Assets.vue')),
+    Citation,
     CollectionLink: defineAsyncComponent(() => import('../components/CollectionLink.vue')),
     Description,
     DeprecationNotice: defineAsyncComponent(() => import('../components/DeprecationNotice.vue')),
@@ -78,6 +81,12 @@ export default defineComponent({
     ...mapGetters(['collectionLink', 'parentLink']),
     ignoredMetadataFields() {
       return getIgnoredFields(this.data);
+    },
+    sciCitation() {
+      return this.data?.properties?.['sci:citation'] || '';
+    },
+    sciDoi() {
+      return this.data?.properties?.['sci:doi'] || '';
     }
   },
   watch: {

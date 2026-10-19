@@ -28,6 +28,9 @@ const ignoredFields = {
     'deprecated',
     // Special handling for the warning of the anonymized-location extension
     'anon:warning',
+    // Rendered in the citation block right below the description
+    'sci:citation',
+    'sci:doi',
     // Special handling for the stats extension
     'stats:catalogs',
     'stats:collections',
@@ -50,7 +53,10 @@ const ignoredFields = {
     // Special handling for auth
     'auth:schemes',
     // Special handling for the warning of the anonymized-location extension
-    'anon:warning'
+    'anon:warning',
+    // Rendered in the citation block right below the description
+    'sci:citation',
+    'sci:doi'
   ],
   Asset: [
     // Core Asset fields that are handled directly

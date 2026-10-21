@@ -13,5 +13,7 @@ remote_name="$1"
 root="$(git rev-parse --show-toplevel)"
 while read -r local_ref local_sha remote_ref _remote_sha; do
   [[ "$local_ref" == "refs/heads/main" && "$remote_ref" == "refs/heads/main" ]] || continue
-  "$root/scripts/sync-github-mirror.sh" "$local_sha"
+  if ! "$root/scripts/sync-github-mirror.sh" "$local_sha"; then
+    echo "warning: GitHub mirror failed; the GitLab push is not blocked" >&2
+  fi
 done

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Mirror main to the GitHub clone every time main is pushed to origin.
+#
+# Git has no post-push hook: this runs before origin accepts the push, using the
+# exact commit being pushed. If the origin push is rejected, the GitHub mirror
+# is temporarily ahead; the next successful push fixes it.
+set -euo pipefail
+
+remote_name="$1"
+[[ "$remote_name" == "origin" ]] || exit 0
+[[ "${STAC_OIE_MIRROR:-0}" == "1" ]] && exit 0
+
+root="$(git rev-parse --show-toplevel)"
+while read -r local_ref local_sha remote_ref _remote_sha; do
+  [[ "$local_ref" == "refs/heads/main" && "$remote_ref" == "refs/heads/main" ]] || continue
+  "$root/scripts/sync-github-mirror.sh" "$local_sha"
+done

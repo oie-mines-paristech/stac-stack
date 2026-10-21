@@ -1,5 +1,11 @@
 # STAC Stack
 
+<!-- mirror-header:start -->
+> **Contributions.** Please contribute through GitHub: open issues and pull requests
+> on [oie-mines-paristech/stac-stack](https://github.com/oie-mines-paristech/stac-stack).
+> A read-only mirror of this repository is published there automatically.
+<!-- mirror-header:end -->
+
 A ready-to-run stack for publishing georeferenced scientific data (**GeoTIFF, NetCDF, Zarr**, ...) as a browsable, queryable STAC catalog.
 
 Drop your assets in a folder, add a `metadata.yml` next to them, and the stack does the rest: it extracts the metadata, builds a STAC catalog, serves a STAC API, and gives you a [Stac Browser (by Radiant Earth)](https://github.com/radiantearth/stac-browser) with custom viewers and tools built in :

@@ -7,7 +7,7 @@
 #   make test-direct   — http://localhost:TEST_DIRECT_PORT
 #   make test-webdav   — WebDAV /data (lecture publique, écriture admin)
 
-.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules trivy trivy-repo trivy-clean up-prod-remote down-prod-remote prod-data-mount prod-data-umount prod-data-status prod-meta-clone prod-meta-pull prod-meta-push prod-meta-status
+.PHONY: build rebuild up up-tls tls down dev dev-up sync sync-dry sync-code deploy deploy-check test test-direct test-webdav e2e-clean rebuild-viewer submodules trivy trivy-repo trivy-clean up-prod-remote down-prod-remote prod-data-mount prod-data-umount prod-data-status prod-meta-clone prod-meta-pull prod-meta-push prod-meta-status sync-github hooks
 
 RSYNC_EXCLUDES := --exclude volumes/ --exclude .env --exclude .ssh/ --exclude-from .rsyncignore
 
@@ -119,6 +119,14 @@ up-prod-remote:
 # Tear the prod-remote stack down (the WebDAV mount stays; use prod-data-umount).
 down-prod-remote:
 	$(COMPOSE_PROD_REMOTE) down
+
+# Mirror origin/main to the GitHub clone (see scripts/sync-github-mirror.sh).
+sync-github:
+	@bash scripts/sync-github-mirror.sh origin/main
+
+# Enable the committed git hooks (pre-push mirrors main to GitHub).
+hooks:
+	git config core.hooksPath .githooks
 
 sync-dry:
 	@echo "Deploy: $(env) → $(DEPLOY_DEST)"

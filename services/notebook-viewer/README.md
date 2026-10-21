@@ -1,5 +1,11 @@
 # Notebook Viewer
 
+<!-- mirror-header:start -->
+> **Contributions.** Please contribute through GitHub: open issues and pull requests
+> on [oie-mines-paristech/stac-stack](https://github.com/oie-mines-paristech/stac-stack).
+> A read-only mirror of this repository is published there automatically.
+<!-- mirror-header:end -->
+
 Minimal web app that renders a [Jupyter notebook](https://jupyter.org/) in the
 browser, using [notebookjs](https://github.com/jsvine/notebookjs). Used as an
 in-iframe preview for STAC assets of type `application/x-ipynb+json`.

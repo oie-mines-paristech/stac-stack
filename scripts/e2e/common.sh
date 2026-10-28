@@ -72,6 +72,25 @@ assert_browser() {
   log "OK: browser ${browser_url}"
 }
 
+assert_upload_route() {
+  local base_url="$1"
+  local health_url="${base_url%/}/zarr-upload/healthz"
+
+  # zarrchive upload server behind nginx: /healthz is open, every other route
+  # takes the bearer token (or 404s an unknown archive when no token is set).
+  log "Checking zarrchive upload route ${health_url}"
+  local body
+  body="$(curl -fsS "${health_url}")" || fail "upload route unreachable: ${health_url}"
+  [[ "$body" == *'"ok"'* ]] || fail "unexpected healthz payload: ${body}"
+
+  # Proxied to the service, not served by the browser SPA: JSON, not HTML 200.
+  local status
+  status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST --data-binary '' "${base_url%/}/zarr-upload/update/nope.zarr")"
+  [[ "$status" == "404" || "$status" == "401" ]] \
+    || fail "POST /zarr-upload/update/nope.zarr: expected 404/401, got ${status}"
+  log "OK: upload route ${health_url}"
+}
+
 assert_viewer_proxy_disabled() {
   local base_url="$1"
   local viewer_url="${base_url%/}/viewer/"

@@ -26,7 +26,7 @@ check() {
   # (1) Parent working tree, ignoring submodule lines — those are reported (2)
   # with a message that says what to do about them.
   local dirty subs
-  dirty=$(git status --porcelain | grep -vE '^.. services/(stac-generator|zarr-subset-zip|zarr-viewer)$' || true)
+  dirty=$(git status --porcelain | grep -vE '^.. services/(stac-generator|zarr-subset-zip|zarr-viewer|zarrchive)$' || true)
   if [ -n "$dirty" ]; then
     bad "uncommitted changes in the working tree:"
     printf '%s\n' "$dirty" | sed 's/^/        /'

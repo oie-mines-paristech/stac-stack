@@ -43,6 +43,7 @@ submodules:
 	@test -f services/zarr-viewer/package.json || (echo "Run: git submodule update --init --recursive" && exit 1)
 	@test -f services/stac-generator/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
 	@test -f services/zarr-subset-zip/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
+	@test -f services/zarrchive/pyproject.toml || (echo "Run: git submodule update --init --recursive" && exit 1)
 # BuildKit skips services whose build context did not change, so a plain
 # `make build` only rebuilds what you touched. Running containers are left
 # alone (no needless down/up); use SERVICE to force a subset, e.g.

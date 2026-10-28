@@ -24,12 +24,14 @@ We developped this projet to publish our own datasets, here :
 
 ```mermaid
 flowchart TB
-    subgraph IN["Drag & drop (WebDAV)"]
+    subgraph IN["Data in"]
         direction LR
-        A["GeoTIFF · NetCDF · Zarr ..."]
+        A["GeoTIFF · NetCDF · Zarr ...<br/><i>drag & drop (WebDAV)</i>"]
         M["metadata.yml"]
+        U["Instrument push<br/><code>/zarr-upload/</code>"]
         %% mermaid ignores `direction` unless the subgraph has an internal edge
         A ~~~ M
+        U ~~~ M
     end
 
     IN --> GEN["stac-generator<br/><i>watches the tree,<br/>extracts metadata</i>"]
@@ -53,7 +55,7 @@ flowchart TB
     classDef process fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a,rx:8,ry:8
     classDef resource fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,rx:8,ry:8
 
-    class A,M input
+    class A,M,U input
     class GEN,API process
     class CAT,ZV,ZS,NB resource
 
@@ -77,6 +79,7 @@ The generator never edits your data. It produces a separate catalog tree under
 | [**zarr-viewer**](https://git.sophia.minesparis.psl.eu/oie/zarr-viewer) | Web viewer for Zarr v2/v3 image cubes, CF-convention aware | OIE - own project, built on [Zarrita](https://zarrita.dev/) | Whole project |
 | [**zarr-subset-zip**](https://git.sophia.minesparis.psl.eu/oie/zarr-subset-zip) | HTTP API that subsets a Zarr cube and streams it as a ZIP | OIE - own project | Whole project |
 | [**notebook-viewer**](./services/notebook-viewer) | Renders a Jupyter notebook in an iframe, for `application/x-ipynb+json` assets | OIE - own project, in-tree, built on [notebookjs](https://github.com/jsvine/notebookjs) | Whole project |
+| [**zarrchive**](https://git.sophia.minesparis.psl.eu/oie/zarrchive) | Camera→archive upload server: appends a zipped Zarr store pushed over HTTP to an archive under `volumes/data` (`/zarr-upload/`) | OIE - own project | Whole project |
 | [**stac-fastapi-static**](./services/stac-fastapi-static) | Serves a static STAC catalog as a STAC API | Fork of [fntb/stac-fastapi-static](https://github.com/fntb/stac-fastapi-static) | Packaging and integration |
 
 
@@ -101,6 +104,7 @@ Edit `.env` - the essential variables:
 | `EXTERNAL_URL` | `https://${DOMAIN}/` | URL advertised inside STAC items (`http://localhost:${HTTP_PORT}/` if you have no TLS) |
 | `WEBDAV_ADMIN` | - | WebDAV user allowed to write. Empty disables all writes |
 | `WEBDAV_PASSWORD` | - | Password for that user |
+| `UPLOAD_TOKEN` | - | Bearer token an instrument sends to `/zarr-upload/`. Empty disables authentication |
 | `NGINX_UID` / `NGINX_GID` | `1000` | Host uid/gid used to read the bind-mounted data |
 
 Then:

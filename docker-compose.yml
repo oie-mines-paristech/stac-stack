@@ -81,6 +81,7 @@ services:
       - static-api
       - browser
       - zarr-subset-zip
+      - zarr-upload
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
@@ -160,6 +161,29 @@ services:
     volumes:
       - ./volumes/data:/data:ro
       - zarr-subset-cache:/tmp/cache
+
+  # zarrchive upload server ("push"): an instrument POSTs a zipped camera store
+  # to /update/<store> (relative to ARCHIVE_ROOT) and the server assembles the
+  # shards in place — no WebDAV mount on the camera. It writes the same tree the
+  # stack serves, so the generator picks the new observations up on its next
+  # scan. Reached through nginx at /zarr-upload/ (bearer token, see UPLOAD_TOKEN).
+  zarr-upload:
+    image: ghcr.io/oie-mines-paristech/stac-stack-zarr-upload:${STACK_VERSION}
+    build:
+      context: ./services/zarrchive
+      labels: *oci-labels
+    restart: unless-stopped
+    environment:
+      # Stores are addressed by their path relative to this root, e.g.
+      # POST /zarr-upload/update/fisheye/ikarus.zarr
+      ARCHIVE_ROOT: /data
+      # Bearer token required on every route but /healthz; empty disables auth.
+      UPLOAD_TOKEN: "${UPLOAD_TOKEN:-}"
+      LOG_LEVEL: "${UPLOAD_LOG_LEVEL:-INFO}"
+    volumes:
+      - ./volumes/data:/data:rw
+    # Health check comes from the image (docker/healthcheck.py in zarrchive):
+    # a TCP connect, so the 30s probe writes nothing to the access log.
 
   static-api:
     image: ghcr.io/oie-mines-paristech/stac-stack-static-api:${STACK_VERSION}

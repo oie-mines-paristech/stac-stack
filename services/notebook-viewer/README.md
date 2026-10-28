@@ -1,9 +1,9 @@
 # Notebook Viewer
 
 <!-- mirror-header:start -->
-> **Contributions.** Please contribute through GitHub: open issues and pull requests
-> on [oie-mines-paristech/stac-stack](https://github.com/oie-mines-paristech/stac-stack).
-> A read-only mirror of this repository is published there automatically.
+> **Mirror repository.** This repository is a read-only clone of the main GitLab
+> repository [oie/stac-oie](https://git.sophia.minesparis.psl.eu/oie/stac-oie).
+> Its content is synchronized automatically from GitLab `main`.
 <!-- mirror-header:end -->
 
 Minimal web app that renders a [Jupyter notebook](https://jupyter.org/) in the

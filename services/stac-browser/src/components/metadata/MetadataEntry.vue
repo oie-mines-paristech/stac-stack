@@ -21,7 +21,10 @@ const FORCE_TABLE = [
   'languages',
   'eo:bands',
   'raster:bands',
-  'bands'
+  'bands',
+  // Always tabular: grouping and description clamping live in MetadataTable,
+  // and a two-variable cube would otherwise render as a definition list.
+  'cube:variables'
 ];
 
 export default {
